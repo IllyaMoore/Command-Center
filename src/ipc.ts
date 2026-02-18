@@ -26,6 +26,8 @@ export interface IpcDeps {
     availableGroups: AvailableGroup[],
     registeredJids: Set<string>,
   ) => void;
+  // Handle dashboard input messages (triggers agent)
+  onDashboardInput?: (groupFolder: string, chatJid: string, text: string) => Promise<void>;
 }
 
 let ipcWatcherRunning = false;
@@ -60,6 +62,48 @@ export function startIpcWatcher(deps: IpcDeps): void {
       const isMain = sourceGroup === MAIN_GROUP_FOLDER;
       const messagesDir = path.join(ipcBaseDir, sourceGroup, 'messages');
       const tasksDir = path.join(ipcBaseDir, sourceGroup, 'tasks');
+      const inputDir = path.join(ipcBaseDir, sourceGroup, 'input');
+
+      // Process dashboard input messages (triggers agent)
+      if (deps.onDashboardInput) {
+        try {
+          if (fs.existsSync(inputDir)) {
+            const inputFiles = fs
+              .readdirSync(inputDir)
+              .filter((f) => f.endsWith('.json'));
+            for (const file of inputFiles) {
+              const filePath = path.join(inputDir, file);
+              try {
+                const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                if (data.type === 'message' && data.chatJid && data.text) {
+                  logger.info(
+                    { sourceGroup, text: data.text.slice(0, 50) },
+                    'Processing dashboard input',
+                  );
+                  await deps.onDashboardInput(sourceGroup, data.chatJid, data.text);
+                }
+                fs.unlinkSync(filePath);
+              } catch (err) {
+                logger.error(
+                  { file, sourceGroup, err },
+                  'Error processing dashboard input',
+                );
+                const errorDir = path.join(ipcBaseDir, 'errors');
+                fs.mkdirSync(errorDir, { recursive: true });
+                fs.renameSync(
+                  filePath,
+                  path.join(errorDir, `${sourceGroup}-input-${file}`),
+                );
+              }
+            }
+          }
+        } catch (err) {
+          logger.error(
+            { err, sourceGroup },
+            'Error reading dashboard input directory',
+          );
+        }
+      }
 
       // Process messages from this group's IPC directory
       try {

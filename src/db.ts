@@ -603,3 +603,104 @@ function migrateJsonState(): void {
     }
   }
 }
+
+// --- Activity queries for dashboard ---
+
+export interface ActivityItem {
+  type: 'task_run' | 'message';
+  timestamp: string;
+  task_id?: string;
+  task_prompt?: string;
+  status?: string;
+  result?: string | null;
+  error?: string | null;
+  duration_ms?: number;
+  sender_name?: string;
+  content?: string;
+  chat_jid?: string;
+  group_folder?: string;
+}
+
+export function getRecentTaskRuns(limit: number, groupFolder?: string): TaskRunLog[] {
+  const sql = groupFolder
+    ? `
+      SELECT trl.*, st.prompt as task_prompt, st.group_folder
+      FROM task_run_logs trl
+      JOIN scheduled_tasks st ON trl.task_id = st.id
+      WHERE st.group_folder = ?
+      ORDER BY trl.run_at DESC
+      LIMIT ?
+    `
+    : `
+      SELECT trl.*, st.prompt as task_prompt, st.group_folder
+      FROM task_run_logs trl
+      JOIN scheduled_tasks st ON trl.task_id = st.id
+      ORDER BY trl.run_at DESC
+      LIMIT ?
+    `;
+
+  const args = groupFolder ? [groupFolder, limit] : [limit];
+  return db.prepare(sql).all(...args) as (TaskRunLog & { task_prompt: string; group_folder: string })[];
+}
+
+export function getRecentMessages(limit: number, chatJid?: string): NewMessage[] {
+  const sql = chatJid
+    ? `
+      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+      FROM messages
+      WHERE chat_jid = ?
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `
+    : `
+      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+      FROM messages
+      ORDER BY timestamp DESC
+      LIMIT ?
+    `;
+
+  const args = chatJid ? [chatJid, limit] : [limit];
+  return db.prepare(sql).all(...args) as NewMessage[];
+}
+
+export function getRecentActivity(limit: number, groupFolder?: string): ActivityItem[] {
+  // Get task runs
+  const taskRuns = getRecentTaskRuns(limit, groupFolder);
+
+  // Get messages - if groupFolder is specified, we'd need to join with registered_groups
+  // For now, get all recent messages
+  const messages = getRecentMessages(limit);
+
+  // Combine and sort
+  const activities: ActivityItem[] = [];
+
+  for (const run of taskRuns) {
+    const r = run as TaskRunLog & { task_prompt?: string; group_folder?: string };
+    activities.push({
+      type: 'task_run',
+      timestamp: r.run_at,
+      task_id: r.task_id,
+      task_prompt: r.task_prompt,
+      status: r.status,
+      result: r.result,
+      error: r.error,
+      duration_ms: r.duration_ms,
+      group_folder: r.group_folder,
+    });
+  }
+
+  for (const msg of messages) {
+    activities.push({
+      type: 'message',
+      timestamp: msg.timestamp,
+      sender_name: msg.sender_name,
+      content: msg.content,
+      chat_jid: msg.chat_jid,
+    });
+  }
+
+  // Sort by timestamp descending and limit
+  return activities
+    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .slice(0, limit);
+}

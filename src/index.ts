@@ -38,6 +38,7 @@ import { formatMessages, formatOutbound } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { startDashboardServer } from './dashboard/server.js';
 
 // Re-export for backwards compatibility during refactor
 export { escapeXml, formatMessages } from './router.js';
@@ -427,10 +428,23 @@ function ensureDockerRunning(): void {
 }
 
 async function main(): Promise<void> {
-  ensureDockerRunning();
   initDatabase();
   logger.info('Database initialized');
   loadState();
+
+  // Start dashboard server (before Docker check so it's always available)
+  const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
+  startDashboardServer(dashboardPort);
+
+  // Check Docker - if not running, dashboard still works but agents won't
+  try {
+    ensureDockerRunning();
+  } catch (err) {
+    logger.warn('Docker not running - dashboard available but agents disabled');
+    logger.warn('Start Docker Desktop to enable full functionality');
+    // Keep running with just the dashboard
+    return;
+  }
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
@@ -470,6 +484,24 @@ async function main(): Promise<void> {
     syncGroupMetadata: (force) => whatsapp.syncGroupMetadata(force),
     getAvailableGroups,
     writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
+    onDashboardInput: async (groupFolder, chatJid, text) => {
+      // Find the registered group for this folder
+      const group = Object.values(registeredGroups).find((g) => g.folder === groupFolder);
+      if (!group) {
+        logger.warn({ groupFolder }, 'Dashboard input for unknown group');
+        return;
+      }
+      // Run the agent with the dashboard message
+      logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
+      const result = await runAgent(group, text, chatJid, async (output) => {
+        // Stream output back - agent responses go to WhatsApp
+        if (output.result) {
+          const formatted = formatOutbound(output.result);
+          if (formatted) await whatsapp.sendMessage(chatJid, formatted);
+        }
+      });
+      logger.info({ groupFolder, result }, 'Dashboard agent run completed');
+    },
   });
   queue.setProcessMessagesFn(processGroupMessages);
   recoverPendingMessages();
