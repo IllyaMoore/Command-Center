@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500;600&family=Fraunces:opsz,wght@9..144,500;9..144,700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="tb-left">
+    <div class="brand">Command Center<em>v1</em></div>
+    <div class="status-pill"><div class="pulse"></div><span id="agentStatus">Connecting...</span></div>
+  </div>
+  <!-- Tablet tabs -->
+  <div class="tb-tabs">
+    <button class="on" onclick="tabletTab('cal',this)">Calendar</button>
+    <button onclick="tabletTab('act',this)">Activity</button>
+  </div>
+  <div class="tb-right">
+    <div class="clock" id="clock"></div>
+    <div class="tb-icon settings-btn" onclick="openSettings()">&#9881;</div>
+    <div class="avatar">SC</div>
+  </div>
+</div>
+
+<!-- WORKSPACE -->
+<div class="workspace">
+
+<!-- CALENDAR PANE -->
+<div class="pane cal-pane" id="calPane">
+  <div class="pane-head">
+    <div class="pane-title">Calendar</div>
+    <div class="pane-toggle">
+      <button class="on" onclick="calMode('day',this)">Daily</button>
+      <button onclick="calMode('week',this)">Weekly</button>
+    </div>
+  </div>
+  <div class="pane-scroll">
+    <div class="day-view" id="dayView">
+      <div class="brief" id="briefCard">
+        <div class="brief-tag">CEO Agent</div>
+        <p id="briefContent">Loading today's plan...</p>
+      </div>
+      <div id="calendarEvents">
+        <div class="loading">Loading calendar...</div>
+      </div>
+    </div>
+    <div class="wk-view" id="weekView"></div>
+  </div>
+</div>
+
+<!-- ACTIVITY PANE -->
+<div class="pane act-pane" id="actPane">
+  <div class="pane-head">
+    <div class="pane-title">Activity</div>
+    <div class="pane-toggle">
+      <button class="on" onclick="actMode('all',this)">All</button>
+      <button onclick="actMode('agents',this)">By Agent</button>
+    </div>
+  </div>
+  <div class="pane-scroll">
+    <div class="pills" id="pills">
+      <div class="pill on" data-ag="all" onclick="filterAg('all')"><div class="pill-dot" style="background:var(--g)"></div>All</div>
+      <div class="pill" data-ag="ceo" onclick="filterAg('ceo')"><div class="pill-dot" style="background:var(--g)"></div>CEO</div>
+      <div class="pill" data-ag="task" onclick="filterAg('task')"><div class="pill-dot" style="background:var(--bl)"></div>Tasks</div>
+    </div>
+    <div class="agent-card" id="agentCard"></div>
+    <div id="feedList">
+      <div class="loading">Loading activity...</div>
+    </div>
+  </div>
+</div>
+
+<!-- CHAT PANE (Desktop/Tablet) -->
+<div class="pane chat-pane" id="chatPane">
+  <div class="chat-head"><h3>CEO Agent</h3></div>
+  <div class="chat-msgs" id="chatMsgs">
+    <div class="msg msg-a"><div class="agent-label">CEO Agent</div>Connecting...</div>
+  </div>
+  <div class="voice-indicator" id="voiceIndicator">
+    <div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div>
+    CEO Agent is responding...
+  </div>
+  <div class="chat-input-bar">
+    <input id="chatInput" placeholder="Talk to your CEO Agent..." autocomplete="off">
+    <button class="send-btn" id="sendBtn" onclick="sendMessage()">&#10148;</button>
+  </div>
+</div>
+
+</div><!-- /workspace -->
+</div><!-- /app -->
+
+<!-- MOBILE: Chat FAB -->
+<button class="mobile-chat-trigger" id="mobileChatFab" onclick="openMobileChat()">
+  <span>&#128172;</span>
+  <div class="mc-badge" id="mcBadge" style="display:none">0</div>
+</button>
+
+<!-- MOBILE: Chat overlay -->
+<div class="mobile-chat-overlay" id="mobileChatOverlay" onclick="closeMobileChat()"></div>
+<div class="mobile-chat-panel" id="mobileChatPanel">
+  <div class="mc-handle"></div>
+  <div class="chat-head"><h3>CEO Agent</h3><button class="chat-close" onclick="closeMobileChat()">&times;</button></div>
+  <div class="chat-msgs" id="mobileMsgs"></div>
+  <div class="voice-indicator" id="mobileVoiceIndicator">
+    <div class="voice-wave"><span></span><span></span><span></span><span></span><span></span></div>
+    Responding...
+  </div>
+  <div class="chat-input-bar">
+    <input id="mobileChatInput" placeholder="Talk to CEO Agent..." autocomplete="off">
+    <button class="send-btn" id="mobileSendBtn" onclick="sendMobileMessage()">&#10148;</button>
+  </div>
+</div>
+
+<!-- MOBILE: Bottom Nav -->
+<div class="mobile-nav">
+  <button class="mn-btn on" onclick="mobileNav('cal',this)"><span class="mn-icon">&#128197;</span>Calendar</button>
+  <button class="mn-btn" onclick="mobileNav('act',this)"><span class="mn-icon">&#128200;</span>Activity</button>
+  <button class="mn-btn" onclick="openSettings()"><span class="mn-icon">&#9881;</span>Settings</button>
+</div>
+
+<!-- SETTINGS -->
+<div class="settings-overlay" id="settingsOverlay" onclick="if(event.target===this)closeSettings()">
+  <div class="settings-panel">
+    <button class="settings-close" onclick="closeSettings()">&times;</button>
+    <h2>Settings</h2>
+    <div class="setting-group">
+      <h4>Google Workspace</h4>
+      <div class="setting-row"><span class="sr-label">Google Calendar</span><span class="sr-value" id="gcalStatus">Checking...</span></div>
+      <div class="setting-row"><span class="sr-label">Gmail</span><span class="sr-value">Not configured</span></div>
+    </div>
+    <div class="setting-group">
+      <h4>CEO Agent</h4>
+      <div class="setting-row"><span class="sr-label">Status</span><span class="sr-value" id="agentStatusSetting">Connecting...</span></div>
+      <div class="setting-row"><span class="sr-label">Group</span><span class="sr-value">ceo</span></div>
+    </div>
+    <div class="setting-group">
+      <h4>Dashboard</h4>
+      <div class="setting-row"><span class="sr-label">Version</span><span class="sr-value">1.0.0</span></div>
+      <div class="setting-row"><span class="sr-label">API</span><span class="sr-value">localhost:3000</span></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
