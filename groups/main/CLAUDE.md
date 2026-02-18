@@ -211,3 +211,19 @@ When scheduling tasks for other groups, use the `target_group_jid` parameter wit
 - `schedule_task(prompt: "...", schedule_type: "cron", schedule_value: "0 9 * * 1", target_group_jid: "120363336345536173@g.us")`
 
 The task will run in that group's context with access to their files and memory.
+
+---
+
+## Gmail & Calendar Tools
+
+### Gmail (mcp__gmail__*)
+- `search_emails` - Search with Gmail query (e.g., `is:unread from:boss@example.com`)
+- `get_email` - Get full email content by ID
+- `send_email` - Send email
+- `list_labels` - List available labels
+
+### Calendar (mcp__calendar__*)
+- `list_events` - Get events for date range
+- `create_event` - Create new event
+- `update_event` - Modify existing event
+- `delete_event` - Remove event

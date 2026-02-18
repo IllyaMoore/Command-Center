@@ -13,20 +13,44 @@ logs/
 groups/*
 !groups/main/
 !groups/global/
+!groups/ceo/
 groups/main/*
 groups/global/*
+groups/ceo/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
+!groups/ceo/CLAUDE.md
 
-# Secrets
-*.keys.json
+# Secrets - NEVER commit these
 .env
+.env.*
+*.keys.json
+client_secret*.json
+credentials*.json
+*-credentials.json
+token.json
+tokens.json
+*.pem
+*.key
+
+# Claude Code local settings
+.claude/settings.local.json
 
 # OS
 .DS_Store
+Thumbs.db
+nul
 
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo
 
+# Temp files
+*.tmp
+*.temp
+*.log
+
+# Documentation builds
 agents-sdk-docs

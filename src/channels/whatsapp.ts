@@ -32,6 +32,7 @@ export class WhatsAppChannel implements Channel {
 
   private sock!: WASocket;
   private connected = false;
+  private connecting = false;
   private lidToPhoneMap: Record<string, string> = {};
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
   private flushing = false;
@@ -50,6 +51,22 @@ export class WhatsAppChannel implements Channel {
   }
 
   private async connectInternal(onFirstOpen?: () => void): Promise<void> {
+    // Prevent multiple simultaneous connection attempts
+    if (this.connecting) {
+      logger.debug('Connection already in progress, skipping');
+      return;
+    }
+    this.connecting = true;
+
+    // Close existing socket if any
+    if (this.sock) {
+      try {
+        this.sock.end(undefined);
+      } catch {
+        // Ignore errors when closing
+      }
+    }
+
     const authDir = path.join(STORE_DIR, 'auth');
     fs.mkdirSync(authDir, { recursive: true });
 
@@ -80,25 +97,32 @@ export class WhatsAppChannel implements Channel {
 
       if (connection === 'close') {
         this.connected = false;
+        this.connecting = false;
         const reason = (lastDisconnect?.error as any)?.output?.statusCode;
+        const isConflict = reason === 440 || reason === DisconnectReason.connectionReplaced;
         const shouldReconnect = reason !== DisconnectReason.loggedOut;
-        logger.info({ reason, shouldReconnect, queuedMessages: this.outgoingQueue.length }, 'Connection closed');
+        logger.info({ reason, isConflict, shouldReconnect, queuedMessages: this.outgoingQueue.length }, 'Connection closed');
 
         if (shouldReconnect) {
-          logger.info('Reconnecting...');
-          this.connectInternal().catch((err) => {
-            logger.error({ err }, 'Failed to reconnect, retrying in 5s');
-            setTimeout(() => {
-              this.connectInternal().catch((err2) => {
-                logger.error({ err: err2 }, 'Reconnection retry failed');
-              });
-            }, 5000);
-          });
+          // Use longer delay for conflict to let the old session fully close
+          const delay = isConflict ? 5000 : 1000;
+          logger.info({ delay }, 'Reconnecting after delay...');
+          setTimeout(() => {
+            this.connectInternal().catch((err) => {
+              logger.error({ err }, 'Failed to reconnect, retrying in 5s');
+              setTimeout(() => {
+                this.connectInternal().catch((err2) => {
+                  logger.error({ err: err2 }, 'Reconnection retry failed');
+                });
+              }, 5000);
+            });
+          }, delay);
         } else {
           logger.info('Logged out. Run /setup to re-authenticate.');
           process.exit(0);
         }
       } else if (connection === 'open') {
+        this.connecting = false;
         this.connected = true;
         logger.info('Connected to WhatsApp');
 

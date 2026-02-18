@@ -56,3 +56,17 @@ NEVER use markdown. Only use WhatsApp/Telegram formatting:
 - ```triple backticks``` for code
 
 No ## headings. No [links](url). No **double stars**.
+
+## Gmail & Calendar Tools
+
+### Gmail (mcp__gmail__*)
+- `search_emails` - Search with Gmail query (e.g., `is:unread from:boss@example.com`)
+- `get_email` - Get full email content by ID
+- `send_email` - Send email
+- `list_labels` - List available labels
+
+### Calendar (mcp__calendar__*)
+- `list_events` - Get events for date range
+- `create_event` - Create new event
+- `update_event` - Modify existing event
+- `delete_event` - Remove event
