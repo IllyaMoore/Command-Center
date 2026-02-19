@@ -6,7 +6,7 @@ import { DATA_DIR } from '../../config.js';
 import { getAllRegisteredGroups, getRecentMessages } from '../../db.js';
 import { logger } from '../../logger.js';
 
-const CEO_GROUP_FOLDER = 'main';
+const CEO_GROUP_FOLDER = 'ceo';
 
 interface ChatMessage {
   id: string;
@@ -18,7 +18,6 @@ interface ChatMessage {
 
 function getCeoJid(): string | null {
   const groups = getAllRegisteredGroups();
-  logger.debug({ groups, CEO_GROUP_FOLDER }, 'getCeoJid checking groups');
   for (const [jid, group] of Object.entries(groups)) {
     if (group.folder === CEO_GROUP_FOLDER) {
       logger.debug({ jid }, 'Found CEO group');

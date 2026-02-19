@@ -116,8 +116,7 @@ export function startDashboardServer(port: number = 3000): http.Server {
   });
 
   server.listen(port, () => {
-    logger.info({ port }, 'Dashboard server started');
-    console.log(`Dashboard available at http://localhost:${port}`);
+    logger.info({ port, url: `http://localhost:${port}` }, 'Dashboard server started');
   });
 
   return server;

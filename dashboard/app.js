@@ -458,17 +458,13 @@ document.getElementById('mobileChatInput').addEventListener('keydown', (e) => {
 
 // === Initialize ===
 async function init() {
-  console.log('Initializing Command Center Dashboard...');
-
   // Check API health
   try {
     const res = await fetch(`${API_BASE}/api/health`);
     if (res.ok) {
-      console.log('API connected');
       updateAgentStatus(true);
     }
   } catch (err) {
-    console.warn('API not available:', err);
     updateAgentStatus(false);
   }
 

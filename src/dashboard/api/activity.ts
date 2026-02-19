@@ -4,7 +4,7 @@ import { getRecentActivity, ActivityItem } from '../../db.js';
 import { logger } from '../../logger.js';
 
 // Main group folder name - messages/tasks filtered to this
-const CEO_GROUP = 'main';
+const CEO_GROUP = 'ceo';
 
 export async function getActivity(limit: number = 50): Promise<ActivityItem[]> {
   try {
