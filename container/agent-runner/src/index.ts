@@ -455,7 +455,11 @@ async function runQuery(
         },
         calendar: {
           command: 'npx',
-          args: ['-y', '@gongrzhe/server-google-calendar-mcp'],
+          args: ['-y', '@cocal/google-calendar-mcp'],
+          env: {
+            GOOGLE_OAUTH_CREDENTIALS: '/home/node/.google-calendar-mcp/credentials.json',
+            GOOGLE_CALENDAR_MCP_TOKEN_PATH: '/home/node/.config/google-calendar-mcp/tokens.json',
+          },
         },
       },
       hooks: {

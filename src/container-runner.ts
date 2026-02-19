@@ -169,7 +169,7 @@ function buildVolumeMounts(
   });
 
   // Google API credentials (Gmail, Calendar) - mounted read-write for token refresh
-  for (const credDir of ['.gmail-mcp', '.google-calendar-mcp']) {
+  for (const credDir of ['.gmail-mcp', '.google-calendar-mcp', '.config/google-calendar-mcp']) {
     const hostPath = path.join(homeDir, credDir);
     if (fs.existsSync(hostPath)) {
       mounts.push({

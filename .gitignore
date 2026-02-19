@@ -36,6 +36,9 @@ tokens.json
 # Claude Code local settings
 .claude/settings.local.json
 
+#claude context
+tasks/*
+
 # OS
 .DS_Store
 Thumbs.db
