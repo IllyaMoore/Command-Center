@@ -4,10 +4,28 @@ import { google, calendar_v3 } from 'googleapis';
 
 import { logger } from '../../logger.js';
 
-// Path to Google Calendar MCP credentials
+// Paths to Google Calendar MCP credentials
 const HOME = process.env.HOME || process.env.USERPROFILE || '';
 const CREDENTIALS_PATH = path.join(HOME, '.google-calendar-mcp', 'credentials.json');
+const TOKENS_PATH = path.join(HOME, '.config', 'google-calendar-mcp', 'tokens.json');
 
+// OAuth client config structure (credentials.json)
+interface OAuthClientConfig {
+  installed: {
+    client_id: string;
+    client_secret: string;
+  };
+}
+
+// Tokens file structure (tokens.json)
+interface TokensFile {
+  normal: {
+    access_token: string;
+    refresh_token: string;
+  };
+}
+
+// Combined credentials for OAuth2 client
 interface CalendarCredentials {
   client_id: string;
   client_secret: string;
@@ -31,14 +49,39 @@ let authClient: InstanceType<typeof google.auth.OAuth2> | null = null;
 
 function loadCredentials(): CalendarCredentials | null {
   try {
+    // Load OAuth client config (client_id, client_secret)
     if (!fs.existsSync(CREDENTIALS_PATH)) {
       logger.warn({ path: CREDENTIALS_PATH }, 'Google Calendar credentials not found');
       return null;
     }
-    const data = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
-    return data;
+    const clientConfig: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
+
+    if (!clientConfig.installed?.client_id || !clientConfig.installed?.client_secret) {
+      logger.warn('Invalid credentials.json structure: missing installed.client_id or installed.client_secret');
+      return null;
+    }
+
+    // Load tokens (access_token, refresh_token)
+    if (!fs.existsSync(TOKENS_PATH)) {
+      logger.warn({ path: TOKENS_PATH }, 'Google Calendar tokens not found');
+      return null;
+    }
+    const tokensFile: TokensFile = JSON.parse(fs.readFileSync(TOKENS_PATH, 'utf-8'));
+
+    if (!tokensFile.normal?.refresh_token) {
+      logger.warn('Invalid tokens.json structure: missing normal.refresh_token');
+      return null;
+    }
+
+    // Merge into flat structure for OAuth2 client
+    return {
+      client_id: clientConfig.installed.client_id,
+      client_secret: clientConfig.installed.client_secret,
+      refresh_token: tokensFile.normal.refresh_token,
+      access_token: tokensFile.normal.access_token,
+    };
   } catch (err) {
-    logger.error({ err, path: CREDENTIALS_PATH }, 'Error loading calendar credentials');
+    logger.error({ err }, 'Error loading calendar credentials');
     return null;
   }
 }
