@@ -59,7 +59,5 @@ export const TRIGGER_PATTERN = new RegExp(
   'i',
 );
 
-// Timezone for scheduled tasks (cron expressions, etc.)
-// Uses system timezone by default
-export const TIMEZONE =
-  process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+// Timezone: managed dynamically via db.ts getTimezone() / setTimezone()
+// Reads from DB (set via dashboard), falls back to TZ env var, then system timezone.

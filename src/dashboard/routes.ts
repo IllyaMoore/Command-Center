@@ -1,5 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'http';
 
+import { getTimezone, setTimezone } from '../db.js';
 import { getActivity, streamActivity } from './api/activity.js';
 import { getCalendarEvents } from './api/calendar.js';
 import { sendChatMessage, streamChatMessages } from './api/chat.js';
@@ -70,6 +71,40 @@ export async function handleApiRoute(
 
   if (pathname === '/api/chat/stream' && method === 'GET') {
     await streamChatMessages(req, res);
+    return;
+  }
+
+  // Settings: Timezone
+  if (pathname === '/api/settings/timezone' && method === 'GET') {
+    json({ timezone: getTimezone() });
+    return;
+  }
+
+  if (pathname === '/api/settings/timezone' && method === 'POST') {
+    const body = await parseBody();
+    const tz = body.timezone as string | undefined;
+    if (!tz) {
+      json({ error: 'Missing timezone field' }, 400);
+      return;
+    }
+    // Validate timezone
+    try {
+      const valid = Intl.supportedValuesOf('timeZone');
+      if (!valid.includes(tz)) {
+        json({ error: 'Invalid timezone' }, 400);
+        return;
+      }
+    } catch {
+      // Fallback for older runtimes: attempt to create a DateTimeFormat
+      try {
+        Intl.DateTimeFormat(undefined, { timeZone: tz });
+      } catch {
+        json({ error: 'Invalid timezone' }, 400);
+        return;
+      }
+    }
+    setTimezone(tz);
+    json({ success: true, timezone: tz });
     return;
   }
 

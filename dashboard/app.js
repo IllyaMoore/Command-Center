@@ -3,6 +3,58 @@
 
 const API_BASE = '';  // Same origin
 
+// === Theme (runs immediately to prevent flash) ===
+function applyTheme(mode) {
+  let effective = mode;
+  if (mode === 'auto') {
+    effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', effective);
+}
+
+function setTheme(mode) {
+  localStorage.setItem('theme', mode);
+  applyTheme(mode);
+  updateThemeToggle(mode);
+  updateThemeIcon(mode);
+}
+
+function cycleTheme() {
+  const order = ['light', 'dark', 'auto'];
+  const current = localStorage.getItem('theme') || 'auto';
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  setTheme(next);
+}
+
+function updateThemeToggle(mode) {
+  const toggle = document.getElementById('themeToggle');
+  if (!toggle) return;
+  toggle.querySelectorAll('.tt-btn').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.theme === mode);
+  });
+}
+
+function updateThemeIcon(mode) {
+  const btn = document.getElementById('themeBtn');
+  if (!btn) return;
+  const icons = { light: '\u2600', dark: '\u263E', auto: '\u25D1' };
+  btn.textContent = icons[mode] || icons.auto;
+}
+
+// Apply saved theme immediately
+(function() {
+  const saved = localStorage.getItem('theme') || 'auto';
+  applyTheme(saved);
+  updateThemeIcon(saved);
+})();
+
+// Live-update when system preference changes (auto mode)
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if ((localStorage.getItem('theme') || 'auto') === 'auto') {
+    applyTheme('auto');
+  }
+});
+
 // === State ===
 let chatMessages = [];
 let activityItems = [];
@@ -509,6 +561,45 @@ function closeMobileChat() {
 function openSettings() {
   document.getElementById('settingsOverlay').classList.add('open');
   checkGoogleCalendarStatus();
+  loadTimezone();
+  updateThemeToggle(localStorage.getItem('theme') || 'auto');
+}
+
+async function loadTimezone() {
+  const select = document.getElementById('tzSelect');
+  if (select.options.length === 0) {
+    // Populate timezone list once
+    const zones = Intl.supportedValuesOf('timeZone');
+    zones.forEach(tz => {
+      const opt = document.createElement('option');
+      opt.value = tz;
+      opt.textContent = tz.replace(/_/g, ' ');
+      select.appendChild(opt);
+    });
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/settings/timezone`);
+    const data = await res.json();
+    select.value = data.timezone;
+  } catch (err) {
+    console.error('Failed to load timezone:', err);
+  }
+}
+
+async function saveTimezone(tz) {
+  try {
+    const res = await fetch(`${API_BASE}/api/settings/timezone`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timezone: tz })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      console.error('Failed to save timezone:', data.error);
+    }
+  } catch (err) {
+    console.error('Failed to save timezone:', err);
+  }
 }
 
 function closeSettings() {

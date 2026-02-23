@@ -26,6 +26,7 @@
   </div>
   <div class="tb-right">
     <div class="clock" id="clock"></div>
+    <div class="tb-icon theme-btn" id="themeBtn" onclick="cycleTheme()" title="Toggle theme">&#9790;</div>
     <div class="tb-icon settings-btn" onclick="openSettings()">&#9881;</div>
     <div class="avatar">SC</div>
   </div>
@@ -143,7 +144,22 @@
       <div class="setting-row"><span class="sr-label">Group</span><span class="sr-value">ceo</span></div>
     </div>
     <div class="setting-group">
+      <h4>Schedule</h4>
+      <div class="setting-row">
+        <span class="sr-label">Timezone</span>
+        <select id="tzSelect" class="sr-select" onchange="saveTimezone(this.value)"></select>
+      </div>
+    </div>
+    <div class="setting-group">
       <h4>Dashboard</h4>
+      <div class="setting-row">
+        <span class="sr-label">Theme</span>
+        <div class="theme-toggle" id="themeToggle">
+          <button class="tt-btn" data-theme="light" onclick="setTheme('light')">Light</button>
+          <button class="tt-btn" data-theme="dark" onclick="setTheme('dark')">Dark</button>
+          <button class="tt-btn on" data-theme="auto" onclick="setTheme('auto')">Auto</button>
+        </div>
+      </div>
       <div class="setting-row"><span class="sr-label">Version</span><span class="sr-value">1.0.0</span></div>
       <div class="setting-row"><span class="sr-label">API</span><span class="sr-value">localhost:3000</span></div>
     </div>

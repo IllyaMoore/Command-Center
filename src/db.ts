@@ -445,6 +445,17 @@ export function setRouterState(key: string, value: string): void {
   ).run(key, value);
 }
 
+// --- Timezone ---
+
+export function getTimezone(): string {
+  const stored = getRouterState('timezone');
+  return stored || process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+export function setTimezone(tz: string): void {
+  setRouterState('timezone', tz);
+}
+
 // --- Session accessors ---
 
 export function getSession(groupFolder: string): string | undefined {
