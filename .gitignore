@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local data & auth
+store/
+data/
+logs/
+
+# Groups - only track base structure and specific CLAUDE.md files
+groups/*
+!groups/main/
+!groups/global/
+!groups/ceo/
+groups/main/*
+groups/global/*
+groups/ceo/*
+!groups/main/CLAUDE.md
+!groups/global/CLAUDE.md
+!groups/ceo/CLAUDE.md
+
+# Secrets - NEVER commit these
+.env
+.env.*
+*.keys.json
+client_secret*.json
+credentials*.json
+*-credentials.json
+token.json
+tokens.json
+*.pem
+*.key
+
+# Claude Code local settings
+.claude/settings.local.json
+
+#claude context
+\tasks
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temp files
+*.tmp
+*.temp
+*.log
+
+# Documentation builds
+agents-sdk-docs
+
+# e2e testing
+\test-results
