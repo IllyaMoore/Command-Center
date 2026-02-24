@@ -29,6 +29,11 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `/customize` | Adding channels, integrations, changing behavior |
 | `/debug` | Container issues, logs, troubleshooting |
 
+## Jira
+
+- Project key: **LOS** (Life OS)
+- Board: https://storyfunnels.atlassian.net/jira/software/projects/LOS/boards/134
+
 ## Development
 
 Run commands directly—don't tell the user to run them.
