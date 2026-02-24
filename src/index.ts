@@ -38,6 +38,7 @@ import { formatMessages, formatOutbound } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { setDashboardQueue } from './dashboard/context.js';
 import { startDashboardServer } from './dashboard/server.js';
 
 let lastTimestamp = '';
@@ -429,6 +430,9 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
   loadState();
+
+  // Share queue with dashboard API
+  setDashboardQueue(queue);
 
   // Start dashboard server (before Docker check so it's always available)
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
