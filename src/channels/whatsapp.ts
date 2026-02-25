@@ -6,6 +6,7 @@ import makeWASocket, {
   Browsers,
   DisconnectReason,
   WASocket,
+  fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
@@ -33,6 +34,7 @@ export class WhatsAppChannel implements Channel {
   private sock!: WASocket;
   private connected = false;
   private connecting = false;
+  private reconnectAttempts = 0;
   private lidToPhoneMap: Record<string, string> = {};
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
   private flushing = false;
@@ -71,15 +73,17 @@ export class WhatsAppChannel implements Channel {
     fs.mkdirSync(authDir, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(authDir);
+    const { version } = await fetchLatestBaileysVersion();
 
     this.sock = makeWASocket({
+      version,
       auth: {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, logger),
       },
       printQRInTerminal: false,
       logger,
-      browser: Browsers.macOS('Chrome'),
+      browser: Browsers.ubuntu('Chrome'),
     });
 
     this.sock.ev.on('connection.update', (update) => {
@@ -104,9 +108,14 @@ export class WhatsAppChannel implements Channel {
         logger.info({ reason, isConflict, shouldReconnect, queuedMessages: this.outgoingQueue.length }, 'Connection closed');
 
         if (shouldReconnect) {
+          this.reconnectAttempts++;
+          if (this.reconnectAttempts > 10) {
+            logger.error({ reason, attempts: this.reconnectAttempts }, 'Too many reconnection attempts — exiting. Re-authenticate with /setup.');
+            process.exit(1);
+          }
           // Use longer delay for conflict to let the old session fully close
-          const delay = isConflict ? 5000 : 1000;
-          logger.info({ delay }, 'Reconnecting after delay...');
+          const delay = isConflict ? 5000 : Math.min(1000 * this.reconnectAttempts, 30000);
+          logger.info({ delay, attempt: this.reconnectAttempts }, 'Reconnecting after delay...');
           setTimeout(() => {
             this.connectInternal().catch((err) => {
               logger.error({ err }, 'Failed to reconnect, retrying in 5s');
@@ -124,6 +133,7 @@ export class WhatsAppChannel implements Channel {
       } else if (connection === 'open') {
         this.connecting = false;
         this.connected = true;
+        this.reconnectAttempts = 0;
         logger.info('Connected to WhatsApp');
 
         // Announce availability so WhatsApp relays subsequent presence updates (typing indicators)

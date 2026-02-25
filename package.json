@@ -15,7 +15,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
-    "setup:tasks": "tsx src/setup-tasks.ts"
+    "setup:tasks": "tsx src/setup-tasks.ts",
+    "setup:legal": "tsx src/setup-legal.ts"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.9",

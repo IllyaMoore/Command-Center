@@ -75,6 +75,12 @@ function saveState(): void {
   );
 }
 
+/** Returns the trigger regexp for a specific group (uses group.trigger if set, else global). */
+function groupTrigger(group: RegisteredGroup): RegExp {
+  const t = group.trigger || `@${ASSISTANT_NAME}`;
+  return new RegExp(`^${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
+}
+
 function registerGroup(jid: string, group: RegisteredGroup): void {
   registeredGroups[jid] = group;
   setRegisteredGroup(jid, group);
@@ -129,8 +135,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
+    const pattern = groupTrigger(group);
     const hasTrigger = missedMessages.some((m) =>
-      TRIGGER_PATTERN.test(m.content.trim()),
+      pattern.test(m.content.trim()),
     );
     if (!hasTrigger) return true;
   }
@@ -327,8 +334,9 @@ async function startMessageLoop(): Promise<void> {
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
+            const pattern = groupTrigger(group);
             const hasTrigger = groupMessages.some((m) =>
-              TRIGGER_PATTERN.test(m.content.trim()),
+              pattern.test(m.content.trim()),
             );
             if (!hasTrigger) continue;
           }
