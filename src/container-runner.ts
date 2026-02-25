@@ -12,6 +12,7 @@ import {
   CONTAINER_MAX_OUTPUT_SIZE,
   CONTAINER_TIMEOUT,
   DATA_DIR,
+  DEV_MODE,
   GROUPS_DIR,
   IDLE_TIMEOUT,
 } from './config.js';
@@ -225,6 +226,25 @@ export async function runContainerAgent(
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<ContainerOutput> {
+  if (DEV_MODE) {
+    logger.info(
+      {
+        group: group.name,
+        folder: group.folder,
+        chatJid: input.chatJid,
+        isMain: input.isMain,
+        isScheduledTask: input.isScheduledTask ?? false,
+        secretKeys: input.secrets ? Object.keys(input.secrets) : [],
+        prompt: input.prompt.substring(0, 400),
+      },
+      '[DEV MODE] Skipping container spawn',
+    );
+    const devResult = `[DEV] ${input.isScheduledTask ? 'Scheduled task' : 'Message'} received by ${group.name} agent. Prompt: ${input.prompt.length} chars. \n\nDev mode is enabled, so container execution is skipped.`;
+    const output: ContainerOutput = { status: 'success', result: devResult };
+    if (onOutput) await onOutput(output);
+    return output;
+  }
+
   const startTime = Date.now();
 
   const groupDir = path.join(GROUPS_DIR, group.folder);
