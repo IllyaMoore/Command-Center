@@ -39,3 +39,9 @@ variable "availability_zones" {
   description = "Availability zones to use"
   type        = list(string)
 }
+
+variable "vpce_az_count" {
+  description = "Number of AZs for VPC interface endpoints (reduces cost in non-prod)"
+  type        = number
+  default     = 0
+}

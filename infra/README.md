@@ -127,6 +127,29 @@ Branching model: feature branch -> `staging` -> `master`.
 9. CI runs plan for prod - review it
 10. Merge - CI applies prod automatically
 
+## Budget Estimate
+
+Monthly cost (us-east-2, on-demand pricing):
+
+| Resource | Staging | Prod | Rate |
+|----------|---------|------|------|
+| NAT Gateway | $32.85 | $32.85 | $0.045/hr |
+| NAT data processing (~5 GB) | $0.23 | $0.23 | $0.045/GB |
+| VPC Interface Endpoints (SSM x3) | $21.90 (1 AZ) | $43.80 (2 AZs) | $0.01/hr/AZ |
+| EC2 t3.small | $15.18 | $15.18 | $0.0208/hr |
+| EBS gp3 30 GB | $2.40 | $2.40 | $0.08/GB/mo |
+| Elastic IP (attached) | $0.00 | $0.00 | free |
+| S3 Gateway Endpoint | $0.00 | $0.00 | free |
+| **Subtotal** | **~$72.50** | **~$94.50** | |
+
+Shared resources (negligible): S3 state bucket, DynamoDB lock table.
+
+**Total: ~$167/mo**
+
+Cost reduction options:
+- Replace NAT Gateway with a NAT instance (t4g.nano ~$3/mo)
+- Use Reserved Instances or Savings Plans for EC2 (~40% savings)
+
 ## Security Rules
 
 - No hardcoded secrets - use SSM Parameter Store for all
