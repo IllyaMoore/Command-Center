@@ -1,0 +1,205 @@
+---
+name: Terraform
+
+"on":
+  pull_request:
+    branches: [devmoor]
+    paths: ["infra/**"]
+  push:
+    branches: [devmoor]
+    paths: ["infra/**"]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  TF_VERSION: "1.10.3"
+  AWS_REGION: "us-east-2"
+  TF_DIR: "infra"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: latest
+
+      - name: Init tflint
+        working-directory: ${{ env.TF_DIR }}
+        run: tflint --init
+
+      - name: Run tflint
+        working-directory: ${{ env.TF_DIR }}
+        run: tflint --recursive
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: ${{ env.TF_DIR }}
+          soft_fail: true
+
+  plan:
+    name: Plan (${{ matrix.environment }})
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    needs: [lint]
+    strategy:
+      matrix:
+        environment: [staging, prod]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: >-
+            arn:aws:iam::796196972655:role/nanoclaw-github-actions-terraform
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          BE_KEY: nanoclaw/${{ matrix.environment }}/terraform.tfstate
+        run: terraform init -backend-config="key=$BE_KEY"
+
+      - name: Terraform Validate
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform plan \
+            -var-file=envs/${{ matrix.environment }}.tfvars \
+            -no-color \
+            -out=tfplan-${{ matrix.environment }} \
+            2>&1 | tee plan-output.txt
+        continue-on-error: true
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        env:
+          PLAN_ENV: ${{ matrix.environment }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+          COMMIT_SHA: ${{ github.sha }}
+        with:
+          script: |
+            const fs = require('fs');
+            const planDir = process.env.TF_DIR || 'infra';
+            const planFile = `${planDir}/plan-output.txt`;
+            const plan = fs.readFileSync(planFile, 'utf8');
+            const truncated = plan.length > 60000
+              ? plan.substring(0, 60000) + '\n... (truncated)'
+              : plan;
+            const env = process.env.PLAN_ENV;
+            const outcome = process.env.PLAN_OUTCOME;
+            const sha = process.env.COMMIT_SHA;
+            const icon = outcome === 'success' ? 'pass' : 'FAIL';
+            const body = [
+              `### Terraform Plan [${icon}]: \`${env}\``,
+              '',
+              '<details><summary>Show plan output</summary>',
+              '',
+              '```',
+              truncated,
+              '```',
+              '',
+              '</details>',
+              '',
+              `*Commit: ${sha}*`,
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body,
+            });
+
+      - name: Fail if plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+  apply-staging:
+    name: Apply (staging)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: >-
+            arn:aws:iam::796196972655:role/nanoclaw-github-actions-terraform
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: >-
+          terraform init
+          -backend-config="key=nanoclaw/staging/terraform.tfstate"
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: >-
+          terraform apply
+          -var-file=envs/staging.tfvars
+          -auto-approve
+
+  apply-prod:
+    name: Apply (prod)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    needs: [apply-staging]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: >-
+            arn:aws:iam::796196972655:role/nanoclaw-github-actions-terraform
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Terraform Init
+        working-directory: ${{ env.TF_DIR }}
+        run: >-
+          terraform init
+          -backend-config="key=nanoclaw/prod/terraform.tfstate"
+
+      - name: Terraform Apply
+        working-directory: ${{ env.TF_DIR }}
+        run: >-
+          terraform apply
+          -var-file=envs/prod.tfvars
+          -auto-approve

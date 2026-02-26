@@ -1,0 +1,54 @@
+---
+version: 3
+projects:
+  - name: nanoclaw-staging
+    dir: infra
+    workspace: staging
+    terraform_version: ">= 1.6.0"
+    autoplan:
+      when_modified:
+        - "*.tf"
+        - "modules/**/*.tf"
+        - "envs/staging.tfvars"
+      enabled: true
+    apply_requirements:
+      - approved
+      - mergeable
+    workflow: staging
+
+  - name: nanoclaw-prod
+    dir: infra
+    workspace: prod
+    terraform_version: ">= 1.6.0"
+    autoplan:
+      when_modified:
+        - "*.tf"
+        - "modules/**/*.tf"
+        - "envs/prod.tfvars"
+      enabled: true
+    apply_requirements:
+      - approved
+      - mergeable
+    workflow: prod
+
+workflows:
+  staging:
+    plan:
+      steps:
+        - init:
+            extra_args:
+              - >-
+                -backend-config=key=nanoclaw/staging/terraform.tfstate
+        - plan:
+            extra_args:
+              - "-var-file=envs/staging.tfvars"
+  prod:
+    plan:
+      steps:
+        - init:
+            extra_args:
+              - >-
+                -backend-config=key=nanoclaw/prod/terraform.tfstate
+        - plan:
+            extra_args:
+              - "-var-file=envs/prod.tfvars"
