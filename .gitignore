@@ -63,3 +63,6 @@ agents-sdk-docs
 
 # e2e testing
 \test-results
+
+# temporary files
+\tmp
