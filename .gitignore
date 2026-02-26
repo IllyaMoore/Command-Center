@@ -47,6 +47,12 @@ nul
 *.swp
 *.swo
 
+# Terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/tfplan-*
+
 # Temp files
 *.tmp
 *.temp
