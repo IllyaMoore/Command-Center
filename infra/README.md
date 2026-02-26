@@ -112,15 +112,18 @@ Add a `Name` tag per resource following the naming convention.
 
 ## Workflow
 
-1. Create a branch from `devmoor`
+Branching model: feature branch -> `staging` -> `master`.
+
+1. Create a feature branch from `staging`
 2. Make changes in `infra/`
 3. Run `terraform plan` locally to verify
-4. Open a PR to `devmoor`
-5. CI runs lint, security scan, and plan for both environments
+4. Open a PR to `staging`
+5. CI runs lint, security scan, and plan for staging
 6. Plan output is posted as a PR comment - review it
-7. Get approval from Mykola
-8. Merge - CI applies staging automatically, prod requires
-   manual approval
+7. Get approval and merge - CI applies staging automatically
+8. Open a PR from `staging` to `master`
+9. CI runs plan for prod - review it
+10. Merge - CI applies prod automatically
 
 ## Security Rules
 
