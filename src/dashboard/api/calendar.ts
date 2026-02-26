@@ -44,8 +44,28 @@ interface CalendarEvent {
   color?: string;
 }
 
+export type CalendarAuthStatus = 'connected' | 'expired' | 'missing_tokens' | 'missing_credentials';
+
+const CALENDAR_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
+];
+const REDIRECT_URI = 'http://localhost:3000/api/auth/google-calendar/callback';
+
 let calendarClient: calendar_v3.Calendar | null = null;
 let authClient: InstanceType<typeof google.auth.OAuth2> | null = null;
+let cachedAuthStatus: CalendarAuthStatus | null = null;
+
+function loadClientConfig(): OAuthClientConfig | null {
+  if (!fs.existsSync(CREDENTIALS_PATH)) return null;
+  try {
+    const config: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
+    if (!config.installed?.client_id || !config.installed?.client_secret) return null;
+    return config;
+  } catch {
+    return null;
+  }
+}
 
 function loadCredentials(): CalendarCredentials | null {
   try {
@@ -162,6 +182,80 @@ export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<C
     // Return mock data on error
     return getMockEvents(view);
   }
+}
+
+// ─── OAuth flow ───
+
+export async function getCalendarAuthStatus(): Promise<CalendarAuthStatus> {
+  if (cachedAuthStatus === 'connected') return cachedAuthStatus;
+
+  const config = loadClientConfig();
+  if (!config) return 'missing_credentials';
+
+  if (!fs.existsSync(TOKENS_PATH)) return 'missing_tokens';
+
+  // Tokens file exists — try a test request to verify
+  const client = await getCalendarClient();
+  if (!client) return 'missing_tokens';
+
+  try {
+    await client.calendarList.list({ maxResults: 1 });
+    cachedAuthStatus = 'connected';
+    return 'connected';
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('invalid_grant') || message.includes('Token has been expired')) {
+      // Reset stale client so next auth attempt starts fresh
+      calendarClient = null;
+      authClient = null;
+      return 'expired';
+    }
+    logger.error({ err }, 'Calendar auth status check failed');
+    return 'expired';
+  }
+}
+
+export function getCalendarAuthUrl(): string | null {
+  const config = loadClientConfig();
+  if (!config) return null;
+
+  const oauth2 = new google.auth.OAuth2(
+    config.installed.client_id,
+    config.installed.client_secret,
+    REDIRECT_URI,
+  );
+
+  return oauth2.generateAuthUrl({
+    access_type: 'offline',
+    scope: CALENDAR_SCOPES,
+    prompt: 'consent',
+  });
+}
+
+export async function handleCalendarOAuthCallback(code: string): Promise<void> {
+  const config = loadClientConfig();
+  if (!config) throw new Error('Missing credentials.json');
+
+  const oauth2 = new google.auth.OAuth2(
+    config.installed.client_id,
+    config.installed.client_secret,
+    REDIRECT_URI,
+  );
+
+  const { tokens } = await oauth2.getToken(code);
+
+  // Save in Calendar MCP format: { normal: { ... } }
+  const tokensDir = path.dirname(TOKENS_PATH);
+  if (!fs.existsSync(tokensDir)) {
+    fs.mkdirSync(tokensDir, { recursive: true });
+  }
+  fs.writeFileSync(TOKENS_PATH, JSON.stringify({ normal: tokens }, null, 2));
+  logger.info('Google Calendar tokens saved');
+
+  // Reset cached client so next request uses new tokens
+  calendarClient = null;
+  authClient = null;
+  cachedAuthStatus = null;
 }
 
 function getColorFromId(colorId: string): string {

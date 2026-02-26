@@ -608,12 +608,52 @@ function closeSettings() {
 
 async function checkGoogleCalendarStatus() {
   try {
-    const res = await fetch(`${API_BASE}/api/calendar/events?view=day`);
-    const events = await res.json();
-    document.getElementById('gcalStatus').textContent = events.length >= 0 ? 'Connected' : 'Error';
+    const res = await fetch(`${API_BASE}/api/auth/google-calendar/status`);
+    const data = await res.json();
+    const el = document.getElementById('gcalStatus');
+    const btn = document.getElementById('gcalConnectBtn');
+
+    if (data.status === 'connected') {
+      el.textContent = 'Connected';
+      if (btn) btn.style.display = 'none';
+      dismissNotification();
+    } else if (data.status === 'expired') {
+      el.textContent = 'Token expired';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
+      showNotification('Google Calendar token expired. Reconnect in Settings.');
+    } else if (data.status === 'missing_tokens') {
+      el.textContent = 'Not authorized';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
+      showNotification('Google Calendar not connected. Set up in Settings.');
+    } else {
+      el.textContent = 'Not configured';
+      if (btn) btn.style.display = 'none';
+    }
   } catch {
-    document.getElementById('gcalStatus').textContent = 'Not connected';
+    document.getElementById('gcalStatus').textContent = 'Error';
   }
+}
+
+function connectGoogleCalendar() {
+  const popup = window.open('/api/auth/google-calendar', 'gcal-auth', 'width=500,height=700');
+  // Listen for success message from popup
+  window.addEventListener('message', function handler(e) {
+    if (e.data === 'gcal-connected') {
+      window.removeEventListener('message', handler);
+      checkGoogleCalendarStatus();
+      loadCalendarEvents('day');
+    }
+  });
+}
+
+function showNotification(text) {
+  const bar = document.getElementById('notificationBar');
+  document.getElementById('notificationText').textContent = text;
+  bar.style.display = 'flex';
+}
+
+function dismissNotification() {
+  document.getElementById('notificationBar').style.display = 'none';
 }
 
 // === Input handlers ===
@@ -640,6 +680,9 @@ async function init() {
   } catch (err) {
     updateAgentStatus(false);
   }
+
+  // Check integrations status
+  checkGoogleCalendarStatus();
 
   // Load initial data
   await Promise.all([

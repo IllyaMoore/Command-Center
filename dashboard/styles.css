@@ -484,6 +484,35 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
   cursor:pointer; font-size:14px; display:flex; align-items:center; justify-content:center;
 }
 
+/* Notification bar */
+.notification-bar {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 16px; background:var(--ad); border-bottom:1px solid var(--a);
+  font-size:13px; font-family:var(--font); color:var(--t);
+}
+#notificationIcon { font-size:15px; }
+#notificationText { flex:1; }
+.notif-action {
+  padding:4px 12px; border-radius:6px; border:1px solid var(--a);
+  background:var(--a); color:#fff; font-size:12px; font-family:var(--font);
+  font-weight:600; cursor:pointer;
+}
+.notif-action:hover { opacity:.85; }
+.notif-close {
+  width:24px; height:24px; border:none; background:none;
+  cursor:pointer; font-size:14px; color:var(--t2); display:flex;
+  align-items:center; justify-content:center; border-radius:4px;
+}
+.notif-close:hover { background:var(--s3); }
+
+/* Settings row button */
+.sr-btn {
+  padding:4px 12px; border-radius:6px; border:1px solid var(--g);
+  background:var(--g); color:#fff; font-size:12px; font-family:var(--font);
+  font-weight:600; cursor:pointer; margin-left:8px;
+}
+.sr-btn:hover { opacity:.85; }
+
 /* Scrollbar */
 ::-webkit-scrollbar { width:3px; }
 ::-webkit-scrollbar-thumb { background:var(--b); border-radius:2px; }
