@@ -31,6 +31,7 @@ module "networking" {
   public_subnets     = var.public_subnets
   availability_zones = var.availability_zones
   aws_region         = var.aws_region
+  vpce_az_count      = var.vpce_az_count
 }
 
 # Compute module — stub for Illia to implement (Stories 1-4)
