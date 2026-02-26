@@ -53,7 +53,7 @@ jobs:
           soft_fail: true
 
   plan:
-    name: Plan (${{ github.base_ref == 'staging' && 'staging' || 'prod' }})
+    name: Plan
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     needs: [lint]
