@@ -37,7 +37,7 @@ jobs:
 
       - name: Run tflint
         working-directory: ${{ env.TF_DIR }}
-        run: tflint --recursive
+        run: tflint --recursive --minimum-failure-severity=error
 
   security:
     name: Security Scan

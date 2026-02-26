@@ -27,7 +27,7 @@ Access:
 ## Prerequisites
 
 - AWS CLI configured with profile `sam`
-- Terraform >= 1.6.0
+- Terraform >= 1.5.0
 - tflint (for local linting)
 
 Install Terraform and tflint on macOS:
@@ -49,9 +49,10 @@ Working with staging:
 ```bash
 cd infra
 terraform init \
+  -backend-config="profile=sam" \
   -backend-config="key=nanoclaw/staging/terraform.tfstate"
-terraform plan -var-file=envs/staging.tfvars
-terraform apply -var-file=envs/staging.tfvars
+terraform plan -var-file=envs/staging.tfvars -var="aws_profile=sam"
+terraform apply -var-file=envs/staging.tfvars -var="aws_profile=sam"
 ```
 
 Working with prod:
@@ -59,9 +60,10 @@ Working with prod:
 ```bash
 cd infra
 terraform init -reconfigure \
+  -backend-config="profile=sam" \
   -backend-config="key=nanoclaw/prod/terraform.tfstate"
-terraform plan -var-file=envs/prod.tfvars
-terraform apply -var-file=envs/prod.tfvars
+terraform plan -var-file=envs/prod.tfvars -var="aws_profile=sam"
+terraform apply -var-file=envs/prod.tfvars -var="aws_profile=sam"
 ```
 
 ## Directory Layout

@@ -4,10 +4,9 @@ terraform {
     region         = "us-east-2"
     dynamodb_table = "nanoclaw-tf-locks"
     encrypt        = true
-    profile        = "sam"
 
-    # Key set dynamically during init:
-    #   terraform init -backend-config="key=nanoclaw/staging/terraform.tfstate"
-    #   terraform init -backend-config="key=nanoclaw/prod/terraform.tfstate"
+    # Key and profile set dynamically during init:
+    #   Local:  terraform init -backend-config="profile=sam" -backend-config="key=nanoclaw/staging/terraform.tfstate"
+    #   CI:     terraform init -backend-config="key=nanoclaw/staging/terraform.tfstate"  (uses OIDC, no profile)
   }
 }

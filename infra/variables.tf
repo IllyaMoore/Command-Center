@@ -15,9 +15,9 @@ variable "aws_region" {
 }
 
 variable "aws_profile" {
-  description = "AWS CLI profile to use"
+  description = "AWS CLI profile (default sam for local, null in CI)"
   type        = string
-  default     = "sam"
+  default     = null
 }
 
 variable "vpc_cidr" {

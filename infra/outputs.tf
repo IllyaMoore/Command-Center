@@ -9,6 +9,6 @@ output "private_subnet_ids" {
 }
 
 output "nat_gateway_ip" {
-  description = "NAT Gateway Elastic IP"
+  description = "NAT Gateway Elastic IP address"
   value       = module.networking.nat_gateway_ip
 }
