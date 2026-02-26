@@ -6,6 +6,9 @@ Personal Claude assistant. See [README.md](README.md) for philosophy and setup. 
 
 Single Node.js process that connects to WhatsApp, routes messages to Claude Agent SDK running in Docker containers. Each group has isolated filesystem and memory.
 
+- Repo: `StoryFunnels/command-center`
+- Node.js >= 20, npm
+
 ## Key Files
 
 | File | Purpose |
@@ -20,6 +23,8 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `src/db.ts` | SQLite operations |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
 | `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
+| `infra/README.md` | Infrastructure docs, architecture, budget |
+| `.github/workflows/terraform.yml` | CI pipeline: lint, plan, apply |
 
 ## Skills
 
@@ -29,6 +34,16 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `/customize` | Adding channels, integrations, changing behavior |
 | `/debug` | Container issues, logs, troubleshooting |
 
+## Infrastructure
+
+Branching: feature -> `staging` -> `master`. CI applies on merge (no manual apply).
+See `infra/README.md` for full docs.
+
+- Terraform envs: `infra/envs/staging.tfvars`, `infra/envs/prod.tfvars` (same `.tf` code, separate state)
+- GitHub environments: `staging` (deploys from `staging` branch), `production` (deploys from `master`)
+- Default branch: `staging`
+- Backport changes to all 3 branches: `staging`, `master`, `devmoor`
+
 ## Development
 
 Run commands directly—don't tell the user to run them.
@@ -36,6 +51,8 @@ Run commands directly—don't tell the user to run them.
 ```bash
 npm run dev          # Run with hot reload
 npm run build        # Compile TypeScript
+npm test             # Run tests (vitest)
+npm run format       # Format with prettier
 ./container/build.sh # Rebuild agent container
 ```
 
