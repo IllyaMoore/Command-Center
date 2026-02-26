@@ -634,6 +634,42 @@ async function checkGoogleCalendarStatus() {
   }
 }
 
+async function checkGmailStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/gmail/status`);
+    const data = await res.json();
+    const el = document.getElementById('gmailStatus');
+    const btn = document.getElementById('gmailConnectBtn');
+
+    if (data.status === 'connected') {
+      el.textContent = 'Connected';
+      if (btn) btn.style.display = 'none';
+    } else if (data.status === 'expired') {
+      el.textContent = 'Token expired';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
+      showNotification('Gmail token expired. Reconnect in Settings.');
+    } else if (data.status === 'missing_tokens') {
+      el.textContent = 'Not authorized';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
+    } else {
+      el.textContent = 'Not configured';
+      if (btn) btn.style.display = 'none';
+    }
+  } catch {
+    document.getElementById('gmailStatus').textContent = 'Error';
+  }
+}
+
+function connectGmail() {
+  const popup = window.open('/api/auth/gmail', 'gmail-auth', 'width=500,height=700');
+  window.addEventListener('message', function handler(e) {
+    if (e.data === 'gmail-connected') {
+      window.removeEventListener('message', handler);
+      checkGmailStatus();
+    }
+  });
+}
+
 function connectGoogleCalendar() {
   const popup = window.open('/api/auth/google-calendar', 'gcal-auth', 'width=500,height=700');
   // Listen for success message from popup
@@ -683,6 +719,7 @@ async function init() {
 
   // Check integrations status
   checkGoogleCalendarStatus();
+  checkGmailStatus();
 
   // Load initial data
   await Promise.all([

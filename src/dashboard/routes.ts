@@ -19,6 +19,11 @@ import {
   handleCalendarOAuthCallback,
 } from './api/calendar.js';
 import { sendChatMessage, sendGroupMessage, streamChatMessages } from './api/chat.js';
+import {
+  getGmailAuthStatus,
+  getGmailAuthUrl,
+  handleGmailOAuthCallback,
+} from './api/gmail.js';
 import { getDashboardQueue } from './context.js';
 
 export async function handleApiRoute(
@@ -203,6 +208,45 @@ export async function handleApiRoute(
       res.end(`<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
         <div style="text-align:center"><h2>Google Calendar connected</h2><p>You can close this tab.</p>
         <script>window.opener&&window.opener.postMessage('gcal-connected','*');setTimeout(()=>window.close(),2000)</script>
+        </div></body></html>`);
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'text/html' });
+      res.end(`<h3>OAuth Error</h3><p>${err instanceof Error ? err.message : 'Unknown error'}</p><p>Close this tab and try again.</p>`);
+    }
+    return;
+  }
+
+  // ─── Gmail OAuth ───
+  if (pathname === '/api/auth/gmail/status' && method === 'GET') {
+    const status = await getGmailAuthStatus();
+    json({ status });
+    return;
+  }
+
+  if (pathname === '/api/auth/gmail' && method === 'GET') {
+    const authUrl = getGmailAuthUrl();
+    if (!authUrl) {
+      json({ error: 'Missing gcp-oauth.keys.json — configure GCP OAuth first' }, 400);
+      return;
+    }
+    res.writeHead(302, { Location: authUrl });
+    res.end();
+    return;
+  }
+
+  if (pathname === '/api/auth/gmail/callback' && method === 'GET') {
+    const code = url.searchParams.get('code');
+    if (!code) {
+      res.writeHead(400, { 'Content-Type': 'text/html' });
+      res.end('<h3>Error: missing authorization code</h3><p>Close this tab and try again.</p>');
+      return;
+    }
+    try {
+      await handleGmailOAuthCallback(code);
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(`<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
+        <div style="text-align:center"><h2>Gmail connected</h2><p>You can close this tab.</p>
+        <script>window.opener&&window.opener.postMessage('gmail-connected','*');setTimeout(()=>window.close(),2000)</script>
         </div></body></html>`);
     } catch (err) {
       res.writeHead(500, { 'Content-Type': 'text/html' });
