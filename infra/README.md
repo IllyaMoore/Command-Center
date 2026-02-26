@@ -1,7 +1,38 @@
 # NanoClaw Infrastructure
 
-AWS infrastructure for NanoClaw using Terraform. See
-[PRD sections 5.1-5.7](../docs/Command-Center-PRD-v3.md) for architecture.
+AWS infrastructure for NanoClaw using Terraform (us-east-2).
+
+## Workflow
+
+All infrastructure changes go through CI. You never need to run
+`terraform apply` manually -- CI does it for you after merge.
+
+```
+feature branch --> PR to staging --> merge --> CI applies staging
+                                                    |
+                              staging --> PR to master --> merge --> CI applies prod
+```
+
+Step by step:
+
+1. Create a feature branch from `staging`
+2. Make changes in `infra/`
+3. Run `terraform plan` locally to verify (see [Local Commands](#local-commands))
+4. Open a PR to `staging`
+5. CI runs lint, security scan, and plan for staging
+6. Plan output is posted as a PR comment -- review it
+7. Get approval and merge -- CI applies staging automatically
+8. Open a PR from `staging` to `master`
+9. CI runs plan for prod -- review it
+10. Merge -- CI applies prod automatically
+
+What CI checks on every PR:
+- **Lint** -- tflint catches syntax and best practice issues
+- **Security Scan** -- tfsec finds security misconfigurations
+- **Plan** -- terraform plan shows what will change (posted as PR comment)
+
+Branch protection on `staging` requires all three checks to pass
+plus 1 review approval before merge.
 
 ## Architecture
 
@@ -27,22 +58,16 @@ Access:
 ## Prerequisites
 
 - AWS CLI configured with profile `sam`
-- Terraform >= 1.6.0
+- Terraform >= 1.5.0
 - tflint (for local linting)
-
-Install Terraform and tflint on macOS:
 
 ```bash
 brew install terraform tflint
 ```
 
-## Quick Start
+## Local Commands
 
-One-time bootstrap (creates S3 bucket + DynamoDB for state):
-
-```bash
-./scripts/bootstrap.sh --profile sam --region us-east-2
-```
+Always run from the `infra/` directory.
 
 Working with staging:
 
@@ -50,18 +75,16 @@ Working with staging:
 cd infra
 terraform init \
   -backend-config="key=nanoclaw/staging/terraform.tfstate"
-terraform plan -var-file=envs/staging.tfvars
-terraform apply -var-file=envs/staging.tfvars
+terraform plan -var-file=envs/staging.tfvars -var="aws_profile=sam"
 ```
 
-Working with prod:
+Working with prod (add `-reconfigure` when switching from staging):
 
 ```bash
 cd infra
 terraform init -reconfigure \
   -backend-config="key=nanoclaw/prod/terraform.tfstate"
-terraform plan -var-file=envs/prod.tfvars
-terraform apply -var-file=envs/prod.tfvars
+terraform plan -var-file=envs/prod.tfvars -var="aws_profile=sam"
 ```
 
 ## Directory Layout
@@ -83,9 +106,6 @@ infra/
   modules/
     networking/        VPC, subnets, NAT GW, VPC endpoints
     compute/           EC2, SG, IAM profile (stub)
-
-  scripts/
-    bootstrap.sh       One-time S3 + DynamoDB creation
 ```
 
 ## Naming Convention
@@ -109,21 +129,6 @@ Every resource gets these tags via `default_tags`:
 | Repository | StoryFunnels/command-center |
 
 Add a `Name` tag per resource following the naming convention.
-
-## Workflow
-
-Branching model: feature branch -> `staging` -> `master`.
-
-1. Create a feature branch from `staging`
-2. Make changes in `infra/`
-3. Run `terraform plan` locally to verify
-4. Open a PR to `staging`
-5. CI runs lint, security scan, and plan for staging
-6. Plan output is posted as a PR comment - review it
-7. Get approval and merge - CI applies staging automatically
-8. Open a PR from `staging` to `master`
-9. CI runs plan for prod - review it
-10. Merge - CI applies prod automatically
 
 ## Budget Estimate
 
@@ -150,10 +155,10 @@ Cost reduction options:
 
 ## Security Rules
 
-- No hardcoded secrets - use SSM Parameter Store for all
+- No hardcoded secrets -- use SSM Parameter Store for all
   sensitive values
-- No `0.0.0.0/0` inbound TCP rules - Tailscale only (UDP 41641)
-- No SSH (port 22) security group rules - use SSM Session Manager
+- No `0.0.0.0/0` inbound TCP rules -- Tailscale only (UDP 41641)
+- No SSH (port 22) security group rules -- use SSM Session Manager
 - No public IPs on EC2 instances
 - EBS volumes must be encrypted
 - IMDSv2 required (`http_tokens = "required"`)
@@ -163,31 +168,13 @@ Cost reduction options:
 
 ## Common Mistakes
 
-1. **Forgot `terraform init`** after switching environments -
+1. **Forgot `terraform init`** after switching environments --
    always re-init with `-reconfigure` when changing backend key
-2. **Committed `.terraform/`** - this directory is gitignored,
+2. **Committed `.terraform/`** -- this directory is gitignored,
    never commit it
-3. **Applied without reviewing plan** - always run `plan` first
+3. **Applied without reviewing plan** -- always run `plan` first
    and read the output
-4. **Hardcoded AMI IDs** - use `aws_ami` data source with
+4. **Hardcoded AMI IDs** -- use `aws_ami` data source with
    filters for Amazon Linux 2023
-5. **Wrong AWS profile** - the account validation check block
+5. **Wrong AWS profile** -- the account validation check block
    will catch this, but verify your profile before running
-
-## PR Self-Review Checklist
-
-Copy this into your PR description:
-
-```markdown
-- [ ] `terraform plan` output reviewed (no unexpected changes)
-- [ ] No hardcoded secrets or AMI IDs
-- [ ] No TCP inbound to 0.0.0.0/0
-- [ ] No SSH (port 22) security group rules
-- [ ] No public IPs on EC2 instances
-- [ ] EBS volumes encrypted
-- [ ] IMDSv2 enforced (http_tokens = "required")
-- [ ] All resources follow nanoclaw-{env}-{purpose} naming
-- [ ] Name tag on every resource
-- [ ] Variables and outputs have descriptions
-- [ ] Account validation check block present
-```
