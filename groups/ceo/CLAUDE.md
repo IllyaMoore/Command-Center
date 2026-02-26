@@ -226,9 +226,41 @@ New: X | Auto-handled: X | Need action: X
 - [Point 1]
 ```
 
+## Agent Delegation
+
+You can delegate specialized tasks to other agents by spawning a sub-agent with their instructions. This keeps the response in your conversation — no need to switch chats.
+
+### Available Agents
+
+| Agent | Folder | When to Delegate |
+|-------|--------|-----------------|
+| Legal | `legal` | Jira issues, FCA compliance, complaint tracking, contract review |
+
+### How to Delegate
+1. Read the agent's instructions from `/workspace/project/groups/{folder}/CLAUDE.md`
+2. Use the `Task` tool to spawn a sub-agent. In the prompt, include:
+   - The full content of the agent's CLAUDE.md as system instructions
+   - The specific task to perform
+3. The sub-agent has access to all your MCP tools (Atlassian, Gmail, Calendar)
+4. Process the sub-agent's response and summarize for the user
+
+### When to Delegate vs Handle Yourself
+- **Delegate**: Jira queries, legal compliance checks, contract analysis — anything the specialized agent does better
+- **Handle yourself**: Calendar, email, scheduling, general questions — your core responsibilities
+
+### Example Delegation
+When asked "check legal deadlines in Jira":
+1. Read `/workspace/project/groups/legal/CLAUDE.md`
+2. Spawn Task sub-agent with Legal instructions + "Run a legal watch scan for overdue items and upcoming deadlines"
+3. Sub-agent queries Jira via `mcp__atlassian__*` tools
+4. You receive structured results and relay to user
+
+---
+
 ## Tools Available
 - **Gmail**: Search emails, read content, list labels, send
 - **Google Calendar**: View events, check availability, create/modify events
+- **Atlassian**: Jira and Confluence (available for delegation to Legal sub-agent)
 - **Browser**: Research when needed
 
 ## Priorities

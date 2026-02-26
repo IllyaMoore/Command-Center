@@ -57,6 +57,19 @@ NEVER use markdown. Only use WhatsApp/Telegram formatting:
 
 No ## headings. No [links](url). No **double stars**.
 
+## Agent Registry
+
+Available specialized agents in the system. Main agent can delegate tasks to these via `Task` tool.
+
+| Agent | Folder | Trigger | Capabilities |
+|-------|--------|---------|-------------|
+| CEO | `ceo` | *(main)* | Email triage, calendar, briefings, meeting prep |
+| Legal | `legal` | `@Legal` | Jira complaints, FCA compliance, contract review, Atlassian tools |
+
+Agent instructions are at `/workspace/project/groups/{folder}/CLAUDE.md`.
+
+---
+
 ## Gmail & Calendar Tools
 
 ### Gmail (mcp__gmail__*)
