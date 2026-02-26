@@ -3,10 +3,10 @@ name: Terraform
 
 "on":
   pull_request:
-    branches: [devmoor]
+    branches: [master]
     paths: ["infra/**"]
   push:
-    branches: [devmoor]
+    branches: [master]
     paths: ["infra/**"]
 
 permissions:
