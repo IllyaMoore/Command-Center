@@ -12,6 +12,7 @@ import {
   CONTAINER_MAX_OUTPUT_SIZE,
   CONTAINER_TIMEOUT,
   DATA_DIR,
+  DEV_MODE,
   GROUPS_DIR,
   IDLE_TIMEOUT,
 } from './config.js';
@@ -41,6 +42,7 @@ export interface ContainerInput {
   chatJid: string;
   isMain: boolean;
   isScheduledTask?: boolean;
+  assistantName?: string;
   secrets?: Record<string, string>;
 }
 
@@ -160,7 +162,7 @@ function buildVolumeMounts(
   });
 
   // Mount agent-runner source from host — recompiled on container startup.
-  // Bypasses Apple Container's sticky build cache for code changes.
+  // Bypasses Docker's layer cache for code changes.
   const agentRunnerSrc = path.join(projectRoot, 'container', 'agent-runner', 'src');
   mounts.push({
     hostPath: agentRunnerSrc,
@@ -169,7 +171,7 @@ function buildVolumeMounts(
   });
 
   // Google API credentials (Gmail, Calendar) - mounted read-write for token refresh
-  for (const credDir of ['.gmail-mcp', '.google-calendar-mcp']) {
+  for (const credDir of ['.gmail-mcp', '.google-calendar-mcp', '.config/google-calendar-mcp']) {
     const hostPath = path.join(homeDir, credDir);
     if (fs.existsSync(hostPath)) {
       mounts.push({
@@ -198,7 +200,7 @@ function buildVolumeMounts(
  * Secrets are never written to disk or mounted as files.
  */
 function readSecrets(): Record<string, string> {
-  return readEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY']);
+  return readEnvFile(['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ATLASSIAN_BASIC_TOKEN']);
 }
 
 function buildContainerArgs(mounts: VolumeMount[], containerName: string): string[] {
@@ -224,6 +226,25 @@ export async function runContainerAgent(
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<ContainerOutput> {
+  if (DEV_MODE) {
+    logger.info(
+      {
+        group: group.name,
+        folder: group.folder,
+        chatJid: input.chatJid,
+        isMain: input.isMain,
+        isScheduledTask: input.isScheduledTask ?? false,
+        secretKeys: input.secrets ? Object.keys(input.secrets) : [],
+        prompt: input.prompt.substring(0, 400),
+      },
+      '[DEV MODE] Skipping container spawn',
+    );
+    const devResult = `[DEV] ${input.isScheduledTask ? 'Scheduled task' : 'Message'} received by ${group.name} agent. Prompt: ${input.prompt.length} chars. \n\nDev mode is enabled, so container execution is skipped.`;
+    const output: ContainerOutput = { status: 'success', result: devResult };
+    if (onOutput) await onOutput(output);
+    return output;
+  }
+
   const startTime = Date.now();
 
   const groupDir = path.join(GROUPS_DIR, group.folder);

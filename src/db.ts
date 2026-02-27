@@ -445,6 +445,17 @@ export function setRouterState(key: string, value: string): void {
   ).run(key, value);
 }
 
+// --- Timezone ---
+
+export function getTimezone(): string {
+  const stored = getRouterState('timezone');
+  return stored || process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+export function setTimezone(tz: string): void {
+  setRouterState('timezone', tz);
+}
+
 // --- Session accessors ---
 
 export function getSession(groupFolder: string): string | undefined {
@@ -661,6 +672,33 @@ export function getRecentMessages(limit: number, chatJid?: string): NewMessage[]
 
   const args = chatJid ? [chatJid, limit] : [limit];
   return db.prepare(sql).all(...args) as NewMessage[];
+}
+
+export function getMessagesPaginated(
+  limit: number,
+  offset: number,
+  chatJid?: string,
+): { messages: NewMessage[]; total: number } {
+  const countSql = chatJid
+    ? `SELECT COUNT(*) as total FROM messages WHERE chat_jid = ?`
+    : `SELECT COUNT(*) as total FROM messages`;
+
+  const total = chatJid
+    ? (db.prepare(countSql).get(chatJid) as { total: number }).total
+    : (db.prepare(countSql).get() as { total: number }).total;
+
+  const sql = chatJid
+    ? `SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+       FROM messages WHERE chat_jid = ?
+       ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+    : `SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+       FROM messages
+       ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+
+  const args = chatJid ? [chatJid, limit, offset] : [limit, offset];
+  const messages = db.prepare(sql).all(...args) as NewMessage[];
+
+  return { messages, total };
 }
 
 export function getRecentActivity(limit: number, groupFolder?: string): ActivityItem[] {

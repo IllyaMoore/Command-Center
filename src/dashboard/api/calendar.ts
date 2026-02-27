@@ -4,10 +4,28 @@ import { google, calendar_v3 } from 'googleapis';
 
 import { logger } from '../../logger.js';
 
-// Path to Google Calendar MCP credentials
+// Paths to Google Calendar MCP credentials
 const HOME = process.env.HOME || process.env.USERPROFILE || '';
 const CREDENTIALS_PATH = path.join(HOME, '.google-calendar-mcp', 'credentials.json');
+const TOKENS_PATH = path.join(HOME, '.config', 'google-calendar-mcp', 'tokens.json');
 
+// OAuth client config structure (credentials.json)
+interface OAuthClientConfig {
+  installed: {
+    client_id: string;
+    client_secret: string;
+  };
+}
+
+// Tokens file structure (tokens.json)
+interface TokensFile {
+  normal: {
+    access_token: string;
+    refresh_token: string;
+  };
+}
+
+// Combined credentials for OAuth2 client
 interface CalendarCredentials {
   client_id: string;
   client_secret: string;
@@ -26,19 +44,64 @@ interface CalendarEvent {
   color?: string;
 }
 
+export type CalendarAuthStatus = 'connected' | 'expired' | 'missing_tokens' | 'missing_credentials';
+
+const CALENDAR_SCOPES = [
+  'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
+];
+const REDIRECT_URI = 'http://localhost:3000/api/auth/google-calendar/callback';
+
 let calendarClient: calendar_v3.Calendar | null = null;
 let authClient: InstanceType<typeof google.auth.OAuth2> | null = null;
+let cachedAuthStatus: CalendarAuthStatus | null = null;
+
+function loadClientConfig(): OAuthClientConfig | null {
+  if (!fs.existsSync(CREDENTIALS_PATH)) return null;
+  try {
+    const config: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
+    if (!config.installed?.client_id || !config.installed?.client_secret) return null;
+    return config;
+  } catch {
+    return null;
+  }
+}
 
 function loadCredentials(): CalendarCredentials | null {
   try {
+    // Load OAuth client config (client_id, client_secret)
     if (!fs.existsSync(CREDENTIALS_PATH)) {
       logger.warn({ path: CREDENTIALS_PATH }, 'Google Calendar credentials not found');
       return null;
     }
-    const data = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
-    return data;
+    const clientConfig: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
+
+    if (!clientConfig.installed?.client_id || !clientConfig.installed?.client_secret) {
+      logger.warn('Invalid credentials.json structure: missing installed.client_id or installed.client_secret');
+      return null;
+    }
+
+    // Load tokens (access_token, refresh_token)
+    if (!fs.existsSync(TOKENS_PATH)) {
+      logger.warn({ path: TOKENS_PATH }, 'Google Calendar tokens not found');
+      return null;
+    }
+    const tokensFile: TokensFile = JSON.parse(fs.readFileSync(TOKENS_PATH, 'utf-8'));
+
+    if (!tokensFile.normal?.refresh_token) {
+      logger.warn('Invalid tokens.json structure: missing normal.refresh_token');
+      return null;
+    }
+
+    // Merge into flat structure for OAuth2 client
+    return {
+      client_id: clientConfig.installed.client_id,
+      client_secret: clientConfig.installed.client_secret,
+      refresh_token: tokensFile.normal.refresh_token,
+      access_token: tokensFile.normal.access_token,
+    };
   } catch (err) {
-    logger.error({ err, path: CREDENTIALS_PATH }, 'Error loading calendar credentials');
+    logger.error({ err }, 'Error loading calendar credentials');
     return null;
   }
 }
@@ -119,6 +182,80 @@ export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<C
     // Return mock data on error
     return getMockEvents(view);
   }
+}
+
+// ─── OAuth flow ───
+
+export async function getCalendarAuthStatus(): Promise<CalendarAuthStatus> {
+  if (cachedAuthStatus === 'connected') return cachedAuthStatus;
+
+  const config = loadClientConfig();
+  if (!config) return 'missing_credentials';
+
+  if (!fs.existsSync(TOKENS_PATH)) return 'missing_tokens';
+
+  // Tokens file exists — try a test request to verify
+  const client = await getCalendarClient();
+  if (!client) return 'missing_tokens';
+
+  try {
+    await client.calendarList.list({ maxResults: 1 });
+    cachedAuthStatus = 'connected';
+    return 'connected';
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('invalid_grant') || message.includes('Token has been expired')) {
+      // Reset stale client so next auth attempt starts fresh
+      calendarClient = null;
+      authClient = null;
+      return 'expired';
+    }
+    logger.error({ err }, 'Calendar auth status check failed');
+    return 'expired';
+  }
+}
+
+export function getCalendarAuthUrl(): string | null {
+  const config = loadClientConfig();
+  if (!config) return null;
+
+  const oauth2 = new google.auth.OAuth2(
+    config.installed.client_id,
+    config.installed.client_secret,
+    REDIRECT_URI,
+  );
+
+  return oauth2.generateAuthUrl({
+    access_type: 'offline',
+    scope: CALENDAR_SCOPES,
+    prompt: 'consent',
+  });
+}
+
+export async function handleCalendarOAuthCallback(code: string): Promise<void> {
+  const config = loadClientConfig();
+  if (!config) throw new Error('Missing credentials.json');
+
+  const oauth2 = new google.auth.OAuth2(
+    config.installed.client_id,
+    config.installed.client_secret,
+    REDIRECT_URI,
+  );
+
+  const { tokens } = await oauth2.getToken(code);
+
+  // Save in Calendar MCP format: { normal: { ... } }
+  const tokensDir = path.dirname(TOKENS_PATH);
+  if (!fs.existsSync(tokensDir)) {
+    fs.mkdirSync(tokensDir, { recursive: true });
+  }
+  fs.writeFileSync(TOKENS_PATH, JSON.stringify({ normal: tokens }, null, 2));
+  logger.info('Google Calendar tokens saved');
+
+  // Reset cached client so next request uses new tokens
+  calendarClient = null;
+  authClient = null;
+  cachedAuthStatus = null;
 }
 
 function getColorFromId(colorId: string): string {

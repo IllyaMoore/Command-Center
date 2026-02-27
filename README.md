@@ -59,7 +59,7 @@ src/
 └── ...
 
 groups/
-├── main/CLAUDE.md     # Admin channel memory
+├── ceo/CLAUDE.md      # Admin channel memory
 ├── global/CLAUDE.md   # Shared memory
 └── {group}/CLAUDE.md  # Per-group memory
 ```

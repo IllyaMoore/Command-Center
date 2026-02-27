@@ -14,12 +14,15 @@ groups/*
 !groups/main/
 !groups/global/
 !groups/ceo/
+!groups/legal/
 groups/main/*
 groups/global/*
 groups/ceo/*
+groups/legal/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
 !groups/ceo/CLAUDE.md
+!groups/legal/CLAUDE.md
 
 # Secrets - NEVER commit these
 .env
@@ -35,6 +38,10 @@ tokens.json
 
 # Claude Code local settings
 .claude/settings.local.json
+.claude/settings.json
+
+#claude context
+\tasks
 
 # OS
 .DS_Store
@@ -60,3 +67,9 @@ infra/tfplan-*
 
 # Documentation builds
 agents-sdk-docs
+
+# e2e testing
+\test-results
+
+# temporary files
+\tmp

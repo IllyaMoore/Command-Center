@@ -3,6 +3,58 @@
 
 const API_BASE = '';  // Same origin
 
+// === Theme (runs immediately to prevent flash) ===
+function applyTheme(mode) {
+  let effective = mode;
+  if (mode === 'auto') {
+    effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  document.documentElement.setAttribute('data-theme', effective);
+}
+
+function setTheme(mode) {
+  localStorage.setItem('theme', mode);
+  applyTheme(mode);
+  updateThemeToggle(mode);
+  updateThemeIcon(mode);
+}
+
+function cycleTheme() {
+  const order = ['light', 'dark', 'auto'];
+  const current = localStorage.getItem('theme') || 'auto';
+  const next = order[(order.indexOf(current) + 1) % order.length];
+  setTheme(next);
+}
+
+function updateThemeToggle(mode) {
+  const toggle = document.getElementById('themeToggle');
+  if (!toggle) return;
+  toggle.querySelectorAll('.tt-btn').forEach(btn => {
+    btn.classList.toggle('on', btn.dataset.theme === mode);
+  });
+}
+
+function updateThemeIcon(mode) {
+  const btn = document.getElementById('themeBtn');
+  if (!btn) return;
+  const icons = { light: '\u2600', dark: '\u263E', auto: '\u25D1' };
+  btn.textContent = icons[mode] || icons.auto;
+}
+
+// Apply saved theme immediately
+(function() {
+  const saved = localStorage.getItem('theme') || 'auto';
+  applyTheme(saved);
+  updateThemeIcon(saved);
+})();
+
+// Live-update when system preference changes (auto mode)
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if ((localStorage.getItem('theme') || 'auto') === 'auto') {
+    applyTheme('auto');
+  }
+});
+
 // === State ===
 let chatMessages = [];
 let activityItems = [];
@@ -94,50 +146,132 @@ function renderCalendarEvents(events, view) {
 }
 
 function renderWeekView(events) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const HOUR_START = 7;   // 7 AM
+  const HOUR_END = 21;    // 9 PM
+  const HOUR_HEIGHT = 52; // px per hour row
+  const totalHours = HOUR_END - HOUR_START;
+
+  // Build week starting from Monday of current week
+  const now = new Date();
+  const today = new Date(now); today.setHours(0, 0, 0, 0);
+  const dayOfWeek = today.getDay(); // 0=Sun
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const monday = new Date(today); monday.setDate(today.getDate() + mondayOffset);
 
   const days = [];
   for (let i = 0; i < 7; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() + i);
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
     days.push(d);
   }
 
-  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const dayLabels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
-  let html = '<div class="wk-grid">';
+  // Separate all-day vs timed events per day
+  const allDayByDay = days.map(() => []);
+  const timedByDay = days.map(() => []);
+
+  events.forEach(event => {
+    const start = new Date(event.start);
+    const end = new Date(event.end);
+    const dayIdx = days.findIndex(d => start.toDateString() === d.toDateString());
+    if (dayIdx === -1) return;
+    if (event.allDay) {
+      allDayByDay[dayIdx].push(event);
+    } else {
+      timedByDay[dayIdx].push(event);
+    }
+  });
+
+  const hasAllDay = allDayByDay.some(arr => arr.length > 0);
+
+  // --- Header row ---
+  let html = '<div class="wk-header">';
+  html += '<div class="wk-gutter-head"></div>';
   days.forEach((day, i) => {
-    const isToday = i === 0;
-    const dayEvents = events.filter(e => {
-      const start = new Date(e.start);
-      return start.toDateString() === day.toDateString();
-    });
-
+    const isToday = day.toDateString() === today.toDateString();
     html += `
-      <div class="wk-col${isToday ? ' today' : ''}">
-        <div class="wk-head">
-          <div class="wd">${dayNames[day.getDay()]}</div>
-          <div class="wn">${day.getDate()}</div>
-          <div class="wh">${dayEvents.length} events</div>
-        </div>
-        <div class="wk-body">
-    `;
-
-    dayEvents.forEach(event => {
-      const start = new Date(event.start);
-      const time = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      html += `
-        <div class="wk-event">
-          <span class="wk-et">${time}</span>
-          ${escapeHtml(event.title.slice(0, 20))}
-        </div>
-      `;
-    });
-
-    html += '</div></div>';
+      <div class="wk-day-head${isToday ? ' wk-today' : ''}">
+        <span class="wk-day-label">${dayLabels[i]}</span>
+        <span class="wk-day-num">${day.getDate()}</span>
+      </div>`;
   });
   html += '</div>';
+
+  // --- All-day row (if any) ---
+  if (hasAllDay) {
+    html += '<div class="wk-allday-row">';
+    html += '<div class="wk-gutter-allday"><span>ALL DAY</span></div>';
+    days.forEach((day, i) => {
+      const isToday = day.toDateString() === today.toDateString();
+      html += `<div class="wk-allday-cell${isToday ? ' wk-today-bg' : ''}">`;
+      allDayByDay[i].forEach(event => {
+        const color = event.color || 'var(--g)';
+        html += `<div class="wk-allday-chip" style="border-left-color:${color}">${escapeHtml(event.title)}</div>`;
+      });
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  // --- Time grid body ---
+  html += `<div class="wk-body-scroll" style="--hour-h:${HOUR_HEIGHT}px">`;
+  html += '<div class="wk-body-inner">';
+
+  // Hour gutter
+  html += '<div class="wk-gutter">';
+  for (let h = HOUR_START; h < HOUR_END; h++) {
+    html += `<div class="wk-hour-label" style="height:${HOUR_HEIGHT}px">${formatHour(h)}</div>`;
+  }
+  html += '</div>';
+
+  // Day columns
+  days.forEach((day, i) => {
+    const isToday = day.toDateString() === today.toDateString();
+    html += `<div class="wk-day-col${isToday ? ' wk-today-bg' : ''}">`;
+
+    // Hour grid lines
+    for (let h = HOUR_START; h < HOUR_END; h++) {
+      html += `<div class="wk-hour-cell" style="height:${HOUR_HEIGHT}px"></div>`;
+    }
+
+    // Events as positioned blocks
+    timedByDay[i].forEach(event => {
+      const start = new Date(event.start);
+      const end = new Date(event.end);
+      const startMins = start.getHours() * 60 + start.getMinutes();
+      const endMins = end.getHours() * 60 + end.getMinutes();
+      const topMins = startMins - HOUR_START * 60;
+      const durMins = Math.max(endMins - startMins, 15); // min 15 min height
+
+      const topPx = (topMins / 60) * HOUR_HEIGHT;
+      const heightPx = (durMins / 60) * HOUR_HEIGHT;
+      const color = event.color || 'var(--g)';
+
+      const startTime = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const endTime = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+      html += `
+        <div class="wk-event-block" style="top:${topPx}px;height:${heightPx}px;--ev-color:${color}" title="${escapeHtml(event.title)}&#10;${startTime} – ${endTime}${event.location ? '&#10;' + escapeHtml(event.location) : ''}">
+          <div class="wk-ev-title">${escapeHtml(event.title)}</div>
+          <div class="wk-ev-time">${startTime}</div>
+        </div>`;
+    });
+
+    // Current time indicator
+    if (isToday) {
+      const nowMins = now.getHours() * 60 + now.getMinutes();
+      const nowOffset = nowMins - HOUR_START * 60;
+      if (nowOffset >= 0 && nowOffset <= totalHours * 60) {
+        const nowPx = (nowOffset / 60) * HOUR_HEIGHT;
+        html += `<div class="wk-now-line" style="top:${nowPx}px"><div class="wk-now-dot"></div></div>`;
+      }
+    }
+
+    html += '</div>';
+  });
+
+  html += '</div></div>';
 
   document.getElementById('weekView').innerHTML = html;
 }
@@ -427,6 +561,45 @@ function closeMobileChat() {
 function openSettings() {
   document.getElementById('settingsOverlay').classList.add('open');
   checkGoogleCalendarStatus();
+  loadTimezone();
+  updateThemeToggle(localStorage.getItem('theme') || 'auto');
+}
+
+async function loadTimezone() {
+  const select = document.getElementById('tzSelect');
+  if (select.options.length === 0) {
+    // Populate timezone list once
+    const zones = Intl.supportedValuesOf('timeZone');
+    zones.forEach(tz => {
+      const opt = document.createElement('option');
+      opt.value = tz;
+      opt.textContent = tz.replace(/_/g, ' ');
+      select.appendChild(opt);
+    });
+  }
+  try {
+    const res = await fetch(`${API_BASE}/api/settings/timezone`);
+    const data = await res.json();
+    select.value = data.timezone;
+  } catch (err) {
+    console.error('Failed to load timezone:', err);
+  }
+}
+
+async function saveTimezone(tz) {
+  try {
+    const res = await fetch(`${API_BASE}/api/settings/timezone`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timezone: tz })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      console.error('Failed to save timezone:', data.error);
+    }
+  } catch (err) {
+    console.error('Failed to save timezone:', err);
+  }
 }
 
 function closeSettings() {
@@ -435,12 +608,88 @@ function closeSettings() {
 
 async function checkGoogleCalendarStatus() {
   try {
-    const res = await fetch(`${API_BASE}/api/calendar/events?view=day`);
-    const events = await res.json();
-    document.getElementById('gcalStatus').textContent = events.length >= 0 ? 'Connected' : 'Error';
+    const res = await fetch(`${API_BASE}/api/auth/google-calendar/status`);
+    const data = await res.json();
+    const el = document.getElementById('gcalStatus');
+    const btn = document.getElementById('gcalConnectBtn');
+
+    if (data.status === 'connected') {
+      el.textContent = 'Connected';
+      if (btn) btn.style.display = 'none';
+      dismissNotification();
+    } else if (data.status === 'expired') {
+      el.textContent = 'Token expired';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
+      showNotification('Google Calendar token expired. Reconnect in Settings.');
+    } else if (data.status === 'missing_tokens') {
+      el.textContent = 'Not authorized';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
+      showNotification('Google Calendar not connected. Set up in Settings.');
+    } else {
+      el.textContent = 'Not configured';
+      if (btn) btn.style.display = 'none';
+    }
   } catch {
-    document.getElementById('gcalStatus').textContent = 'Not connected';
+    document.getElementById('gcalStatus').textContent = 'Error';
   }
+}
+
+async function checkGmailStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/gmail/status`);
+    const data = await res.json();
+    const el = document.getElementById('gmailStatus');
+    const btn = document.getElementById('gmailConnectBtn');
+
+    if (data.status === 'connected') {
+      el.textContent = 'Connected';
+      if (btn) btn.style.display = 'none';
+    } else if (data.status === 'expired') {
+      el.textContent = 'Token expired';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
+      showNotification('Gmail token expired. Reconnect in Settings.');
+    } else if (data.status === 'missing_tokens') {
+      el.textContent = 'Not authorized';
+      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
+    } else {
+      el.textContent = 'Not configured';
+      if (btn) btn.style.display = 'none';
+    }
+  } catch {
+    document.getElementById('gmailStatus').textContent = 'Error';
+  }
+}
+
+function connectGmail() {
+  const popup = window.open('/api/auth/gmail', 'gmail-auth', 'width=500,height=700');
+  window.addEventListener('message', function handler(e) {
+    if (e.data === 'gmail-connected') {
+      window.removeEventListener('message', handler);
+      checkGmailStatus();
+    }
+  });
+}
+
+function connectGoogleCalendar() {
+  const popup = window.open('/api/auth/google-calendar', 'gcal-auth', 'width=500,height=700');
+  // Listen for success message from popup
+  window.addEventListener('message', function handler(e) {
+    if (e.data === 'gcal-connected') {
+      window.removeEventListener('message', handler);
+      checkGoogleCalendarStatus();
+      loadCalendarEvents('day');
+    }
+  });
+}
+
+function showNotification(text) {
+  const bar = document.getElementById('notificationBar');
+  document.getElementById('notificationText').textContent = text;
+  bar.style.display = 'flex';
+}
+
+function dismissNotification() {
+  document.getElementById('notificationBar').style.display = 'none';
 }
 
 // === Input handlers ===
@@ -458,19 +707,19 @@ document.getElementById('mobileChatInput').addEventListener('keydown', (e) => {
 
 // === Initialize ===
 async function init() {
-  console.log('Initializing Command Center Dashboard...');
-
   // Check API health
   try {
     const res = await fetch(`${API_BASE}/api/health`);
     if (res.ok) {
-      console.log('API connected');
       updateAgentStatus(true);
     }
   } catch (err) {
-    console.warn('API not available:', err);
     updateAgentStatus(false);
   }
+
+  // Check integrations status
+  checkGoogleCalendarStatus();
+  checkGmailStatus();
 
   // Load initial data
   await Promise.all([

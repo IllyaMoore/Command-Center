@@ -21,7 +21,18 @@ interface GroupState {
   process: ChildProcess | null;
   containerName: string | null;
   groupFolder: string | null;
+  currentTaskId: string | null;
   retryCount: number;
+}
+
+export interface AgentStatus {
+  jid: string;
+  active: boolean;
+  containerName: string | null;
+  groupFolder: string | null;
+  currentTaskId: string | null;
+  pendingMessages: boolean;
+  pendingTaskCount: number;
 }
 
 export class GroupQueue {
@@ -42,6 +53,7 @@ export class GroupQueue {
         process: null,
         containerName: null,
         groupFolder: null,
+        currentTaskId: null,
         retryCount: 0,
       };
       this.groups.set(groupJid, state);
@@ -164,6 +176,7 @@ export class GroupQueue {
     const state = this.getGroup(groupJid);
     state.active = true;
     state.pendingMessages = false;
+    state.currentTaskId = '_messages';
     this.activeCount++;
 
     logger.debug(
@@ -188,6 +201,7 @@ export class GroupQueue {
       state.process = null;
       state.containerName = null;
       state.groupFolder = null;
+      state.currentTaskId = null;
       this.activeCount--;
       this.drainGroup(groupJid);
     }
@@ -196,6 +210,7 @@ export class GroupQueue {
   private async runTask(groupJid: string, task: QueuedTask): Promise<void> {
     const state = this.getGroup(groupJid);
     state.active = true;
+    state.currentTaskId = task.id;
     this.activeCount++;
 
     logger.debug(
@@ -212,6 +227,7 @@ export class GroupQueue {
       state.process = null;
       state.containerName = null;
       state.groupFolder = null;
+      state.currentTaskId = null;
       this.activeCount--;
       this.drainGroup(groupJid);
     }
@@ -279,6 +295,26 @@ export class GroupQueue {
       }
       // If neither pending, skip this group
     }
+  }
+
+  getStatus(): AgentStatus[] {
+    const result: AgentStatus[] = [];
+    for (const [jid, state] of this.groups) {
+      result.push({
+        jid,
+        active: state.active,
+        containerName: state.containerName,
+        groupFolder: state.groupFolder,
+        currentTaskId: state.currentTaskId,
+        pendingMessages: state.pendingMessages,
+        pendingTaskCount: state.pendingTasks.length,
+      });
+    }
+    return result;
+  }
+
+  getActiveCount(): number {
+    return this.activeCount;
   }
 
   async shutdown(_gracePeriodMs: number): Promise<void> {

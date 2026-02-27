@@ -15,6 +15,7 @@ import readline from 'readline';
 import makeWASocket, {
   Browsers,
   DisconnectReason,
+  fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
@@ -43,6 +44,8 @@ function askQuestion(prompt: string): Promise<string> {
 
 async function connectSocket(phoneNumber?: string): Promise<void> {
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  const { version, isLatest } = await fetchLatestBaileysVersion();
+  console.log(`Using Baileys version: ${version.join('.')}${isLatest ? '' : ' (fallback — no network)'}`);
 
   if (state.creds.registered) {
     fs.writeFileSync(STATUS_FILE, 'already_authenticated');
@@ -54,13 +57,14 @@ async function connectSocket(phoneNumber?: string): Promise<void> {
   }
 
   const sock = makeWASocket({
+    version,
     auth: {
       creds: state.creds,
       keys: makeCacheableSignalKeyStore(state.keys, logger),
     },
     printQRInTerminal: false,
     logger,
-    browser: Browsers.macOS('Chrome'),
+    browser: Browsers.ubuntu('Chrome'),
   });
 
   if (usePairingCode && phoneNumber && !state.creds.me) {

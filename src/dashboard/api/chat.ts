@@ -6,7 +6,7 @@ import { DATA_DIR } from '../../config.js';
 import { getAllRegisteredGroups, getRecentMessages } from '../../db.js';
 import { logger } from '../../logger.js';
 
-const CEO_GROUP_FOLDER = 'main';
+const CEO_GROUP_FOLDER = 'ceo';
 
 interface ChatMessage {
   id: string;
@@ -18,7 +18,6 @@ interface ChatMessage {
 
 function getCeoJid(): string | null {
   const groups = getAllRegisteredGroups();
-  logger.debug({ groups, CEO_GROUP_FOLDER }, 'getCeoJid checking groups');
   for (const [jid, group] of Object.entries(groups)) {
     if (group.folder === CEO_GROUP_FOLDER) {
       logger.debug({ jid }, 'Found CEO group');
@@ -29,6 +28,35 @@ function getCeoJid(): string | null {
   return null;
 }
 
+export async function sendGroupMessage(
+  groupFolder: string,
+  chatJid: string,
+  text: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const inputDir = path.join(DATA_DIR, 'ipc', groupFolder, 'input');
+    fs.mkdirSync(inputDir, { recursive: true });
+
+    const filename = `${Date.now()}-dashboard.json`;
+    const filePath = path.join(inputDir, filename);
+
+    const message = {
+      type: 'message',
+      chatJid,
+      text,
+      source: 'dashboard',
+    };
+
+    fs.writeFileSync(filePath, JSON.stringify(message, null, 2));
+    logger.info({ groupFolder, text: text.slice(0, 50) }, 'Dashboard message written to IPC');
+
+    return { success: true };
+  } catch (err) {
+    logger.error({ err }, 'Error writing message to IPC');
+    return { success: false, error: 'Failed to send message' };
+  }
+}
+
 export async function sendChatMessage(text: string): Promise<{ success: boolean; error?: string }> {
   const ceoJid = getCeoJid();
 
@@ -37,29 +65,7 @@ export async function sendChatMessage(text: string): Promise<{ success: boolean;
     return { success: false, error: 'CEO group not registered' };
   }
 
-  try {
-    // Write to the CEO group's IPC input directory
-    const inputDir = path.join(DATA_DIR, 'ipc', CEO_GROUP_FOLDER, 'input');
-    fs.mkdirSync(inputDir, { recursive: true });
-
-    const filename = `${Date.now()}-dashboard.json`;
-    const filePath = path.join(inputDir, filename);
-
-    const message = {
-      type: 'message',
-      chatJid: ceoJid,
-      text: text,
-      source: 'dashboard', // Mark as coming from dashboard
-    };
-
-    fs.writeFileSync(filePath, JSON.stringify(message, null, 2));
-    logger.info({ text: text.slice(0, 50) }, 'Dashboard chat message written to IPC');
-
-    return { success: true };
-  } catch (err) {
-    logger.error({ err }, 'Error writing chat message to IPC');
-    return { success: false, error: 'Failed to send message' };
-  }
+  return sendGroupMessage(CEO_GROUP_FOLDER, ceoJid, text);
 }
 
 export async function streamChatMessages(

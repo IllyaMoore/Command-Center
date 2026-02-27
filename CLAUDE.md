@@ -44,6 +44,20 @@ See `infra/README.md` for full docs.
 - Default branch: `staging`
 - Backport changes to all 3 branches: `staging`, `master`, `devmoor`
 
+## Infrastructure
+
+Branching: feature -> `staging` -> `master`. CI applies on merge (no manual apply).
+See `infra/README.md` for full docs.
+
+- Terraform envs: `infra/envs/staging.tfvars`, `infra/envs/prod.tfvars` (same `.tf` code, separate state)
+- GitHub environments: `staging` (deploys from `staging` branch), `production` (deploys from `master`)
+- Default branch: `staging`
+- Backport changes to all 3 branches: `staging`, `master`, `devmoor`
+
+## Pre-commit Workflow
+
+Before creating any git commit, run the `code-simplifier` subagent on all staged files (TypeScript, JavaScript, CSS). This is mandatory — never skip this step.
+
 ## Development
 
 Run commands directly—don't tell the user to run them.

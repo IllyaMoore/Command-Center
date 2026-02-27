@@ -28,4 +28,57 @@ locals {
   name_prefix = "nanoclaw-${var.environment}"
 }
 
-# TODO: Implement — see Jira stories on the LOS board
+# -----------------------------------------------------------------------------
+# SSM Parameter Store (OPC-105)
+# -----------------------------------------------------------------------------
+
+resource "aws_ssm_parameter" "anthropic_api_key" {
+  name  = "/nanoclaw/${var.environment}/anthropic-api-key"
+  type  = "SecureString"
+  value = "CHANGE_ME"
+
+  tags = { Name = "${local.name_prefix}-anthropic-api-key" }
+
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "tailscale_auth_key" {
+  name  = "/nanoclaw/${var.environment}/tailscale-auth-key"
+  type  = "SecureString"
+  value = "CHANGE_ME"
+
+  tags = { Name = "${local.name_prefix}-tailscale-auth-key" }
+
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "telegram_bot_token" {
+  name  = "/nanoclaw/${var.environment}/telegram-bot-token"
+  type  = "SecureString"
+  value = "CHANGE_ME"
+
+  tags = { Name = "${local.name_prefix}-telegram-bot-token" }
+
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "assistant_name" {
+  name  = "/nanoclaw/${var.environment}/assistant-name"
+  type  = "String"
+  value = "CHANGE_ME"
+
+  tags = { Name = "${local.name_prefix}-assistant-name" }
+
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "instance_id" {
+  name  = "/nanoclaw/${var.environment}/instance-id"
+  type  = "String"
+  value = "pending"
+
+  tags = { Name = "${local.name_prefix}-instance-id" }
+
+  # NO lifecycle ignore — Terraform manages this value
+  # Will be updated when EC2 is provisioned (OPC-106)
+}

@@ -34,13 +34,10 @@ module "networking" {
   vpce_az_count      = var.vpce_az_count
 }
 
-# Compute module — stub for Illia to implement (Stories 1-4)
-# Uncomment after completing LOS Stories 1-3:
-#
-# module "compute" {
-#   source = "./modules/compute"
-#
-#   environment        = var.environment
-#   vpc_id             = module.networking.vpc_id
-#   private_subnet_ids = module.networking.private_subnet_ids
-# }
+module "compute" {
+  source = "./modules/compute"
+
+  environment        = var.environment
+  vpc_id             = module.networking.vpc_id
+  private_subnet_ids = module.networking.private_subnet_ids
+}

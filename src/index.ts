@@ -38,10 +38,8 @@ import { formatMessages, formatOutbound } from './router.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
+import { setDashboardQueue } from './dashboard/context.js';
 import { startDashboardServer } from './dashboard/server.js';
-
-// Re-export for backwards compatibility during refactor
-export { escapeXml, formatMessages } from './router.js';
 
 let lastTimestamp = '';
 let sessions: Record<string, string> = {};
@@ -75,6 +73,12 @@ function saveState(): void {
     'last_agent_timestamp',
     JSON.stringify(lastAgentTimestamp),
   );
+}
+
+/** Returns the trigger regexp for a specific group (uses group.trigger if set, else global). */
+function groupTrigger(group: RegisteredGroup): RegExp {
+  const t = group.trigger || `@${ASSISTANT_NAME}`;
+  return new RegExp(`^${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
 }
 
 function registerGroup(jid: string, group: RegisteredGroup): void {
@@ -131,8 +135,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   // For non-main groups, check if trigger is required and present
   if (!isMainGroup && group.requiresTrigger !== false) {
+    const pattern = groupTrigger(group);
     const hasTrigger = missedMessages.some((m) =>
-      TRIGGER_PATTERN.test(m.content.trim()),
+      pattern.test(m.content.trim()),
     );
     if (!hasTrigger) return true;
   }
@@ -260,6 +265,7 @@ async function runAgent(
         groupFolder: group.folder,
         chatJid,
         isMain,
+        assistantName: ASSISTANT_NAME,
       },
       (proc, containerName) => queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
@@ -328,8 +334,9 @@ async function startMessageLoop(): Promise<void> {
           // Non-trigger messages accumulate in DB and get pulled as
           // context when a trigger eventually arrives.
           if (needsTrigger) {
+            const pattern = groupTrigger(group);
             const hasTrigger = groupMessages.some((m) =>
-              TRIGGER_PATTERN.test(m.content.trim()),
+              pattern.test(m.content.trim()),
             );
             if (!hasTrigger) continue;
           }
@@ -431,6 +438,9 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
   loadState();
+
+  // Share queue with dashboard API
+  setDashboardQueue(queue);
 
   // Start dashboard server (before Docker check so it's always available)
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
