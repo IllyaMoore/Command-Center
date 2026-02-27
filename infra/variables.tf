@@ -15,9 +15,9 @@ variable "aws_region" {
 }
 
 variable "aws_profile" {
-  description = "AWS CLI profile to use"
+  description = "AWS CLI profile (default sam for local, null in CI)"
   type        = string
-  default     = "sam"
+  default     = null
 }
 
 variable "vpc_cidr" {
@@ -38,4 +38,10 @@ variable "public_subnets" {
 variable "availability_zones" {
   description = "Availability zones to use"
   type        = list(string)
+}
+
+variable "vpce_az_count" {
+  description = "Number of AZs for VPC interface endpoints (reduces cost in non-prod)"
+  type        = number
+  default     = 0
 }

@@ -23,3 +23,12 @@ rule "terraform_unused_declarations" {
 rule "terraform_standard_module_structure" {
   enabled = true
 }
+
+# Disable for child modules — root module handles these
+rule "terraform_required_version" {
+  enabled = false
+}
+
+rule "terraform_required_providers" {
+  enabled = false
+}

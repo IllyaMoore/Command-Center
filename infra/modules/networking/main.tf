@@ -1,5 +1,6 @@
 locals {
   name_prefix = "nanoclaw-${var.environment}"
+  vpce_subnet_ids = var.vpce_az_count > 0 ? slice(aws_subnet.private[*].id, 0, var.vpce_az_count) : aws_subnet.private[*].id
 }
 
 # --- VPC ---
@@ -145,7 +146,7 @@ resource "aws_vpc_endpoint" "ssm" {
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
 
-  subnet_ids         = aws_subnet.private[*].id
+  subnet_ids         = local.vpce_subnet_ids
   security_group_ids = [aws_security_group.vpc_endpoints.id]
 
   tags = {
@@ -159,7 +160,7 @@ resource "aws_vpc_endpoint" "ssmmessages" {
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
 
-  subnet_ids         = aws_subnet.private[*].id
+  subnet_ids         = local.vpce_subnet_ids
   security_group_ids = [aws_security_group.vpc_endpoints.id]
 
   tags = {
@@ -173,7 +174,7 @@ resource "aws_vpc_endpoint" "ec2messages" {
   vpc_endpoint_type   = "Interface"
   private_dns_enabled = true
 
-  subnet_ids         = aws_subnet.private[*].id
+  subnet_ids         = local.vpce_subnet_ids
   security_group_ids = [aws_security_group.vpc_endpoints.id]
 
   tags = {
