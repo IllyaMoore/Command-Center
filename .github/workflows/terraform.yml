@@ -88,6 +88,7 @@ jobs:
         id: plan
         working-directory: ${{ env.TF_DIR }}
         run: |
+          set -o pipefail
           terraform plan \
             -var-file=envs/${{ env.PLAN_ENV }}.tfvars \
             -no-color \
