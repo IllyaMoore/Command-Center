@@ -34,10 +34,15 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `/customize` | Adding channels, integrations, changing behavior |
 | `/debug` | Container issues, logs, troubleshooting |
 
-## Jira
+## Infrastructure
 
-- Project key: **LOS** (Life OS)
-- Board: https://storyfunnels.atlassian.net/jira/software/projects/LOS/boards/134
+Branching: feature -> `staging` -> `master`. CI applies on merge (no manual apply).
+See `infra/README.md` for full docs.
+
+- Terraform envs: `infra/envs/staging.tfvars`, `infra/envs/prod.tfvars` (same `.tf` code, separate state)
+- GitHub environments: `staging` (deploys from `staging` branch), `production` (deploys from `master`)
+- Default branch: `staging`
+- Backport changes to all 3 branches: `staging`, `master`, `devmoor`
 
 ## Infrastructure
 
