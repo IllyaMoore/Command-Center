@@ -44,6 +44,15 @@ See `infra/README.md` for full docs.
 - Default branch: `staging`
 - Backport changes to all 3 branches: `staging`, `master`, `devmoor`
 
+## Agents
+
+| Agent | When to Use |
+|-------|-------------|
+| `verify-app` | Verify completed Linear tasks against code, or check branch PR-readiness |
+| `infra-reviewer` | Review PRs that touch `infra/` or `.github/workflows/`, review planned infra tasks |
+
+When reviewing a PR that modifies Terraform or CI workflow files, always run `infra-reviewer` before approving.
+
 ## Development
 
 Run commands directly—don't tell the user to run them.
