@@ -353,6 +353,21 @@ function waitForIpcMessage(): Promise<string | null> {
   });
 }
 
+const GOOGLE_SHEETS_CREDS_DIR = '/home/node/.google-sheets-mcp';
+const GOOGLE_SHEETS_CREDS_PATH = path.join(GOOGLE_SHEETS_CREDS_DIR, 'gcp-oauth.keys.json');
+
+function readGoogleSheetsCredentials(): { clientId: string; clientSecret: string } | null {
+  try {
+    const config = JSON.parse(fs.readFileSync(GOOGLE_SHEETS_CREDS_PATH, 'utf-8'));
+    const clientId = config.installed?.client_id;
+    const clientSecret = config.installed?.client_secret;
+    if (clientId && clientSecret) return { clientId, clientSecret };
+  } catch {
+    // Credentials file missing or malformed — Sheets MCP will be skipped
+  }
+  return null;
+}
+
 function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string, string | undefined>): string[] {
   const tools = [
     'Bash',
@@ -365,6 +380,7 @@ function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string
     'mcp__nanoclaw__*',
     'mcp__gmail__*',
     'mcp__calendar__*',
+    'mcp__sheets__*',
   ];
 
   if (sdkEnv.ATLASSIAN_BASIC_TOKEN && (containerInput.groupFolder === 'legal' || containerInput.isMain)) {
@@ -402,6 +418,19 @@ function buildMcpServers(
       },
     },
   };
+
+  const sheetsCreds = readGoogleSheetsCredentials();
+  if (sheetsCreds) {
+    servers.sheets = {
+      command: 'npx',
+      args: ['-y', '@isaacphi/mcp-gdrive'],
+      env: {
+        GDRIVE_CREDS_DIR: GOOGLE_SHEETS_CREDS_DIR,
+        CLIENT_ID: sheetsCreds.clientId,
+        CLIENT_SECRET: sheetsCreds.clientSecret,
+      },
+    };
+  }
 
   const atlassianToken = sdkEnv.ATLASSIAN_BASIC_TOKEN;
   if (atlassianToken && (containerInput.groupFolder === 'legal' || containerInput.isMain)) {

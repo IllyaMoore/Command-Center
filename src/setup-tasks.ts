@@ -1,10 +1,11 @@
 #!/usr/bin/env tsx
 /**
- * CEO-8: Seed scheduled tasks for the CEO assistant.
+ * Seed scheduled tasks for agent groups.
  *
  * Usage:
- *   npx tsx src/setup-tasks.ts --jid "120363...@g.us"
+ *   npx tsx src/setup-tasks.ts --jid "120363...@g.us" [--group ceo|finance]
  *
+ * Defaults to --group ceo if not specified.
  * Idempotent — existing tasks with the same ID are skipped.
  */
 import { CronExpressionParser } from 'cron-parser';
@@ -12,15 +13,18 @@ import { CronExpressionParser } from 'cron-parser';
 import { createTask, getTimezone, initDatabase } from './db.js';
 import { ScheduledTask } from './types.js';
 
-const GROUP_FOLDER = 'ceo';
-
 interface TaskDef {
   id: string;
   cron: string;
   prompt: string;
 }
 
-const TASKS: TaskDef[] = [
+interface GroupConfig {
+  folder: string;
+  tasks: TaskDef[];
+}
+
+const CEO_TASKS: TaskDef[] = [
   {
     id: 'ceo-briefing',
     cron: '0 13 * * *', // 13:00 UTC
@@ -64,22 +68,67 @@ Keep it concise and actionable.`,
   },
 ];
 
-function main() {
-  const jidArg = process.argv.find((a) => a.startsWith('--jid='));
-  const jidIdx = process.argv.indexOf('--jid');
-  const jid = jidArg
-    ? jidArg.split('=')[1]
-    : jidIdx !== -1
-      ? process.argv[jidIdx + 1]
-      : undefined;
+const FINANCE_TASKS: TaskDef[] = [
+  {
+    id: 'finance-expense-scan',
+    cron: '0 21 * * *', // 21:00 UTC daily
+    prompt: `Daily expense scan. Using Google Sheets tools:
+1. Open the finance spreadsheets for Digital Purse and Borderlands
+2. Scan for new/uncategorized transactions added today
+3. Categorize each transaction using the Standard Categories in your instructions
+4. Flag any anomalies (unusual amounts, duplicate charges, unexpected merchants)
+5. Update the spreadsheet with categories
+
+Deliver using the Daily Expense Summary format in your instructions. Skip if no new transactions.`,
+  },
+  {
+    id: 'finance-weekly-report',
+    cron: '0 8 * * 1', // Monday 8am UTC
+    prompt: `Weekly finance report. Using Google Sheets tools:
+1. Pull revenue and expense data for the past week from Digital Purse and Borderlands spreadsheets
+2. Calculate P&L per organization and combined
+3. Compare against budget — flag any categories >15% over
+4. Calculate burn rate and cash flow summary
+
+Deliver using the Weekly P&L Report format in your instructions.`,
+  },
+];
+
+const GROUPS: Record<string, GroupConfig> = {
+  ceo: { folder: 'ceo', tasks: CEO_TASKS },
+  finance: { folder: 'finance', tasks: FINANCE_TASKS },
+};
+
+function parseArg(name: string): string | undefined {
+  const flag = `--${name}`;
+  const equalsArg = process.argv.find((a) => a.startsWith(`${flag}=`));
+  if (equalsArg) return equalsArg.slice(flag.length + 1);
+  const idx = process.argv.indexOf(flag);
+  return idx !== -1 ? process.argv[idx + 1] : undefined;
+}
+
+function main(): void {
+  const jid = parseArg('jid');
+  const groupName = parseArg('group') || 'ceo';
 
   if (!jid) {
-    console.error('Usage: tsx src/setup-tasks.ts --jid "GROUP_JID"');
+    console.error(
+      'Usage: tsx src/setup-tasks.ts --jid "GROUP_JID" [--group ceo|finance]',
+    );
+    process.exit(1);
+  }
+
+  const groupConfig = GROUPS[groupName];
+  if (!groupConfig) {
+    console.error(
+      `Unknown group: ${groupName}. Available: ${Object.keys(GROUPS).join(', ')}`,
+    );
     process.exit(1);
   }
 
   initDatabase();
   const tz = getTimezone();
+  console.log(`Group: ${groupName} (folder: ${groupConfig.folder})`);
   console.log(`Timezone: ${tz}`);
   console.log(`Group JID: ${jid}`);
   console.log('');
@@ -87,13 +136,13 @@ function main() {
   let created = 0;
   let skipped = 0;
 
-  for (const def of TASKS) {
+  for (const def of groupConfig.tasks) {
     const interval = CronExpressionParser.parse(def.cron, { tz });
     const nextRun = interval.next().toISOString();
 
     const task: Omit<ScheduledTask, 'last_run' | 'last_result'> = {
       id: def.id,
-      group_folder: GROUP_FOLDER,
+      group_folder: groupConfig.folder,
       chat_jid: jid,
       prompt: def.prompt,
       schedule_type: 'cron',
