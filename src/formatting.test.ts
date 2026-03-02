@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { TRIGGER_PATTERN } from './config.js';
+import { ASSISTANT_NAME, TRIGGER_PATTERN } from './config.js';
 import {
   escapeXml,
   formatMessages,
@@ -102,34 +102,33 @@ describe('formatMessages', () => {
 // --- TRIGGER_PATTERN ---
 
 describe('TRIGGER_PATTERN', () => {
-  it('matches @Andy at start of message', () => {
-    expect(TRIGGER_PATTERN.test('@Andy hello')).toBe(true);
+  it('matches @Name at start of message', () => {
+    expect(TRIGGER_PATTERN.test(`@${ASSISTANT_NAME} hello`)).toBe(true);
   });
 
   it('matches case-insensitively', () => {
-    expect(TRIGGER_PATTERN.test('@andy hello')).toBe(true);
-    expect(TRIGGER_PATTERN.test('@ANDY hello')).toBe(true);
+    expect(TRIGGER_PATTERN.test(`@${ASSISTANT_NAME.toLowerCase()} hello`)).toBe(true);
+    expect(TRIGGER_PATTERN.test(`@${ASSISTANT_NAME.toUpperCase()} hello`)).toBe(true);
   });
 
   it('does not match when not at start of message', () => {
-    expect(TRIGGER_PATTERN.test('hello @Andy')).toBe(false);
+    expect(TRIGGER_PATTERN.test(`hello @${ASSISTANT_NAME}`)).toBe(false);
   });
 
-  it('does not match partial name like @Andrew (word boundary)', () => {
-    expect(TRIGGER_PATTERN.test('@Andrew hello')).toBe(false);
+  it('does not match partial name like @NameExtra (word boundary)', () => {
+    expect(TRIGGER_PATTERN.test(`@${ASSISTANT_NAME}Extra hello`)).toBe(false);
   });
 
   it('matches with word boundary before apostrophe', () => {
-    expect(TRIGGER_PATTERN.test("@Andy's thing")).toBe(true);
+    expect(TRIGGER_PATTERN.test(`@${ASSISTANT_NAME}'s thing`)).toBe(true);
   });
 
-  it('matches @Andy alone (end of string is a word boundary)', () => {
-    expect(TRIGGER_PATTERN.test('@Andy')).toBe(true);
+  it('matches @Name alone (end of string is a word boundary)', () => {
+    expect(TRIGGER_PATTERN.test(`@${ASSISTANT_NAME}`)).toBe(true);
   });
 
   it('matches with leading whitespace after trim', () => {
-    // The actual usage trims before testing: TRIGGER_PATTERN.test(m.content.trim())
-    expect(TRIGGER_PATTERN.test('@Andy hey'.trim())).toBe(true);
+    expect(TRIGGER_PATTERN.test(`@${ASSISTANT_NAME} hey`.trim())).toBe(true);
   });
 });
 
@@ -182,19 +181,13 @@ describe('formatOutbound', () => {
 describe('trigger gating (requiresTrigger interaction)', () => {
   // Replicates the exact logic from processGroupMessages and startMessageLoop:
   //   if (!isMainGroup && group.requiresTrigger !== false) { check trigger }
-  function shouldRequireTrigger(
-    isMainGroup: boolean,
-    requiresTrigger: boolean | undefined,
-  ): boolean {
-    return !isMainGroup && requiresTrigger !== false;
-  }
-
   function shouldProcess(
     isMainGroup: boolean,
     requiresTrigger: boolean | undefined,
     messages: NewMessage[],
   ): boolean {
-    if (!shouldRequireTrigger(isMainGroup, requiresTrigger)) return true;
+    const needsTrigger = !isMainGroup && requiresTrigger !== false;
+    if (!needsTrigger) return true;
     return messages.some((m) => TRIGGER_PATTERN.test(m.content.trim()));
   }
 
@@ -219,7 +212,7 @@ describe('trigger gating (requiresTrigger interaction)', () => {
   });
 
   it('non-main group with requiresTrigger=true processes when trigger present', () => {
-    const msgs = [makeMsg({ content: '@Andy do something' })];
+    const msgs = [makeMsg({ content: `@${ASSISTANT_NAME} do something` })];
     expect(shouldProcess(false, true, msgs)).toBe(true);
   });
 

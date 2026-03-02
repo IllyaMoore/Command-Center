@@ -6,14 +6,16 @@ import { PassThrough } from 'stream';
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
-// Mock config
+// Mock config - IDLE_TIMEOUT and CONTAINER_TIMEOUT set to 30min (1800000ms)
+// so the hard timeout fires at IDLE_TIMEOUT + 30s = 1830000ms
 vi.mock('./config.js', () => ({
   CONTAINER_IMAGE: 'nanoclaw-agent:latest',
-  CONTAINER_MAX_OUTPUT_SIZE: 10485760,
-  CONTAINER_TIMEOUT: 1800000, // 30min
+  CONTAINER_MAX_OUTPUT_SIZE: 10_485_760,
+  CONTAINER_TIMEOUT: 1_800_000,
   DATA_DIR: '/tmp/nanoclaw-test-data',
+  DEV_MODE: false,
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
-  IDLE_TIMEOUT: 1800000, // 30min
+  IDLE_TIMEOUT: 1_800_000,
 }));
 
 // Mock logger
@@ -133,7 +135,7 @@ describe('container-runner timeout behavior', () => {
     await vi.advanceTimersByTimeAsync(10);
 
     // Fire the hard timeout (IDLE_TIMEOUT + 30s = 1830000ms)
-    await vi.advanceTimersByTimeAsync(1830000);
+    await vi.advanceTimersByTimeAsync(1_830_000);
 
     // Emit close event (as if container was stopped by the timeout)
     fakeProc.emit('close', 137);
@@ -159,7 +161,7 @@ describe('container-runner timeout behavior', () => {
     );
 
     // No output emitted — fire the hard timeout
-    await vi.advanceTimersByTimeAsync(1830000);
+    await vi.advanceTimersByTimeAsync(1_830_000);
 
     // Emit close event
     fakeProc.emit('close', 137);
