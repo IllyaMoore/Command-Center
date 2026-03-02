@@ -8,7 +8,7 @@
 #   - User data bootstrap script (Story 4)
 #
 # Implementation guide:
-#   1. Start with security group: UDP 41641 inbound (Tailscale), HTTPS outbound
+#   1. Start with security group: no inbound, all outbound (private subnet behind NAT)
 #   2. Create IAM role with SSM read + S3 backup permissions, attach instance profile
 #   3. Create SSM parameters under /nanoclaw/{environment}/ with lifecycle { ignore_changes = [value] }
 #   4. Add EC2 instance: Amazon Linux 2023 (data source, not hardcoded AMI),
@@ -47,17 +47,7 @@ resource "aws_security_group" "compute" {
   }
 }
 
-# Inbound: Tailscale WireGuard mesh (UDP 41641 from anywhere)
-resource "aws_vpc_security_group_ingress_rule" "tailscale_wg" {
-  security_group_id = aws_security_group.compute.id
-  description       = "Tailscale WireGuard mesh inbound"
-  from_port         = 41641
-  to_port           = 41641
-  ip_protocol       = "udp"
-  cidr_ipv4         = "0.0.0.0/0"
-
-  tags = { Name = "${local.name_prefix}-ingress-tailscale-wg" }
-}
+# Inbound: none (Tailscale uses NAT traversal, no inbound rules needed)
 
 # Outbound: allow all (private subnet behind NAT gateway)
 resource "aws_vpc_security_group_egress_rule" "all" {
