@@ -76,7 +76,7 @@ const oauthProviders: OAuthProvider[] = [
 function oauthSuccessHtml(displayName: string, postMessageId: string): string {
   return `<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
     <div style="text-align:center"><h2>${displayName} connected</h2><p>You can close this tab.</p>
-    <script>window.opener&&window.opener.postMessage('${postMessageId}','*');setTimeout(()=>window.close(),2000)</script>
+    <script>window.opener&&window.opener.postMessage('${postMessageId}',window.location.origin);setTimeout(()=>window.close(),2000)</script>
     </div></body></html>`;
 }
 
@@ -422,7 +422,8 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
         };
       });
       res.write(`data: ${JSON.stringify({ type: 'agents', agents })}\n\n`);
-    } catch {
+    } catch (err) {
+      logger.error({ err }, 'Error in activity stream');
       res.write(': heartbeat\n\n');
     }
   }, 2000);
