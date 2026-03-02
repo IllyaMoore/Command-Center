@@ -688,10 +688,10 @@ export function getMessagesPaginated(
   const sql = chatJid
     ? `SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
        FROM messages WHERE chat_jid = ?
-       ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+       ORDER BY rowid DESC LIMIT ? OFFSET ?`
     : `SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
        FROM messages
-       ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+       ORDER BY rowid DESC LIMIT ? OFFSET ?`;
 
   const args = chatJid ? [chatJid, limit, offset] : [limit, offset];
   const messages = db.prepare(sql).all(...args) as NewMessage[];
