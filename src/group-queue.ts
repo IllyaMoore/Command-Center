@@ -96,6 +96,12 @@ export class GroupQueue {
 
     const state = this.getGroup(groupJid);
 
+    // Prevent re-queuing a task that is currently running
+    if (state.currentTaskId === taskId) {
+      logger.debug({ groupJid, taskId }, 'Task already running, skipping');
+      return;
+    }
+
     // Prevent double-queuing of the same task
     if (state.pendingTasks.some((t) => t.id === taskId)) {
       logger.debug({ groupJid, taskId }, 'Task already queued, skipping');
@@ -148,7 +154,8 @@ export class GroupQueue {
       fs.writeFileSync(tempPath, JSON.stringify({ type: 'message', text }));
       fs.renameSync(tempPath, filepath);
       return true;
-    } catch {
+    } catch (err) {
+      logger.error({ err, groupJid }, 'Failed to write IPC message');
       return false;
     }
   }
@@ -164,8 +171,8 @@ export class GroupQueue {
     try {
       fs.mkdirSync(inputDir, { recursive: true });
       fs.writeFileSync(path.join(inputDir, '_close'), '');
-    } catch {
-      // ignore
+    } catch (err) {
+      logger.error({ err, groupJid }, 'Failed to write IPC close sentinel');
     }
   }
 

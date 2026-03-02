@@ -16,13 +16,14 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
 import { query, HookCallback, PreCompactHookInput, PreToolUseHookInput } from '@anthropic-ai/claude-agent-sdk';
 
 type McpServerConfig =
   | { type?: 'stdio'; command: string; args?: string[]; env?: Record<string, string> }
   | { type: 'sse'; url: string; headers?: Record<string, string> }
   | { type: 'http'; url: string; headers?: Record<string, string> };
-import { fileURLToPath } from 'url';
 
 interface ContainerInput {
   prompt: string;
@@ -353,6 +354,24 @@ function waitForIpcMessage(): Promise<string | null> {
   });
 }
 
+const GOOGLE_SHEETS_CREDS_DIR = '/home/node/.google-sheets-mcp';
+const GOOGLE_SHEETS_CREDS_PATH = path.join(GOOGLE_SHEETS_CREDS_DIR, 'gcp-oauth.keys.json');
+
+function readGoogleSheetsCredentials(): { clientId: string; clientSecret: string } | null {
+  try {
+    const config = JSON.parse(fs.readFileSync(GOOGLE_SHEETS_CREDS_PATH, 'utf-8'));
+    const clientId = config.installed?.client_id;
+    const clientSecret = config.installed?.client_secret;
+    if (clientId && clientSecret) return { clientId, clientSecret };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      console.error('Failed to read Google Sheets credentials:', err);
+    }
+  }
+  return null;
+}
+
 function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string, string | undefined>): string[] {
   const tools = [
     'Bash',
@@ -366,6 +385,10 @@ function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string
     'mcp__gmail__*',
     'mcp__calendar__*',
   ];
+
+  if (containerInput.groupFolder === 'finance' || containerInput.isMain) {
+    tools.push('mcp__sheets__*');
+  }
 
   if (sdkEnv.ATLASSIAN_BASIC_TOKEN && (containerInput.groupFolder === 'legal' || containerInput.isMain)) {
     tools.push('mcp__atlassian__*');
@@ -402,6 +425,19 @@ function buildMcpServers(
       },
     },
   };
+
+  const sheetsCreds = readGoogleSheetsCredentials();
+  if (sheetsCreds && (containerInput.groupFolder === 'finance' || containerInput.isMain)) {
+    servers.sheets = {
+      command: 'npx',
+      args: ['-y', '@isaacphi/mcp-gdrive'],
+      env: {
+        GDRIVE_CREDS_DIR: GOOGLE_SHEETS_CREDS_DIR,
+        CLIENT_ID: sheetsCreds.clientId,
+        CLIENT_SECRET: sheetsCreds.clientSecret,
+      },
+    };
+  }
 
   const atlassianToken = sdkEnv.ATLASSIAN_BASIC_TOKEN;
   if (atlassianToken && (containerInput.groupFolder === 'legal' || containerInput.isMain)) {

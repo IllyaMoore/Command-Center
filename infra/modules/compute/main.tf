@@ -8,7 +8,7 @@
 #   - User data bootstrap script (Story 4)
 #
 # Implementation guide:
-#   1. Start with security group: UDP 41641 inbound (Tailscale), HTTPS outbound
+#   1. Start with security group: no inbound, all outbound (private subnet behind NAT)
 #   2. Create IAM role with SSM read + S3 backup permissions, attach instance profile
 #   3. Create SSM parameters under /nanoclaw/{environment}/ with lifecycle { ignore_changes = [value] }
 #   4. Add EC2 instance: Amazon Linux 2023 (data source, not hardcoded AMI),
@@ -24,13 +24,107 @@
 #   - No hardcoded AMI IDs — use aws_ami data source with filters
 #   - No secrets in Terraform code — use SSM SecureString with placeholder values
 
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+
 locals {
   name_prefix = "nanoclaw-${var.environment}"
 }
 
-# -----------------------------------------------------------------------------
-# SSM Parameter Store (OPC-105)
-# -----------------------------------------------------------------------------
+# --- Security Group ---
+
+resource "aws_security_group" "compute" {
+  name        = "${local.name_prefix}-compute-sg"
+  description = "Security group for NanoClaw compute instances"
+  vpc_id      = var.vpc_id
+
+  tags = {
+    Name = "${local.name_prefix}-compute-sg"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# Inbound: none (Tailscale uses NAT traversal, no inbound rules needed)
+
+# Outbound: allow all (private subnet behind NAT gateway)
+resource "aws_vpc_security_group_egress_rule" "all" {
+  security_group_id = aws_security_group.compute.id
+  description       = "Allow all outbound (private subnet behind NAT)"
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+
+  tags = { Name = "${local.name_prefix}-egress-all" }
+}
+
+# --- IAM Role & Instance Profile ---
+
+resource "aws_iam_role" "instance" {
+  name = "${local.name_prefix}-instance"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+
+  tags = { Name = "${local.name_prefix}-instance-role" }
+}
+
+# SSM Session Manager access (managed policy)
+resource "aws_iam_role_policy_attachment" "ssm_core" {
+  role       = aws_iam_role.instance.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+# Application permissions: SSM parameter read + S3 backups
+resource "aws_iam_role_policy" "app_permissions" {
+  name = "${local.name_prefix}-app-permissions"
+  role = aws_iam_role.instance.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "SSMParameterRead"
+        Effect   = "Allow"
+        Action   = "ssm:GetParameter"
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/nanoclaw/*"
+      },
+      {
+        Sid    = "S3BackupObjects"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = "arn:aws:s3:::nanoclaw-backups-${var.environment}-*/*"
+      },
+      {
+        Sid      = "S3BackupList"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::nanoclaw-backups-${var.environment}-*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_instance_profile" "compute" {
+  name = "${local.name_prefix}-instance-profile"
+  role = aws_iam_role.instance.name
+
+  tags = { Name = "${local.name_prefix}-instance-profile" }
+}
+
+# --- SSM Parameter Store ---
 
 resource "aws_ssm_parameter" "anthropic_api_key" {
   name  = "/nanoclaw/${var.environment}/anthropic-api-key"
@@ -79,6 +173,5 @@ resource "aws_ssm_parameter" "instance_id" {
 
   tags = { Name = "${local.name_prefix}-instance-id" }
 
-  # NO lifecycle ignore — Terraform manages this value
-  # Will be updated when EC2 is provisioned (OPC-106)
+  lifecycle { ignore_changes = [value] }
 }

@@ -33,14 +33,17 @@ describe('JID ownership patterns', () => {
 // --- getAvailableGroups ---
 
 describe('getAvailableGroups', () => {
-  it('returns only @g.us JIDs', () => {
+  it('returns groups and DMs, excludes unknown JID formats', () => {
     storeChatMetadata('group1@g.us', '2024-01-01T00:00:01.000Z', 'Group 1');
     storeChatMetadata('user@s.whatsapp.net', '2024-01-01T00:00:02.000Z', 'User DM');
     storeChatMetadata('group2@g.us', '2024-01-01T00:00:03.000Z', 'Group 2');
+    storeChatMetadata('unknown:12345', '2024-01-01T00:00:04.000Z', 'Unknown');
 
     const groups = getAvailableGroups();
-    expect(groups).toHaveLength(2);
-    expect(groups.every((g) => g.jid.endsWith('@g.us'))).toBe(true);
+    expect(groups).toHaveLength(3);
+    expect(
+      groups.every((g) => g.jid.endsWith('@g.us') || g.jid.endsWith('@s.whatsapp.net')),
+    ).toBe(true);
   });
 
   it('excludes __group_sync__ sentinel', () => {

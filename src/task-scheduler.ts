@@ -16,11 +16,42 @@ import {
   getTaskById,
   getTimezone,
   logTaskRun,
+  updateTask,
   updateTaskAfterRun,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
+
+function computeNextRun(task: ScheduledTask): string | null {
+  if (task.schedule_type === 'cron') {
+    const interval = CronExpressionParser.parse(task.schedule_value, {
+      tz: getTimezone(),
+    });
+    return interval.next().toISOString();
+  }
+  if (task.schedule_type === 'interval') {
+    const ms = parseInt(task.schedule_value, 10);
+    return new Date(Date.now() + ms).toISOString();
+  }
+  // 'once' tasks have no next run
+  return null;
+}
+
+function logTaskQueue(context: string): void {
+  const tasks = getAllTasks().filter((t) => t.status === 'active');
+  if (tasks.length === 0) {
+    logger.info({ context }, 'No active scheduled tasks');
+    return;
+  }
+  const summary = tasks.map((t) => ({
+    id: t.id,
+    group: t.group_folder,
+    nextRun: t.next_run,
+    cron: t.schedule_value,
+  }));
+  logger.info({ context, tasks: summary }, `Scheduled tasks (${tasks.length})`);
+}
 
 export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
@@ -157,24 +188,21 @@ async function runTask(
     error,
   });
 
-  let nextRun: string | null = null;
-  if (task.schedule_type === 'cron') {
-    const interval = CronExpressionParser.parse(task.schedule_value, {
-      tz: getTimezone(),
-    });
-    nextRun = interval.next().toISOString();
-  } else if (task.schedule_type === 'interval') {
-    const ms = parseInt(task.schedule_value, 10);
-    nextRun = new Date(Date.now() + ms).toISOString();
+  let resultSummary: string;
+  if (error) {
+    resultSummary = `Error: ${error}`;
+  } else if (result) {
+    resultSummary = result.slice(0, 200);
+  } else {
+    resultSummary = 'Completed';
   }
-  // 'once' tasks have no next run
 
-  const resultSummary = error
-    ? `Error: ${error}`
-    : result
-      ? result.slice(0, 200)
-      : 'Completed';
-  updateTaskAfterRun(task.id, nextRun, resultSummary);
+  // next_run was already advanced pre-enqueue (line 233). Only update
+  // last_run / last_result here — pass the current next_run so
+  // updateTaskAfterRun doesn't overwrite it or mark status 'completed'.
+  const current = getTaskById(task.id);
+  updateTaskAfterRun(task.id, current?.next_run ?? null, resultSummary);
+  logTaskQueue(`Task completed: ${task.id}`);
 }
 
 let schedulerRunning = false;
@@ -185,7 +213,7 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
     return;
   }
   schedulerRunning = true;
-  logger.info('Scheduler loop started');
+  logTaskQueue('Scheduler started');
 
   const loop = async () => {
     try {
@@ -199,6 +227,16 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
         const currentTask = getTaskById(task.id);
         if (!currentTask || currentTask.status !== 'active') {
           continue;
+        }
+
+        // Immediately advance next_run to prevent re-pickup on next poll.
+        // Tasks take 70-140s but the scheduler polls every 60s, so without
+        // this the same task would be enqueued multiple times.
+        const nextRun = computeNextRun(currentTask);
+        if (nextRun) {
+          updateTask(currentTask.id, { next_run: nextRun });
+        } else {
+          updateTask(currentTask.id, { status: 'completed' });
         }
 
         deps.queue.enqueueTask(

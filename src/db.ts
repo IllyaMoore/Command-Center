@@ -263,6 +263,7 @@ export function getNewMessages(
     FROM messages
     WHERE timestamp > ? AND chat_jid IN (${placeholders})
       AND is_bot_message = 0 AND content NOT LIKE ?
+      AND sender != 'dashboard'
     ORDER BY timestamp
   `;
 
@@ -270,26 +271,26 @@ export function getNewMessages(
     .prepare(sql)
     .all(lastTimestamp, ...jids, `${botPrefix}:%`) as NewMessage[];
 
-  let newTimestamp = lastTimestamp;
-  for (const row of rows) {
-    if (row.timestamp > newTimestamp) newTimestamp = row.timestamp;
-  }
+  // Rows are ordered by timestamp ASC, so the last row has the latest timestamp
+  const newTimestamp = rows.length > 0
+    ? rows[rows.length - 1].timestamp
+    : lastTimestamp;
 
   return { messages: rows, newTimestamp };
 }
 
+/** Single-chat variant of getNewMessages (same bot-message filtering). */
 export function getMessagesSince(
   chatJid: string,
   sinceTimestamp: string,
   botPrefix: string,
 ): NewMessage[] {
-  // Filter bot messages using both the is_bot_message flag AND the content
-  // prefix as a backstop for messages written before the migration ran.
   const sql = `
     SELECT id, chat_jid, sender, sender_name, content, timestamp
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0 AND content NOT LIKE ?
+      AND sender != 'dashboard'
     ORDER BY timestamp
   `;
   return db
@@ -655,20 +656,17 @@ export function getRecentTaskRuns(limit: number, groupFolder?: string): TaskRunL
 }
 
 export function getRecentMessages(limit: number, chatJid?: string): NewMessage[] {
-  const sql = chatJid
-    ? `
-      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
-      FROM messages
-      WHERE chat_jid = ?
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `
-    : `
-      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
-      FROM messages
-      ORDER BY timestamp DESC
-      LIMIT ?
-    `;
+  // Order by rowid (insertion order) instead of timestamp because dashboard
+  // messages use ms-precision timestamps while WhatsApp uses second-precision,
+  // which can cause bot responses to sort before the message that triggered them.
+  const whereClause = chatJid ? 'WHERE chat_jid = ?' : '';
+  const sql = `
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
+    FROM messages
+    ${whereClause}
+    ORDER BY rowid DESC
+    LIMIT ?
+  `;
 
   const args = chatJid ? [chatJid, limit] : [limit];
   return db.prepare(sql).all(...args) as NewMessage[];
@@ -690,10 +688,10 @@ export function getMessagesPaginated(
   const sql = chatJid
     ? `SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
        FROM messages WHERE chat_jid = ?
-       ORDER BY timestamp DESC LIMIT ? OFFSET ?`
+       ORDER BY rowid DESC LIMIT ? OFFSET ?`
     : `SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message
        FROM messages
-       ORDER BY timestamp DESC LIMIT ? OFFSET ?`;
+       ORDER BY rowid DESC LIMIT ? OFFSET ?`;
 
   const args = chatJid ? [chatJid, limit, offset] : [limit, offset];
   const messages = db.prepare(sql).all(...args) as NewMessage[];

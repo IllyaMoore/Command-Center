@@ -71,29 +71,25 @@ function createFakeSocket() {
 let fakeSocket: ReturnType<typeof createFakeSocket>;
 
 // Mock Baileys
-vi.mock('@whiskeysockets/baileys', () => {
-  return {
-    default: vi.fn(() => fakeSocket),
-    Browsers: { macOS: vi.fn(() => ['macOS', 'Chrome', '']) },
-    DisconnectReason: {
-      loggedOut: 401,
-      badSession: 500,
-      connectionClosed: 428,
-      connectionLost: 408,
-      connectionReplaced: 440,
-      timedOut: 408,
-      restartRequired: 515,
-    },
-    makeCacheableSignalKeyStore: vi.fn((keys: unknown) => keys),
-    useMultiFileAuthState: vi.fn().mockResolvedValue({
-      state: {
-        creds: {},
-        keys: {},
-      },
-      saveCreds: vi.fn(),
-    }),
-  };
-});
+vi.mock('@whiskeysockets/baileys', () => ({
+  default: vi.fn(() => fakeSocket),
+  Browsers: { ubuntu: vi.fn(() => ['Ubuntu', 'Chrome', '']) },
+  fetchLatestBaileysVersion: vi.fn().mockResolvedValue({ version: [2, 3000, 0] }),
+  DisconnectReason: {
+    loggedOut: 401,
+    badSession: 500,
+    connectionClosed: 428,
+    connectionLost: 408,
+    connectionReplaced: 440,
+    timedOut: 408,
+    restartRequired: 515,
+  },
+  makeCacheableSignalKeyStore: vi.fn((keys: unknown) => keys),
+  useMultiFileAuthState: vi.fn().mockResolvedValue({
+    state: { creds: {}, keys: {} },
+    saveCreds: vi.fn(),
+  }),
+}));
 
 import { WhatsAppChannel, WhatsAppChannelOpts } from './whatsapp.js';
 import { getLastGroupSync, updateChatName, setLastGroupSync } from '../db.js';

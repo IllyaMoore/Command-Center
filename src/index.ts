@@ -493,18 +493,18 @@ async function main(): Promise<void> {
     registerGroup,
     syncGroupMetadata: (force) => whatsapp.syncGroupMetadata(force),
     getAvailableGroups,
-    writeGroupsSnapshot: (gf, im, ag, rj) => writeGroupsSnapshot(gf, im, ag, rj),
+    writeGroupsSnapshot,
     onDashboardInput: async (groupFolder, chatJid, text) => {
-      // Find the registered group for this folder
       const group = Object.values(registeredGroups).find((g) => g.folder === groupFolder);
       if (!group) {
         logger.warn({ groupFolder }, 'Dashboard input for unknown group');
         return;
       }
-      // Run the agent with the dashboard message
+
+      // Message already stored in DB by sendGroupMessage (chat.ts).
+      // Run agent and stream output back to WhatsApp.
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const result = await runAgent(group, text, chatJid, async (output) => {
-        // Stream output back - agent responses go to WhatsApp
         if (output.result) {
           const formatted = formatOutbound(output.result);
           if (formatted) await whatsapp.sendMessage(chatJid, formatted);

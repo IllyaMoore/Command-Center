@@ -7,9 +7,11 @@ import {
   getAllChats,
   getMessagesSince,
   getNewMessages,
+  getRecentMessages,
   getTaskById,
   storeChatMetadata,
   storeMessage,
+  storeMessageDirect,
   updateTask,
 } from './db.js';
 
@@ -324,5 +326,118 @@ describe('task CRUD', () => {
 
     deleteTask('task-3');
     expect(getTaskById('task-3')).toBeUndefined();
+  });
+});
+
+// --- Dashboard message filtering ---
+
+describe('dashboard message filtering', () => {
+  beforeEach(() => {
+    storeChatMetadata('group@g.us', '2024-01-01T00:00:00.000Z');
+
+    store({
+      id: 'u1', chat_jid: 'group@g.us', sender: 'user@s.whatsapp.net',
+      sender_name: 'User', content: 'user msg', timestamp: '2024-01-01T00:00:01.000Z',
+    });
+    storeMessageDirect({
+      id: 'd1', chat_jid: 'group@g.us', sender: 'dashboard',
+      sender_name: 'You (Dashboard)', content: 'dashboard msg',
+      timestamp: '2024-01-01T00:00:02.000Z', is_from_me: true,
+    });
+    store({
+      id: 'u2', chat_jid: 'group@g.us', sender: 'user2@s.whatsapp.net',
+      sender_name: 'User2', content: 'user msg 2', timestamp: '2024-01-01T00:00:03.000Z',
+    });
+  });
+
+  it('getNewMessages excludes dashboard messages', () => {
+    const { messages } = getNewMessages(
+      ['group@g.us'],
+      '2024-01-01T00:00:00.000Z',
+      'Andy',
+    );
+    expect(messages.every((m) => m.sender !== 'dashboard')).toBe(true);
+    expect(messages).toHaveLength(2);
+  });
+
+  it('getMessagesSince excludes dashboard messages', () => {
+    const messages = getMessagesSince('group@g.us', '2024-01-01T00:00:00.000Z', 'Andy');
+    expect(messages.every((m) => m.sender !== 'dashboard')).toBe(true);
+    expect(messages).toHaveLength(2);
+  });
+});
+
+// --- getRecentMessages rowid ordering ---
+
+describe('getRecentMessages', () => {
+  it('returns messages in insertion order (rowid), not timestamp order', () => {
+    storeChatMetadata('group@g.us', '2024-01-01T00:00:00.000Z');
+
+    // Dashboard message with ms-precision timestamp (later in clock time)
+    storeMessageDirect({
+      id: 'dash-1', chat_jid: 'group@g.us', sender: 'dashboard',
+      sender_name: 'You', content: 'user question',
+      timestamp: '2024-01-01T00:00:33.709Z', is_from_me: true,
+    });
+
+    // Bot response with second-precision timestamp (earlier in clock time but inserted after)
+    storeMessage({
+      id: 'bot-1', chat_jid: 'group@g.us', sender: 'bot',
+      sender_name: 'Bot', content: 'bot response',
+      timestamp: '2024-01-01T00:00:33.000Z', is_bot_message: true,
+    });
+
+    const msgs = getRecentMessages(10, 'group@g.us');
+    // rowid DESC: bot-1 (inserted last) comes first, then dash-1
+    expect(msgs[0].id).toBe('bot-1');
+    expect(msgs[1].id).toBe('dash-1');
+
+    // Reversed for display (oldest first): dash-1, then bot-1
+    const display = [...msgs].reverse();
+    expect(display[0].id).toBe('dash-1');
+    expect(display[1].id).toBe('bot-1');
+  });
+
+  it('filters by chat_jid when provided', () => {
+    storeChatMetadata('g1@g.us', '2024-01-01T00:00:00.000Z');
+    storeChatMetadata('g2@g.us', '2024-01-01T00:00:00.000Z');
+
+    store({
+      id: 'x1', chat_jid: 'g1@g.us', sender: 'user@s.whatsapp.net',
+      sender_name: 'User', content: 'g1', timestamp: '2024-01-01T00:00:01.000Z',
+    });
+    store({
+      id: 'x2', chat_jid: 'g2@g.us', sender: 'user@s.whatsapp.net',
+      sender_name: 'User', content: 'g2', timestamp: '2024-01-01T00:00:02.000Z',
+    });
+
+    const msgs = getRecentMessages(10, 'g1@g.us');
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].chat_jid).toBe('g1@g.us');
+  });
+});
+
+// --- Scheduler: once-task completion ---
+
+describe('scheduler once-task pre-completion', () => {
+  it('updateTask sets status to completed for once-tasks', () => {
+    createTask({
+      id: 'once-1',
+      group_folder: 'main',
+      chat_jid: 'group@g.us',
+      prompt: 'run once',
+      schedule_type: 'once',
+      schedule_value: '2024-06-01T00:00:00.000Z',
+      context_mode: 'isolated',
+      next_run: '2024-06-01T00:00:00.000Z',
+      status: 'active',
+      created_at: '2024-01-01T00:00:00.000Z',
+    });
+
+    // Simulate what the scheduler does when computeNextRun returns null
+    updateTask('once-1', { status: 'completed' });
+
+    const task = getTaskById('once-1');
+    expect(task!.status).toBe('completed');
   });
 });

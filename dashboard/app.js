@@ -378,7 +378,7 @@ async function sendMessage() {
   if (!text) return;
 
   input.value = '';
-  addChatMessage({ text, sender: 'user', timestamp: new Date().toISOString() });
+  // Message will appear via SSE once stored in DB
 
   // Show typing indicator
   document.getElementById('voiceIndicator').classList.add('active');
@@ -411,7 +411,7 @@ function sendMobileMessage() {
   if (!text) return;
 
   input.value = '';
-  addChatMessage({ text, sender: 'user', timestamp: new Date().toISOString() }, true);
+  // Message will appear via SSE once stored in DB
 
   document.getElementById('mobileVoiceIndicator').classList.add('active');
 
@@ -606,29 +606,38 @@ function closeSettings() {
   document.getElementById('settingsOverlay').classList.remove('open');
 }
 
+// Shared helper: update a status element + connect button based on OAuth status
+function applyAuthStatus(statusElId, btnElId, status, notifications) {
+  const el = document.getElementById(statusElId);
+  const btn = document.getElementById(btnElId);
+
+  if (status === 'connected') {
+    el.textContent = 'Connected';
+    if (btn) btn.style.display = 'none';
+    if (notifications?.onConnected) notifications.onConnected();
+  } else if (status === 'expired') {
+    el.textContent = 'Token expired';
+    if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
+    if (notifications?.onExpired) showNotification(notifications.onExpired);
+  } else if (status === 'missing_tokens') {
+    el.textContent = 'Not authorized';
+    if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
+    if (notifications?.onMissing) showNotification(notifications.onMissing);
+  } else {
+    el.textContent = 'Not configured';
+    if (btn) btn.style.display = 'none';
+  }
+}
+
 async function checkGoogleCalendarStatus() {
   try {
     const res = await fetch(`${API_BASE}/api/auth/google-calendar/status`);
     const data = await res.json();
-    const el = document.getElementById('gcalStatus');
-    const btn = document.getElementById('gcalConnectBtn');
-
-    if (data.status === 'connected') {
-      el.textContent = 'Connected';
-      if (btn) btn.style.display = 'none';
-      dismissNotification();
-    } else if (data.status === 'expired') {
-      el.textContent = 'Token expired';
-      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
-      showNotification('Google Calendar token expired. Reconnect in Settings.');
-    } else if (data.status === 'missing_tokens') {
-      el.textContent = 'Not authorized';
-      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
-      showNotification('Google Calendar not connected. Set up in Settings.');
-    } else {
-      el.textContent = 'Not configured';
-      if (btn) btn.style.display = 'none';
-    }
+    applyAuthStatus('gcalStatus', 'gcalConnectBtn', data.status, {
+      onConnected: dismissNotification,
+      onExpired: 'Google Calendar token expired. Reconnect in Settings.',
+      onMissing: 'Google Calendar not connected. Set up in Settings.',
+    });
   } catch {
     document.getElementById('gcalStatus').textContent = 'Error';
   }
@@ -638,48 +647,51 @@ async function checkGmailStatus() {
   try {
     const res = await fetch(`${API_BASE}/api/auth/gmail/status`);
     const data = await res.json();
-    const el = document.getElementById('gmailStatus');
-    const btn = document.getElementById('gmailConnectBtn');
-
-    if (data.status === 'connected') {
-      el.textContent = 'Connected';
-      if (btn) btn.style.display = 'none';
-    } else if (data.status === 'expired') {
-      el.textContent = 'Token expired';
-      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
-      showNotification('Gmail token expired. Reconnect in Settings.');
-    } else if (data.status === 'missing_tokens') {
-      el.textContent = 'Not authorized';
-      if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
-    } else {
-      el.textContent = 'Not configured';
-      if (btn) btn.style.display = 'none';
-    }
+    applyAuthStatus('gmailStatus', 'gmailConnectBtn', data.status, {
+      onExpired: 'Gmail token expired. Reconnect in Settings.',
+    });
   } catch {
     document.getElementById('gmailStatus').textContent = 'Error';
   }
 }
 
-function connectGmail() {
-  const popup = window.open('/api/auth/gmail', 'gmail-auth', 'width=500,height=700');
+async function checkGoogleSheetsStatus() {
+  try {
+    const res = await fetch(`${API_BASE}/api/auth/google-sheets/status`);
+    const data = await res.json();
+    applyAuthStatus('gsheetsStatus', 'gsheetsConnectBtn', data.status, {
+      onExpired: 'Google Sheets token expired. Reconnect in Settings.',
+      onMissing: 'Google Sheets not connected. Set up in Settings.',
+    });
+  } catch {
+    document.getElementById('gsheetsStatus').textContent = 'Error';
+  }
+}
+
+// Shared helper: open OAuth popup and refresh status on success
+function connectOAuthProvider(authPath, windowName, messageId, onSuccess) {
+  window.open(authPath, windowName, 'width=500,height=700');
   window.addEventListener('message', function handler(e) {
-    if (e.data === 'gmail-connected') {
+    if (e.data === messageId) {
       window.removeEventListener('message', handler);
-      checkGmailStatus();
+      onSuccess();
     }
   });
 }
 
 function connectGoogleCalendar() {
-  const popup = window.open('/api/auth/google-calendar', 'gcal-auth', 'width=500,height=700');
-  // Listen for success message from popup
-  window.addEventListener('message', function handler(e) {
-    if (e.data === 'gcal-connected') {
-      window.removeEventListener('message', handler);
-      checkGoogleCalendarStatus();
-      loadCalendarEvents('day');
-    }
+  connectOAuthProvider('/api/auth/google-calendar', 'gcal-auth', 'gcal-connected', () => {
+    checkGoogleCalendarStatus();
+    loadCalendarEvents('day');
   });
+}
+
+function connectGmail() {
+  connectOAuthProvider('/api/auth/gmail', 'gmail-auth', 'gmail-connected', checkGmailStatus);
+}
+
+function connectGoogleSheets() {
+  connectOAuthProvider('/api/auth/google-sheets', 'gsheets-auth', 'gsheets-connected', checkGoogleSheetsStatus);
 }
 
 function showNotification(text) {
@@ -720,6 +732,7 @@ async function init() {
   // Check integrations status
   checkGoogleCalendarStatus();
   checkGmailStatus();
+  checkGoogleSheetsStatus();
 
   // Load initial data
   await Promise.all([

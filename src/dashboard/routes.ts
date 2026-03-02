@@ -1,5 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'http';
 
+import { logger } from '../logger.js';
 import {
   getAllRegisteredGroups,
   getAllTasks,
@@ -24,7 +25,117 @@ import {
   getGmailAuthUrl,
   handleGmailOAuthCallback,
 } from './api/gmail.js';
+import {
+  getSheetsAuthStatus,
+  getSheetsAuthUrl,
+  handleSheetsOAuthCallback,
+} from './api/sheets.js';
 import { getDashboardQueue } from './context.js';
+
+// OAuth provider configurations for the shared callback handler
+interface OAuthProvider {
+  basePath: string;
+  displayName: string;
+  postMessageId: string;
+  credentialHint: string;
+  getStatus: () => Promise<string>;
+  getAuthUrl: () => string | null;
+  handleCallback: (code: string) => Promise<void>;
+}
+
+const oauthProviders: OAuthProvider[] = [
+  {
+    basePath: '/api/auth/google-calendar',
+    displayName: 'Google Calendar',
+    postMessageId: 'gcal-connected',
+    credentialHint: 'credentials.json',
+    getStatus: getCalendarAuthStatus,
+    getAuthUrl: getCalendarAuthUrl,
+    handleCallback: handleCalendarOAuthCallback,
+  },
+  {
+    basePath: '/api/auth/gmail',
+    displayName: 'Gmail',
+    postMessageId: 'gmail-connected',
+    credentialHint: 'gcp-oauth.keys.json',
+    getStatus: getGmailAuthStatus,
+    getAuthUrl: getGmailAuthUrl,
+    handleCallback: handleGmailOAuthCallback,
+  },
+  {
+    basePath: '/api/auth/google-sheets',
+    displayName: 'Google Sheets',
+    postMessageId: 'gsheets-connected',
+    credentialHint: 'gcp-oauth.keys.json',
+    getStatus: getSheetsAuthStatus,
+    getAuthUrl: getSheetsAuthUrl,
+    handleCallback: handleSheetsOAuthCallback,
+  },
+];
+
+function oauthSuccessHtml(displayName: string, postMessageId: string): string {
+  return `<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
+    <div style="text-align:center"><h2>${displayName} connected</h2><p>You can close this tab.</p>
+    <script>window.opener&&window.opener.postMessage('${postMessageId}',window.location.origin);setTimeout(()=>window.close(),2000)</script>
+    </div></body></html>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function oauthErrorHtml(err: unknown): string {
+  const message = err instanceof Error ? err.message : 'Unknown error';
+  return `<h3>OAuth Error</h3><p>${escapeHtml(message)}</p><p>Close this tab and try again.</p>`;
+}
+
+async function handleOAuthRoutes(
+  pathname: string,
+  method: string,
+  url: URL,
+  res: ServerResponse,
+  json: (data: unknown, status?: number) => void,
+): Promise<boolean> {
+  for (const provider of oauthProviders) {
+    if (pathname === `${provider.basePath}/status` && method === 'GET') {
+      const status = await provider.getStatus();
+      json({ status });
+      return true;
+    }
+
+    if (pathname === provider.basePath && method === 'GET') {
+      const authUrl = provider.getAuthUrl();
+      if (!authUrl) {
+        json({ error: `Missing ${provider.credentialHint} — configure GCP OAuth first` }, 400);
+        return true;
+      }
+      res.writeHead(302, { Location: authUrl });
+      res.end();
+      return true;
+    }
+
+    if (pathname === `${provider.basePath}/callback` && method === 'GET') {
+      const code = url.searchParams.get('code');
+      if (!code) {
+        res.writeHead(400, { 'Content-Type': 'text/html' });
+        res.end('<h3>Error: missing authorization code</h3><p>Close this tab and try again.</p>');
+        return true;
+      }
+      try {
+        await provider.handleCallback(code);
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(oauthSuccessHtml(provider.displayName, provider.postMessageId));
+      } catch (err) {
+        logger.error({ err, provider: provider.displayName }, 'OAuth callback failed');
+        res.writeHead(500, { 'Content-Type': 'text/html' });
+        res.end(oauthErrorHtml(err));
+      }
+      return true;
+    }
+  }
+
+  return false;
+}
 
 export async function handleApiRoute(
   req: IncomingMessage,
@@ -177,82 +288,10 @@ export async function handleApiRoute(
     return;
   }
 
-  // ─── Google Calendar OAuth ───
-  if (pathname === '/api/auth/google-calendar/status' && method === 'GET') {
-    const status = await getCalendarAuthStatus();
-    json({ status });
-    return;
-  }
-
-  if (pathname === '/api/auth/google-calendar' && method === 'GET') {
-    const authUrl = getCalendarAuthUrl();
-    if (!authUrl) {
-      json({ error: 'Missing credentials.json — configure GCP OAuth first' }, 400);
-      return;
-    }
-    res.writeHead(302, { Location: authUrl });
-    res.end();
-    return;
-  }
-
-  if (pathname === '/api/auth/google-calendar/callback' && method === 'GET') {
-    const code = url.searchParams.get('code');
-    if (!code) {
-      res.writeHead(400, { 'Content-Type': 'text/html' });
-      res.end('<h3>Error: missing authorization code</h3><p>Close this tab and try again.</p>');
-      return;
-    }
-    try {
-      await handleCalendarOAuthCallback(code);
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(`<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
-        <div style="text-align:center"><h2>Google Calendar connected</h2><p>You can close this tab.</p>
-        <script>window.opener&&window.opener.postMessage('gcal-connected','*');setTimeout(()=>window.close(),2000)</script>
-        </div></body></html>`);
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'text/html' });
-      res.end(`<h3>OAuth Error</h3><p>${err instanceof Error ? err.message : 'Unknown error'}</p><p>Close this tab and try again.</p>`);
-    }
-    return;
-  }
-
-  // ─── Gmail OAuth ───
-  if (pathname === '/api/auth/gmail/status' && method === 'GET') {
-    const status = await getGmailAuthStatus();
-    json({ status });
-    return;
-  }
-
-  if (pathname === '/api/auth/gmail' && method === 'GET') {
-    const authUrl = getGmailAuthUrl();
-    if (!authUrl) {
-      json({ error: 'Missing gcp-oauth.keys.json — configure GCP OAuth first' }, 400);
-      return;
-    }
-    res.writeHead(302, { Location: authUrl });
-    res.end();
-    return;
-  }
-
-  if (pathname === '/api/auth/gmail/callback' && method === 'GET') {
-    const code = url.searchParams.get('code');
-    if (!code) {
-      res.writeHead(400, { 'Content-Type': 'text/html' });
-      res.end('<h3>Error: missing authorization code</h3><p>Close this tab and try again.</p>');
-      return;
-    }
-    try {
-      await handleGmailOAuthCallback(code);
-      res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(`<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
-        <div style="text-align:center"><h2>Gmail connected</h2><p>You can close this tab.</p>
-        <script>window.opener&&window.opener.postMessage('gmail-connected','*');setTimeout(()=>window.close(),2000)</script>
-        </div></body></html>`);
-    } catch (err) {
-      res.writeHead(500, { 'Content-Type': 'text/html' });
-      res.end(`<h3>OAuth Error</h3><p>${err instanceof Error ? err.message : 'Unknown error'}</p><p>Close this tab and try again.</p>`);
-    }
-    return;
+  // ─── Google OAuth (Calendar, Gmail, Sheets) ───
+  if (pathname.startsWith('/api/auth/') && method === 'GET') {
+    const handled = await handleOAuthRoutes(pathname, method, url, res, json);
+    if (handled) return;
   }
 
   // Calendar endpoints
@@ -383,7 +422,8 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
         };
       });
       res.write(`data: ${JSON.stringify({ type: 'agents', agents })}\n\n`);
-    } catch {
+    } catch (err) {
+      logger.error({ err }, 'Error in activity stream');
       res.write(': heartbeat\n\n');
     }
   }, 2000);

@@ -15,14 +15,17 @@ groups/*
 !groups/global/
 !groups/ceo/
 !groups/legal/
+!groups/finance/
 groups/main/*
 groups/global/*
 groups/ceo/*
 groups/legal/*
+groups/finance/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
 !groups/ceo/CLAUDE.md
 !groups/legal/CLAUDE.md
+!groups/finance/CLAUDE.md
 
 # Secrets - NEVER commit these
 .env

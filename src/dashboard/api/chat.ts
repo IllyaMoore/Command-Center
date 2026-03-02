@@ -3,7 +3,7 @@ import path from 'path';
 import { IncomingMessage, ServerResponse } from 'http';
 
 import { DATA_DIR } from '../../config.js';
-import { getAllRegisteredGroups, getRecentMessages } from '../../db.js';
+import { getAllRegisteredGroups, getRecentMessages, storeMessageDirect } from '../../db.js';
 import { logger } from '../../logger.js';
 
 const CEO_GROUP_FOLDER = 'ceo';
@@ -18,12 +18,13 @@ interface ChatMessage {
 
 function getCeoJid(): string | null {
   const groups = getAllRegisteredGroups();
-  for (const [jid, group] of Object.entries(groups)) {
-    if (group.folder === CEO_GROUP_FOLDER) {
-      logger.debug({ jid }, 'Found CEO group');
-      return jid;
-    }
+  const entry = Object.entries(groups).find(([, g]) => g.folder === CEO_GROUP_FOLDER);
+
+  if (entry) {
+    logger.debug({ jid: entry[0] }, 'Found CEO group');
+    return entry[0];
   }
+
   logger.warn({ groupFolders: Object.values(groups).map(g => g.folder) }, 'No group with folder matches');
   return null;
 }
@@ -34,6 +35,10 @@ export async function sendGroupMessage(
   text: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const msgId = `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // Write IPC file first so the agent receives the message.
+    // DB store comes after to avoid showing a message the agent never gets.
     const inputDir = path.join(DATA_DIR, 'ipc', groupFolder, 'input');
     fs.mkdirSync(inputDir, { recursive: true });
 
@@ -49,6 +54,16 @@ export async function sendGroupMessage(
 
     fs.writeFileSync(filePath, JSON.stringify(message, null, 2));
     logger.info({ groupFolder, text: text.slice(0, 50) }, 'Dashboard message written to IPC');
+
+    storeMessageDirect({
+      id: msgId,
+      chat_jid: chatJid,
+      sender: 'dashboard',
+      sender_name: 'You (Dashboard)',
+      content: text,
+      timestamp: new Date().toISOString(),
+      is_from_me: true,
+    });
 
     return { success: true };
   } catch (err) {
@@ -68,10 +83,7 @@ export async function sendChatMessage(text: string): Promise<{ success: boolean;
   return sendGroupMessage(CEO_GROUP_FOLDER, ceoJid, text);
 }
 
-export async function streamChatMessages(
-  req: IncomingMessage,
-  res: ServerResponse,
-): Promise<void> {
+export function streamChatMessages(req: IncomingMessage, res: ServerResponse): void {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
@@ -81,27 +93,29 @@ export async function streamChatMessages(
 
   const ceoJid = getCeoJid();
 
-  // Send initial messages
-  const initialMessages = await getChatHistory(ceoJid, 50);
+  const initialMessages = getChatHistory(ceoJid, 50);
   res.write(`data: ${JSON.stringify({ type: 'initial', messages: initialMessages })}\n\n`);
 
-  let lastTimestamp = initialMessages.length > 0
-    ? initialMessages[initialMessages.length - 1].timestamp
-    : new Date(0).toISOString();
+  // Track sent message IDs to avoid duplicates (timestamp precision varies
+  // between dashboard ms and WhatsApp seconds, so ID-based tracking is safer).
+  // Cap size to prevent unbounded growth on long-lived connections.
+  const MAX_SENT_IDS = 200;
+  const sentIds = new Set(initialMessages.map((msg) => msg.id));
 
-  // Poll for new messages
-  const interval = setInterval(async () => {
+  const interval = setInterval(() => {
     try {
-      if (!ceoJid) {
-        res.write(': heartbeat\n\n');
-        return;
-      }
-
-      const recentMessages = await getChatHistory(ceoJid, 10);
-      const newMessages = recentMessages.filter((msg) => msg.timestamp > lastTimestamp);
+      const recentMessages = getChatHistory(ceoJid, 20);
+      const newMessages = recentMessages.filter((msg) => !sentIds.has(msg.id));
 
       if (newMessages.length > 0) {
-        lastTimestamp = newMessages[newMessages.length - 1].timestamp;
+        newMessages.forEach((msg) => sentIds.add(msg.id));
+        // Prune oldest entries when cap exceeded
+        if (sentIds.size > MAX_SENT_IDS) {
+          const iter = sentIds.values();
+          while (sentIds.size > MAX_SENT_IDS) {
+            sentIds.delete(iter.next().value as string);
+          }
+        }
         res.write(`data: ${JSON.stringify({ type: 'update', messages: newMessages })}\n\n`);
       } else {
         res.write(': heartbeat\n\n');
@@ -117,10 +131,8 @@ export async function streamChatMessages(
   });
 }
 
-async function getChatHistory(ceoJid: string | null, limit: number): Promise<ChatMessage[]> {
-  if (!ceoJid) {
-    return [];
-  }
+function getChatHistory(ceoJid: string | null, limit: number): ChatMessage[] {
+  if (!ceoJid) return [];
 
   try {
     const messages = getRecentMessages(limit, ceoJid);
