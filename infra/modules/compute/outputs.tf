@@ -10,15 +10,15 @@
 #   value       = aws_instance.main.private_ip
 # }
 
-# output "security_group_id" {
-#   description = "Compute security group ID"
-#   value       = aws_security_group.compute.id
-# }
+output "security_group_id" {
+  description = "Compute security group ID"
+  value       = aws_security_group.compute.id
+}
 
-# output "instance_profile_name" {
-#   description = "IAM instance profile name"
-#   value       = aws_iam_instance_profile.compute.name
-# }
+output "instance_profile_name" {
+  description = "IAM instance profile name"
+  value       = aws_iam_instance_profile.compute.name
+}
 
 output "ssm_parameter_arns" {
   description = "ARNs of all SSM parameters"
