@@ -378,7 +378,7 @@ async function sendMessage() {
   if (!text) return;
 
   input.value = '';
-  addChatMessage({ text, sender: 'user', timestamp: new Date().toISOString() });
+  // Message will appear via SSE once stored in DB
 
   // Show typing indicator
   document.getElementById('voiceIndicator').classList.add('active');
@@ -411,7 +411,7 @@ function sendMobileMessage() {
   if (!text) return;
 
   input.value = '';
-  addChatMessage({ text, sender: 'user', timestamp: new Date().toISOString() }, true);
+  // Message will appear via SSE once stored in DB
 
   document.getElementById('mobileVoiceIndicator').classList.add('active');
 
