@@ -233,6 +233,8 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
         const nextRun = computeNextRun(currentTask);
         if (nextRun) {
           updateTask(currentTask.id, { next_run: nextRun });
+        } else {
+          updateTask(currentTask.id, { status: 'completed' });
         }
 
         deps.queue.enqueueTask(

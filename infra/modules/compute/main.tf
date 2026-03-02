@@ -25,6 +25,7 @@
 #   - No secrets in Terraform code — use SSM SecureString with placeholder values
 
 data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
 
 locals {
   name_prefix = "nanoclaw-${var.environment}"
@@ -58,40 +59,14 @@ resource "aws_vpc_security_group_ingress_rule" "tailscale_wg" {
   tags = { Name = "${local.name_prefix}-ingress-tailscale-wg" }
 }
 
-# Outbound: HTTPS (TCP 443) for Anthropic API, npm registry, GitHub
-resource "aws_vpc_security_group_egress_rule" "https" {
+# Outbound: allow all (private subnet behind NAT gateway)
+resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.compute.id
-  description       = "HTTPS outbound for Anthropic API, npm, GitHub"
-  from_port         = 443
-  to_port           = 443
-  ip_protocol       = "tcp"
+  description       = "Allow all outbound (private subnet behind NAT)"
+  ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 
-  tags = { Name = "${local.name_prefix}-egress-https" }
-}
-
-# Outbound: Tailscale STUN/DERP relay (UDP 3478)
-resource "aws_vpc_security_group_egress_rule" "tailscale_stun" {
-  security_group_id = aws_security_group.compute.id
-  description       = "Tailscale STUN/DERP relay outbound"
-  from_port         = 3478
-  to_port           = 3478
-  ip_protocol       = "udp"
-  cidr_ipv4         = "0.0.0.0/0"
-
-  tags = { Name = "${local.name_prefix}-egress-tailscale-stun" }
-}
-
-# Outbound: Tailscale WireGuard (UDP 41641)
-resource "aws_vpc_security_group_egress_rule" "tailscale_wg" {
-  security_group_id = aws_security_group.compute.id
-  description       = "Tailscale WireGuard mesh outbound"
-  from_port         = 41641
-  to_port           = 41641
-  ip_protocol       = "udp"
-  cidr_ipv4         = "0.0.0.0/0"
-
-  tags = { Name = "${local.name_prefix}-egress-tailscale-wg" }
+  tags = { Name = "${local.name_prefix}-egress-all" }
 }
 
 # --- IAM Role & Instance Profile ---
@@ -131,16 +106,22 @@ resource "aws_iam_role_policy" "app_permissions" {
         Sid      = "SSMParameterRead"
         Effect   = "Allow"
         Action   = "ssm:GetParameter"
-        Resource = "arn:aws:ssm:us-east-2:${data.aws_caller_identity.current.account_id}:parameter/nanoclaw/*"
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/nanoclaw/*"
       },
       {
-        Sid    = "S3Backups"
+        Sid    = "S3BackupObjects"
         Effect = "Allow"
         Action = [
           "s3:GetObject",
           "s3:PutObject"
         ]
-        Resource = "arn:aws:s3:::nanoclaw-backups-*/*"
+        Resource = "arn:aws:s3:::nanoclaw-backups-${var.environment}-*/*"
+      },
+      {
+        Sid      = "S3BackupList"
+        Effect   = "Allow"
+        Action   = "s3:ListBucket"
+        Resource = "arn:aws:s3:::nanoclaw-backups-${var.environment}-*"
       }
     ]
   })
@@ -201,4 +182,6 @@ resource "aws_ssm_parameter" "instance_id" {
   value = "pending"
 
   tags = { Name = "${local.name_prefix}-instance-id" }
+
+  lifecycle { ignore_changes = [value] }
 }

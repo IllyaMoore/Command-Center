@@ -37,18 +37,8 @@ export async function sendGroupMessage(
   try {
     const msgId = `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Store immediately so SSE delivers the user's message within 1 second.
-    // onDashboardInput will INSERT OR REPLACE with the same pattern, so no duplicates.
-    storeMessageDirect({
-      id: msgId,
-      chat_jid: chatJid,
-      sender: 'dashboard',
-      sender_name: 'You (Dashboard)',
-      content: text,
-      timestamp: new Date().toISOString(),
-      is_from_me: true,
-    });
-
+    // Write IPC file first so the agent receives the message.
+    // DB store comes after to avoid showing a message the agent never gets.
     const inputDir = path.join(DATA_DIR, 'ipc', groupFolder, 'input');
     fs.mkdirSync(inputDir, { recursive: true });
 
@@ -64,6 +54,16 @@ export async function sendGroupMessage(
 
     fs.writeFileSync(filePath, JSON.stringify(message, null, 2));
     logger.info({ groupFolder, text: text.slice(0, 50) }, 'Dashboard message written to IPC');
+
+    storeMessageDirect({
+      id: msgId,
+      chat_jid: chatJid,
+      sender: 'dashboard',
+      sender_name: 'You (Dashboard)',
+      content: text,
+      timestamp: new Date().toISOString(),
+      is_from_me: true,
+    });
 
     return { success: true };
   } catch (err) {

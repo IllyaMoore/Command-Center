@@ -1,5 +1,6 @@
 import { IncomingMessage, ServerResponse } from 'http';
 
+import { logger } from '../logger.js';
 import {
   getAllRegisteredGroups,
   getAllTasks,
@@ -79,9 +80,13 @@ function oauthSuccessHtml(displayName: string, postMessageId: string): string {
     </div></body></html>`;
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 function oauthErrorHtml(err: unknown): string {
   const message = err instanceof Error ? err.message : 'Unknown error';
-  return `<h3>OAuth Error</h3><p>${message}</p><p>Close this tab and try again.</p>`;
+  return `<h3>OAuth Error</h3><p>${escapeHtml(message)}</p><p>Close this tab and try again.</p>`;
 }
 
 async function handleOAuthRoutes(
@@ -121,6 +126,7 @@ async function handleOAuthRoutes(
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(oauthSuccessHtml(provider.displayName, provider.postMessageId));
       } catch (err) {
+        logger.error({ err, provider: provider.displayName }, 'OAuth callback failed');
         res.writeHead(500, { 'Content-Type': 'text/html' });
         res.end(oauthErrorHtml(err));
       }

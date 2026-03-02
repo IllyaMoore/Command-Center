@@ -15,7 +15,7 @@ interface OAuthClientConfig {
   };
 }
 
-export type SheetsAuthStatus = 'connected' | 'expired' | 'missing_tokens' | 'missing_credentials';
+export type SheetsAuthStatus = 'connected' | 'expired' | 'error' | 'missing_tokens' | 'missing_credentials';
 
 const SHEETS_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
@@ -31,7 +31,8 @@ function loadClientConfig(): OAuthClientConfig | null {
     const config: OAuthClientConfig = JSON.parse(fs.readFileSync(OAUTH_KEYS_PATH, 'utf-8'));
     if (!config.installed?.client_id || !config.installed?.client_secret) return null;
     return config;
-  } catch {
+  } catch (err: unknown) {
+    logger.warn({ err }, 'Failed to load Google Sheets client config');
     return null;
   }
 }
@@ -73,7 +74,7 @@ export async function getSheetsAuthStatus(): Promise<SheetsAuthStatus> {
       return 'expired';
     }
     logger.error({ err }, 'Sheets auth status check failed');
-    return 'expired';
+    return 'error';
   }
 }
 
