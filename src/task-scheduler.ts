@@ -38,6 +38,21 @@ function computeNextRun(task: ScheduledTask): string | null {
   return null;
 }
 
+function logTaskQueue(context: string): void {
+  const tasks = getAllTasks().filter((t) => t.status === 'active');
+  if (tasks.length === 0) {
+    logger.info({ context }, 'No active scheduled tasks');
+    return;
+  }
+  const summary = tasks.map((t) => ({
+    id: t.id,
+    group: t.group_folder,
+    nextRun: t.next_run,
+    cron: t.schedule_value,
+  }));
+  logger.info({ context, tasks: summary }, `Scheduled tasks (${tasks.length})`);
+}
+
 export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
   getSessions: () => Record<string, string>;
@@ -185,6 +200,7 @@ async function runTask(
   }
 
   updateTaskAfterRun(task.id, nextRun, resultSummary);
+  logTaskQueue(`Task completed: ${task.id}`);
 }
 
 let schedulerRunning = false;
@@ -195,7 +211,7 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
     return;
   }
   schedulerRunning = true;
-  logger.info('Scheduler loop started');
+  logTaskQueue('Scheduler started');
 
   const loop = async () => {
     try {

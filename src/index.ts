@@ -31,6 +31,7 @@ import {
   setSession,
   storeChatMetadata,
   storeMessage,
+  storeMessageDirect,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
@@ -501,6 +502,16 @@ async function main(): Promise<void> {
         logger.warn({ groupFolder }, 'Dashboard input for unknown group');
         return;
       }
+      // Store dashboard message so it appears in chat history
+      storeMessageDirect({
+        id: `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        chat_jid: chatJid,
+        sender: 'dashboard',
+        sender_name: 'You (Dashboard)',
+        content: text,
+        timestamp: new Date().toISOString(),
+        is_from_me: true,
+      });
       // Run the agent with the dashboard message
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const result = await runAgent(group, text, chatJid, async (output) => {
