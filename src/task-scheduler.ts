@@ -16,11 +16,27 @@ import {
   getTaskById,
   getTimezone,
   logTaskRun,
+  updateTask,
   updateTaskAfterRun,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { logger } from './logger.js';
 import { RegisteredGroup, ScheduledTask } from './types.js';
+
+function computeNextRun(task: ScheduledTask): string | null {
+  if (task.schedule_type === 'cron') {
+    const interval = CronExpressionParser.parse(task.schedule_value, {
+      tz: getTimezone(),
+    });
+    return interval.next().toISOString();
+  }
+  if (task.schedule_type === 'interval') {
+    const ms = parseInt(task.schedule_value, 10);
+    return new Date(Date.now() + ms).toISOString();
+  }
+  // 'once' tasks have no next run
+  return null;
+}
 
 export interface SchedulerDependencies {
   registeredGroups: () => Record<string, RegisteredGroup>;
@@ -157,23 +173,17 @@ async function runTask(
     error,
   });
 
-  let nextRun: string | null = null;
-  if (task.schedule_type === 'cron') {
-    const interval = CronExpressionParser.parse(task.schedule_value, {
-      tz: getTimezone(),
-    });
-    nextRun = interval.next().toISOString();
-  } else if (task.schedule_type === 'interval') {
-    const ms = parseInt(task.schedule_value, 10);
-    nextRun = new Date(Date.now() + ms).toISOString();
-  }
-  // 'once' tasks have no next run
+  const nextRun = computeNextRun(task);
 
-  const resultSummary = error
-    ? `Error: ${error}`
-    : result
-      ? result.slice(0, 200)
-      : 'Completed';
+  let resultSummary: string;
+  if (error) {
+    resultSummary = `Error: ${error}`;
+  } else if (result) {
+    resultSummary = result.slice(0, 200);
+  } else {
+    resultSummary = 'Completed';
+  }
+
   updateTaskAfterRun(task.id, nextRun, resultSummary);
 }
 
@@ -199,6 +209,14 @@ export function startSchedulerLoop(deps: SchedulerDependencies): void {
         const currentTask = getTaskById(task.id);
         if (!currentTask || currentTask.status !== 'active') {
           continue;
+        }
+
+        // Immediately advance next_run to prevent re-pickup on next poll.
+        // Tasks take 70-140s but the scheduler polls every 60s, so without
+        // this the same task would be enqueued multiple times.
+        const nextRun = computeNextRun(currentTask);
+        if (nextRun) {
+          updateTask(currentTask.id, { next_run: nextRun });
         }
 
         deps.queue.enqueueTask(
