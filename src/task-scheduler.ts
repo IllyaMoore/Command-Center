@@ -188,8 +188,6 @@ async function runTask(
     error,
   });
 
-  const nextRun = computeNextRun(task);
-
   let resultSummary: string;
   if (error) {
     resultSummary = `Error: ${error}`;
@@ -199,7 +197,11 @@ async function runTask(
     resultSummary = 'Completed';
   }
 
-  updateTaskAfterRun(task.id, nextRun, resultSummary);
+  // next_run was already advanced pre-enqueue (line 233). Only update
+  // last_run / last_result here — pass the current next_run so
+  // updateTaskAfterRun doesn't overwrite it or mark status 'completed'.
+  const current = getTaskById(task.id);
+  updateTaskAfterRun(task.id, current?.next_run ?? null, resultSummary);
   logTaskQueue(`Task completed: ${task.id}`);
 }
 

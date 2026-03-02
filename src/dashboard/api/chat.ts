@@ -97,7 +97,9 @@ export function streamChatMessages(req: IncomingMessage, res: ServerResponse): v
   res.write(`data: ${JSON.stringify({ type: 'initial', messages: initialMessages })}\n\n`);
 
   // Track sent message IDs to avoid duplicates (timestamp precision varies
-  // between dashboard ms and WhatsApp seconds, so ID-based tracking is safer)
+  // between dashboard ms and WhatsApp seconds, so ID-based tracking is safer).
+  // Cap size to prevent unbounded growth on long-lived connections.
+  const MAX_SENT_IDS = 200;
   const sentIds = new Set(initialMessages.map((msg) => msg.id));
 
   const interval = setInterval(() => {
@@ -107,6 +109,13 @@ export function streamChatMessages(req: IncomingMessage, res: ServerResponse): v
 
       if (newMessages.length > 0) {
         newMessages.forEach((msg) => sentIds.add(msg.id));
+        // Prune oldest entries when cap exceeded
+        if (sentIds.size > MAX_SENT_IDS) {
+          const iter = sentIds.values();
+          while (sentIds.size > MAX_SENT_IDS) {
+            sentIds.delete(iter.next().value as string);
+          }
+        }
         res.write(`data: ${JSON.stringify({ type: 'update', messages: newMessages })}\n\n`);
       } else {
         res.write(': heartbeat\n\n');
