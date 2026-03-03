@@ -101,7 +101,7 @@ resource "aws_iam_role_policy" "app_permissions" {
           "ssm:GetParameters",
           "ssm:GetParametersByPath",
         ]
-        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/nanoclaw/*"
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/nanoclaw/${var.environment}/*"
       },
       {
         Sid    = "S3BackupObjects"
@@ -177,8 +177,6 @@ resource "aws_ssm_parameter" "instance_id" {
   value = aws_instance.main.id
 
   tags = { Name = "${local.name_prefix}-instance-id" }
-
-  lifecycle { ignore_changes = [value] }
 }
 
 # Amazon Machine Image
