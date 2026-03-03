@@ -128,6 +128,7 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "ec2:TerminateInstances",
           "ec2:StartInstances",
           "ec2:StopInstances",
+          "ec2:ModifyInstanceAttribute",
         ]
         Resource = "*"
         Condition = {
@@ -140,6 +141,9 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         Sid    = "IAMNanoclaw"
         Effect = "Allow"
         Action = [
+          "iam:CreatePolicyVersion",
+          "iam:DeletePolicyVersion",
+          "iam:SetDefaultPolicyVersion",
           "iam:TagInstanceProfile",
           "iam:UntagInstanceProfile",
           "iam:GetRole",
