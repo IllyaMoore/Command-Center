@@ -1,5 +1,5 @@
 locals {
-  name_prefix = "nanoclaw-${var.environment}"
+  name_prefix     = "nanoclaw-${var.environment}"
   vpce_subnet_ids = var.vpce_az_count > 0 ? slice(aws_subnet.private[*].id, 0, var.vpce_az_count) : aws_subnet.private[*].id
 }
 
