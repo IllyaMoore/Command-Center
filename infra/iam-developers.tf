@@ -82,6 +82,7 @@ resource "aws_iam_policy" "developer_access" {
         Sid    = "IAMNanoclawRoles"
         Effect = "Allow"
         Action = [
+          "iam:TagInstanceProfile",
           "iam:GetRole",
           "iam:CreateRole",
           "iam:DeleteRole",
