@@ -171,6 +171,7 @@ resource "aws_ssm_parameter" "assistant_name" {
   lifecycle { ignore_changes = [value] }
 }
 
+# No ignore_changes - Terraform must update this when instance is replaced
 resource "aws_ssm_parameter" "instance_id" {
   name  = "/nanoclaw/${var.environment}/instance-id"
   type  = "String"
