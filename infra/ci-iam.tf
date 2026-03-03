@@ -141,6 +141,9 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         Sid    = "IAMNanoclaw"
         Effect = "Allow"
         Action = [
+          "iam:CreatePolicyVersion",
+          "iam:DeletePolicyVersion",
+          "iam:SetDefaultPolicyVersion",
           "iam:TagInstanceProfile",
           "iam:GetRole",
           "iam:CreateRole",
