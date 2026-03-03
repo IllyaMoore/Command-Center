@@ -128,6 +128,7 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "ec2:TerminateInstances",
           "ec2:StartInstances",
           "ec2:StopInstances",
+          "ec2:ModifyInstanceAttribute",
         ]
         Resource = "*"
         Condition = {

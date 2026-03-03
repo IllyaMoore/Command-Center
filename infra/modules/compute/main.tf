@@ -93,9 +93,14 @@ resource "aws_iam_role_policy" "app_permissions" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid      = "SSMParameterRead"
-        Effect   = "Allow"
-        Action   = "ssm:GetParameter"
+        Sid    = "SSMParameterRead"
+        Effect = "Allow"
+        # Single + bulk read for app startup (GetParametersByPath loads all /nanoclaw/{env}/ at once)
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath",
+        ]
         Resource = "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter/nanoclaw/*"
       },
       {
@@ -169,9 +174,54 @@ resource "aws_ssm_parameter" "assistant_name" {
 resource "aws_ssm_parameter" "instance_id" {
   name  = "/nanoclaw/${var.environment}/instance-id"
   type  = "String"
-  value = "pending"
+  value = aws_instance.main.id
 
   tags = { Name = "${local.name_prefix}-instance-id" }
 
   lifecycle { ignore_changes = [value] }
+}
+
+# Amazon Machine Image
+# most_recent = true: instance will be replaced when Amazon publishes a new AL2023 AMI.
+# Acceptable for staging; pin to a specific version for prod.
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-*-x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+#! EC2  
+
+resource "aws_instance" "main" {
+  ami                         = data.aws_ami.amazon_linux.id
+  instance_type               = var.instance_type
+  subnet_id                   = var.private_subnet_ids[0]
+  associate_public_ip_address = false
+  iam_instance_profile        = aws_iam_instance_profile.compute.name
+  vpc_security_group_ids      = [aws_security_group.compute.id]
+
+  metadata_options {
+    http_tokens   = "required"
+    http_endpoint = "enabled"
+  }
+
+  root_block_device {
+    volume_size = var.volume_size # 30
+    volume_type = "gp3"
+    encrypted   = true
+  }
+
+  tags = {
+    Name = "${local.name_prefix}-instance"
+  }
 }
