@@ -171,6 +171,26 @@ resource "aws_ssm_parameter" "assistant_name" {
   lifecycle { ignore_changes = [value] }
 }
 
+resource "aws_ssm_parameter" "assistant_has_own_number" {
+  name  = "/nanoclaw/${var.environment}/assistant-has-own-number"
+  type  = "String"
+  value = "CHANGE_ME"
+
+  tags = { Name = "${local.name_prefix}-assistant-has-own-number" }
+
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "claude_code_oauth_token" {
+  name  = "/nanoclaw/${var.environment}/claude-code-oauth-token"
+  type  = "SecureString"
+  value = "CHANGE_ME"
+
+  tags = { Name = "${local.name_prefix}-claude-code-oauth-token" }
+
+  lifecycle { ignore_changes = [value] }
+}
+
 # No ignore_changes - Terraform must update this when instance is replaced
 resource "aws_ssm_parameter" "instance_id" {
   name  = "/nanoclaw/${var.environment}/instance-id"
@@ -208,6 +228,13 @@ resource "aws_instance" "main" {
   associate_public_ip_address = false
   iam_instance_profile        = aws_iam_instance_profile.compute.name
   vpc_security_group_ids      = [aws_security_group.compute.id]
+
+  user_data = templatefile("${path.module}/userdata.sh", {
+    environment = var.environment
+    aws_region  = data.aws_region.current.name
+    repo_url    = var.repo_url
+  })
+  user_data_replace_on_change = true
 
   metadata_options {
     http_tokens   = "required"
