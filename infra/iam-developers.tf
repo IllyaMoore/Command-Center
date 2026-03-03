@@ -83,6 +83,7 @@ resource "aws_iam_policy" "developer_access" {
         Effect = "Allow"
         Action = [
           "iam:TagInstanceProfile",
+          "iam:UntagInstanceProfile",
           "iam:GetRole",
           "iam:CreateRole",
           "iam:DeleteRole",
