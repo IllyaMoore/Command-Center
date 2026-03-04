@@ -42,6 +42,8 @@ resource "aws_security_group" "compute" {
     Name = "${local.name_prefix}-compute-sg"
   }
 
+  revoke_rules_on_delete = true
+
   lifecycle {
     create_before_destroy = true
   }

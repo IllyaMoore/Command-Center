@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+install -m 600 /dev/null /var/log/nanoclaw-bootstrap.log
 exec > >(tee /var/log/nanoclaw-bootstrap.log) 2>&1
 
 echo "=== NanoClaw bootstrap starting ==="
@@ -28,14 +29,14 @@ echo "--- Installing Node.js 22 ---"
 dnf install -y https://rpm.nodesource.com/pub_22.x/nodistro/repo/nodesource-release-nodistro-1.noarch.rpm
 dnf install -y nodejs
 
-# --- 3. Install Tailscale ---
+# --- 3. Install Tailscale (use TS_AUTHKEY env var to keep secret out of process args) ---
 echo "--- Installing Tailscale ---"
 dnf config-manager --add-repo https://pkgs.tailscale.com/stable/amazon-linux/2023/tailscale.repo
 dnf install -y tailscale
 systemctl enable --now tailscaled
 
 TS_AUTH_KEY=$$(ssm_get "tailscale-auth-key")
-tailscale up --authkey="$${TS_AUTH_KEY}" --hostname="nanoclaw-$${ENVIRONMENT}"
+TS_AUTHKEY="$${TS_AUTH_KEY}" tailscale up --hostname="nanoclaw-$${ENVIRONMENT}"
 unset TS_AUTH_KEY
 
 # --- 4. Install GitHub CLI ---
@@ -53,31 +54,33 @@ echo "--- Creating nanoclaw user ---"
 useradd -r -m -d /opt/nanoclaw -s /bin/bash nanoclaw
 usermod -aG docker nanoclaw
 
-# --- 7. Clone repo (authenticate with OAuth token for private repos) ---
+# --- 7. Clone repo (use git extraheader to keep token out of URL / process args) ---
 echo "--- Cloning repository ---"
-GH_TOKEN=$$(ssm_get "claude-code-oauth-token")
-git clone "https://x-access-token:$${GH_TOKEN}@$${REPO_URL#https://}" "$${APP_DIR}"
-unset GH_TOKEN
+OAUTH_TOKEN=$$(ssm_get "claude-code-oauth-token")
+AUTH_HEADER=$$(echo -n "x-access-token:$${OAUTH_TOKEN}" | base64)
+git clone --config "http.https://github.com/.extraheader=Authorization: Basic $${AUTH_HEADER}" "$${REPO_URL}" "$${APP_DIR}"
+unset AUTH_HEADER
 chown -R nanoclaw:nanoclaw /opt/nanoclaw
 
 # --- 8. Build ---
 echo "--- Building application ---"
 sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm install && npm run build"
 
-# --- 9. Write .env from SSM parameters ---
+# --- 9. Write .env from SSM parameters (reuse cached OAUTH_TOKEN) ---
 echo "--- Writing .env from SSM ---"
 cat > "$${APP_DIR}/.env" <<ENV
 ANTHROPIC_API_KEY=$$(ssm_get "anthropic-api-key")
-CLAUDE_CODE_OAUTH_TOKEN=$$(ssm_get "claude-code-oauth-token")
+CLAUDE_CODE_OAUTH_TOKEN=$${OAUTH_TOKEN}
 TELEGRAM_BOT_TOKEN=$$(ssm_get "telegram-bot-token")
 ASSISTANT_NAME=$$(ssm_get "assistant-name")
 ASSISTANT_HAS_OWN_NUMBER=$$(ssm_get "assistant-has-own-number")
 DEV_MODE=false
 ENV
+unset OAUTH_TOKEN
 chown nanoclaw:nanoclaw "$${APP_DIR}/.env"
 chmod 600 "$${APP_DIR}/.env"
 
-# --- 10. Write systemd service ---
+# --- 10. Write systemd service (see launchd/com.nanoclaw.plist for macOS equivalent) ---
 echo "--- Creating systemd service ---"
 cat > /etc/systemd/system/nanoclaw.service <<SERVICE
 [Unit]

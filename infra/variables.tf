@@ -45,3 +45,9 @@ variable "vpce_az_count" {
   type        = number
   default     = 0
 }
+
+variable "repo_url" {
+  description = "Git repository URL for NanoClaw"
+  type        = string
+  default     = "https://github.com/StoryFunnels/command-center.git"
+}
