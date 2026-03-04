@@ -23,6 +23,6 @@ export default defineConfig({
     cwd: '..',
     port: TEST_PORT,
     reuseExistingServer: !process.env.CI,
-    timeout: 10_000,
+    timeout: 20_000,
   },
 });
