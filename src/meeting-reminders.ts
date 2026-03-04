@@ -13,8 +13,8 @@ export interface ReminderDeps {
   registeredGroups: () => Record<string, RegisteredGroup>;
 }
 
-const REMINDER_WINDOW_MIN_MS = 1 * 60 * 1000; // 1 minute (matches poll interval)
-const REMINDER_WINDOW_MAX_MS = 6 * 60 * 1000; // 6 minutes
+const REMINDER_WINDOW_MIN_MS = 4 * 60 * 1000; // 4 minutes
+const REMINDER_WINDOW_MAX_MS = 9 * 60 * 1000; // 9 minutes (> poll interval, guarantees catch)
 
 let reminderLoopRunning = false;
 
