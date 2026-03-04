@@ -9,7 +9,7 @@ import {
   MAIN_GROUP_FOLDER,
 } from './config.js';
 import { AvailableGroup } from './container-runner.js';
-import { createTask, deleteTask, getTaskById, getTimezone, updateTask } from './db.js';
+import { createReminder, createTask, deleteTask, getTaskById, getTimezone, updateTask } from './db.js';
 import { logger } from './logger.js';
 import { RegisteredGroup } from './types.js';
 
@@ -205,6 +205,9 @@ export async function processTaskIpc(
     groupFolder?: string;
     chatJid?: string;
     targetJid?: string;
+    // For set_reminder
+    reminderText?: string;
+    remind_at?: string;
     // For register_group
     jid?: string;
     name?: string;
@@ -415,6 +418,77 @@ export async function processTaskIpc(
         );
       }
       break;
+
+    case 'set_reminder': {
+      if (!data.reminderText || !data.remind_at || !data.chatJid) {
+        logger.warn({ data }, 'Invalid set_reminder: missing required fields');
+        break;
+      }
+
+      const targetJid = data.targetJid || data.chatJid;
+      const targetGroupEntry = registeredGroups[targetJid];
+
+      if (!targetGroupEntry) {
+        logger.warn({ targetJid }, 'Cannot set reminder: target group not registered');
+        break;
+      }
+
+      if (!isMain && targetGroupEntry.folder !== sourceGroup) {
+        logger.warn(
+          { sourceGroup, targetFolder: targetGroupEntry.folder },
+          'Unauthorized set_reminder blocked',
+        );
+        break;
+      }
+
+      // Parse remind_at as local time in the user's configured timezone.
+      // Agents in Docker (UTC) send times without offset — interpret in user TZ.
+      const tz = getTimezone();
+      let remindAtMs: number;
+      try {
+        // Append 'Z' so the naive timestamp is treated as UTC components,
+        // making the offset math correct regardless of server's local TZ.
+        const parsed = new Date(data.remind_at + 'Z');
+        if (isNaN(parsed.getTime())) throw new Error('unparseable');
+
+        // Compute TZ offset: format "now" in user TZ via formatToParts, reconstruct
+        // as if it were UTC, and diff against real UTC to get the offset.
+        const nowUtc = Date.now();
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit',
+          hour12: false,
+        }).formatToParts(new Date(nowUtc));
+
+        const p = (type: string): string =>
+          parts.find((v) => v.type === type)?.value ?? '0';
+        const recomposed = `${p('year')}-${p('month')}-${p('day')}T${p('hour')}:${p('minute')}:${p('second')}`;
+        const tzOffsetMs = new Date(recomposed).getTime() - nowUtc;
+
+        // Apply inverse offset: user says "15:00 local" → subtract offset to get UTC
+        remindAtMs = parsed.getTime() - tzOffsetMs;
+      } catch {
+        logger.warn({ remind_at: data.remind_at }, 'Invalid remind_at timestamp');
+        break;
+      }
+
+      const reminderId = `reminder-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      createReminder({
+        id: reminderId,
+        chat_jid: targetJid,
+        group_folder: targetGroupEntry.folder,
+        text: data.reminderText,
+        remind_at: new Date(remindAtMs).toISOString(),
+        created_at: new Date().toISOString(),
+      });
+
+      logger.info(
+        { reminderId, sourceGroup, remind_at: data.remind_at },
+        'Reminder created via IPC',
+      );
+      break;
+    }
 
     default:
       logger.warn({ type: data.type }, 'Unknown IPC task type');
