@@ -274,6 +274,52 @@ Use available_groups.json to find the JID for a group. The folder name should be
   },
 );
 
+server.tool(
+  'set_reminder',
+  `Set a lightweight reminder that will be delivered as a direct message at the specified time.
+Unlike schedule_task, this does NOT spawn an agent — it simply sends the text at the scheduled time.
+Use this for simple reminders like "remind me to call John at 3pm".
+
+For complex tasks that need tool access (email checks, calendar lookups, etc.), use schedule_task instead.
+
+TIME FORMAT: Local time WITHOUT "Z" suffix (e.g., "2026-03-04T15:30:00"). Do NOT use UTC/Z suffix.`,
+  {
+    text: z.string().describe('The reminder text to send (e.g., "Call John about the contract")'),
+    remind_at: z.string().describe('When to send the reminder. Local time, ISO format, no Z suffix (e.g., "2026-03-04T15:30:00")'),
+    target_group_jid: z.string().optional().describe('(Main group only) JID to send the reminder to. Defaults to the current group.'),
+  },
+  async (args) => {
+    const remindAt = new Date(args.remind_at);
+    if (isNaN(remindAt.getTime())) {
+      return {
+        content: [{ type: 'text' as const, text: `Invalid time: "${args.remind_at}". Use format like "2026-03-04T15:30:00" (no Z suffix).` }],
+        isError: true,
+      };
+    }
+
+    // No past-time check here — container runs UTC but remind_at is naive local time.
+    // The host IPC handler does proper timezone conversion.
+
+    const targetJid = isMain && args.target_group_jid ? args.target_group_jid : chatJid;
+
+    const data = {
+      type: 'set_reminder',
+      reminderText: args.text,
+      remindAt: args.remind_at,
+      targetJid,
+      chatJid,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    const filename = writeIpcFile(TASKS_DIR, data);
+
+    return {
+      content: [{ type: 'text' as const, text: `Reminder set for ${args.remind_at}: "${args.text}" (${filename})` }],
+    };
+  },
+);
+
 // Start the stdio transport
 const transport = new StdioServerTransport();
 await server.connect(transport);

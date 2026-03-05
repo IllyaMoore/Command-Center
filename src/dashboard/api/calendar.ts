@@ -33,7 +33,7 @@ interface CalendarCredentials {
   access_token?: string;
 }
 
-interface CalendarEvent {
+export interface CalendarEvent {
   id: string;
   title: string;
   start: string;
@@ -136,52 +136,67 @@ async function getCalendarClient(): Promise<calendar_v3.Calendar | null> {
   }
 }
 
+function mapGoogleEvent(event: calendar_v3.Schema$Event): CalendarEvent {
+  return {
+    id: event.id || '',
+    title: event.summary || 'Untitled',
+    start: event.start?.dateTime || event.start?.date || '',
+    end: event.end?.dateTime || event.end?.date || '',
+    allDay: !event.start?.dateTime,
+    location: event.location || undefined,
+    description: event.description || undefined,
+    color: event.colorId ? getColorFromId(event.colorId) : undefined,
+  };
+}
+
+function getTodayRange(days: number): { timeMin: string; timeMax: string } {
+  const timeMin = new Date();
+  timeMin.setHours(0, 0, 0, 0);
+  const timeMax = new Date(timeMin);
+  timeMax.setDate(timeMax.getDate() + days);
+  return { timeMin: timeMin.toISOString(), timeMax: timeMax.toISOString() };
+}
+
+async function fetchEvents(
+  client: calendar_v3.Calendar,
+  days: number,
+): Promise<CalendarEvent[]> {
+  const { timeMin, timeMax } = getTodayRange(days);
+  const response = await client.events.list({
+    calendarId: 'primary',
+    timeMin,
+    timeMax,
+    singleEvents: true,
+    orderBy: 'startTime',
+    maxResults: 50,
+  });
+  return (response.data.items || []).map(mapGoogleEvent);
+}
+
 export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<CalendarEvent[]> {
   const client = await getCalendarClient();
 
   if (!client) {
-    // Return mock data when no credentials available
     logger.debug('Returning mock calendar events (no credentials)');
     return getMockEvents(view);
   }
 
   try {
-    const now = new Date();
-    const timeMin = new Date(now);
-    timeMin.setHours(0, 0, 0, 0);
-
-    const timeMax = new Date(timeMin);
-    if (view === 'week') {
-      timeMax.setDate(timeMax.getDate() + 7);
-    } else {
-      timeMax.setDate(timeMax.getDate() + 1);
-    }
-
-    const response = await client.events.list({
-      calendarId: 'primary',
-      timeMin: timeMin.toISOString(),
-      timeMax: timeMax.toISOString(),
-      singleEvents: true,
-      orderBy: 'startTime',
-      maxResults: 50,
-    });
-
-    const events = response.data.items || [];
-    return events.map((event): CalendarEvent => ({
-      id: event.id || '',
-      title: event.summary || 'Untitled',
-      start: event.start?.dateTime || event.start?.date || '',
-      end: event.end?.dateTime || event.end?.date || '',
-      allDay: !event.start?.dateTime,
-      location: event.location || undefined,
-      description: event.description || undefined,
-      color: event.colorId ? getColorFromId(event.colorId) : undefined,
-    }));
+    return await fetchEvents(client, view === 'week' ? 7 : 1);
   } catch (err) {
     logger.error({ err }, 'Error fetching calendar events');
-    // Return mock data on error
     return getMockEvents(view);
   }
+}
+
+/**
+ * Fetch real calendar events. Throws on API error (no mock fallback).
+ * Use this for automated systems (reminders) where mock data would be harmful.
+ */
+export async function getCalendarEventsLive(): Promise<CalendarEvent[]> {
+  const client = await getCalendarClient();
+  if (!client) throw new Error('No calendar client available');
+  return fetchEvents(client, 1);
 }
 
 // ─── OAuth flow ───

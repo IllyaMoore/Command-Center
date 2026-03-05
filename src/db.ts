@@ -73,6 +73,17 @@ function createSchema(database: Database.Database): void {
       container_config TEXT,
       requires_trigger INTEGER DEFAULT 1
     );
+
+    CREATE TABLE IF NOT EXISTS reminders (
+      id TEXT PRIMARY KEY,
+      chat_jid TEXT NOT NULL,
+      group_folder TEXT NOT NULL,
+      text TEXT NOT NULL,
+      remind_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      sent_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(remind_at, sent_at);
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -614,6 +625,50 @@ function migrateJsonState(): void {
       setRegisteredGroup(jid, group);
     }
   }
+}
+
+// --- Reminders ---
+
+export interface Reminder {
+  id: string;
+  chat_jid: string;
+  group_folder: string;
+  text: string;
+  remind_at: string;
+  created_at: string;
+  sent_at: string | null;
+}
+
+export function createReminder(reminder: Omit<Reminder, 'sent_at'>): void {
+  db.prepare(
+    `INSERT INTO reminders (id, chat_jid, group_folder, text, remind_at, created_at, sent_at)
+     VALUES (?, ?, ?, ?, ?, ?, NULL)`,
+  ).run(
+    reminder.id,
+    reminder.chat_jid,
+    reminder.group_folder,
+    reminder.text,
+    reminder.remind_at,
+    reminder.created_at,
+  );
+}
+
+export function getDueReminders(): Reminder[] {
+  const now = new Date().toISOString();
+  return db
+    .prepare(
+      `SELECT * FROM reminders
+       WHERE sent_at IS NULL AND remind_at <= ?
+       ORDER BY remind_at`,
+    )
+    .all(now) as Reminder[];
+}
+
+export function markReminderSent(id: string): void {
+  db.prepare('UPDATE reminders SET sent_at = ? WHERE id = ?').run(
+    new Date().toISOString(),
+    id,
+  );
 }
 
 // --- Activity queries for dashboard ---

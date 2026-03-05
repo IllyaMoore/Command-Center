@@ -35,6 +35,7 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
 import { formatMessages, formatOutbound } from './router.js';
+import { startMeetingReminderLoop } from './meeting-reminders.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -486,6 +487,10 @@ async function main(): Promise<void> {
       const text = formatOutbound(rawText);
       if (text) await whatsapp.sendMessage(jid, text);
     },
+  });
+  startMeetingReminderLoop({
+    sendMessage: async (jid, text) => whatsapp.sendMessage(jid, text),
+    registeredGroups: () => registeredGroups,
   });
   startIpcWatcher({
     sendMessage: (jid, text) => whatsapp.sendMessage(jid, text),
