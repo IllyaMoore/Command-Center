@@ -24,7 +24,7 @@ output "ssm_parameter_arns" {
   description = "ARNs of all SSM parameters"
   value = [
     aws_ssm_parameter.assistant_has_own_number.arn,
-    aws_ssm_parameter.claude_code_oauth_token.arn,
+    aws_ssm_parameter.github_access_token.arn,
     aws_ssm_parameter.anthropic_api_key.arn,
     aws_ssm_parameter.tailscale_auth_key.arn,
     aws_ssm_parameter.telegram_bot_token.arn,
