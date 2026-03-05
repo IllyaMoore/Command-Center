@@ -227,6 +227,7 @@ export async function runContainerAgent(
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onWarning?: () => void,
+  onTimeout?: (hadPartialOutput: boolean) => void,
 ): Promise<ContainerOutput> {
   if (DEV_MODE) {
     logger.info(
@@ -391,6 +392,7 @@ export async function runContainerAgent(
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, containerName }, 'Container timeout, stopping gracefully');
+      if (onTimeout) onTimeout(hadStreamingOutput);
       exec(`docker stop ${containerName}`, { timeout: 15000 }, (err) => {
         if (err) {
           logger.warn({ group: group.name, containerName, err }, 'Graceful stop failed, force killing');

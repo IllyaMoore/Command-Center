@@ -64,6 +64,14 @@ export const MAX_CONCURRENT_CONTAINERS = Math.max(
 
 export const WARNING_MESSAGE =
   'Processing your request \u2014 this may take a few more minutes';
+export const TIMEOUT_MESSAGE_PARTIAL =
+  "The agent didn't finish processing but partial results were sent above";
+export const TIMEOUT_MESSAGE_NO_OUTPUT =
+  "The agent couldn't complete your request within the time limit. Please try again or simplify your request";
+
+export function getTimeoutMessage(hadPartialOutput: boolean): string {
+  return hadPartialOutput ? TIMEOUT_MESSAGE_PARTIAL : TIMEOUT_MESSAGE_NO_OUTPUT;
+}
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

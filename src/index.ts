@@ -10,6 +10,7 @@ import {
   POLL_INTERVAL,
   TRIGGER_PATTERN,
   WARNING_MESSAGE,
+  getTimeoutMessage,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
 import {
@@ -199,6 +200,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     () => {
       whatsapp.sendMessage(chatJid, WARNING_MESSAGE);
     },
+    (hadPartialOutput) => {
+      whatsapp.sendMessage(chatJid, getTimeoutMessage(hadPartialOutput));
+    },
   );
 
   await whatsapp.setTyping(chatJid, false);
@@ -227,6 +231,7 @@ async function runAgent(
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onWarning?: () => void,
+  onTimeout?: (hadPartialOutput: boolean) => void,
 ): Promise<'success' | 'error'> {
   const isMain = group.folder === MAIN_GROUP_FOLDER;
   const sessionId = sessions[group.folder];
@@ -281,6 +286,7 @@ async function runAgent(
       (proc, containerName) => queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
       onWarning,
+      onTimeout,
     );
 
     if (output.newSessionId) {

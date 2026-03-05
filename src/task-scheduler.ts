@@ -9,6 +9,7 @@ import {
   MAIN_GROUP_FOLDER,
   SCHEDULER_POLL_INTERVAL,
   WARNING_MESSAGE,
+  getTimeoutMessage,
 } from './config.js';
 import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
 import {
@@ -159,6 +160,9 @@ async function runTask(
       },
       () => {
         deps.sendMessage(task.chat_jid, WARNING_MESSAGE);
+      },
+      (hadPartialOutput: boolean) => {
+        deps.sendMessage(task.chat_jid, getTimeoutMessage(hadPartialOutput));
       },
     );
 
