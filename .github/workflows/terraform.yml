@@ -4,7 +4,6 @@ name: Terraform
 "on":
   pull_request:
     branches: [staging, master]
-    paths: ["infra/**"]
   push:
     branches: [staging, master]
     paths: ["infra/**"]
@@ -20,10 +19,25 @@ env:
   TF_DIR: "infra"
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    outputs:
+      infra: ${{ steps.check.outputs.infra }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: check
+        with:
+          filters: |
+            infra:
+              - 'infra/**'
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.infra == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -42,7 +56,8 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: [changes]
+    if: github.event_name == 'pull_request' && needs.changes.outputs.infra == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -55,8 +70,11 @@ jobs:
   plan:
     name: Plan
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    needs: [lint]
+    needs: [lint, changes]
+    if: |
+      github.event_name == 'pull_request'
+      && needs.changes.outputs.infra == 'true'
+      && !failure() && !cancelled()
     env:
       PLAN_ENV: ${{ github.base_ref == 'staging' && 'staging' || 'prod' }}
     steps:
