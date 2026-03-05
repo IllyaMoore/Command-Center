@@ -297,19 +297,15 @@ TIME FORMAT: Local time WITHOUT "Z" suffix (e.g., "2026-03-04T15:30:00"). Do NOT
       };
     }
 
-    if (remindAt.getTime() < Date.now()) {
-      return {
-        content: [{ type: 'text' as const, text: `Time "${args.remind_at}" is in the past. Please provide a future time.` }],
-        isError: true,
-      };
-    }
+    // No past-time check here — container runs UTC but remind_at is naive local time.
+    // The host IPC handler does proper timezone conversion.
 
     const targetJid = isMain && args.target_group_jid ? args.target_group_jid : chatJid;
 
     const data = {
       type: 'set_reminder',
       reminderText: args.text,
-      remind_at: args.remind_at,
+      remindAt: args.remind_at,
       targetJid,
       chatJid,
       groupFolder,

@@ -17,6 +17,7 @@ const REMINDER_WINDOW_MIN_MS = 4 * 60 * 1000; // 4 minutes
 const REMINDER_WINDOW_MAX_MS = 9 * 60 * 1000; // 9 minutes (> poll interval, guarantees catch)
 
 let reminderLoopRunning = false;
+let calendarFailCount = 0;
 
 export function startMeetingReminderLoop(deps: ReminderDeps): void {
   if (reminderLoopRunning) {
@@ -26,6 +27,8 @@ export function startMeetingReminderLoop(deps: ReminderDeps): void {
   reminderLoopRunning = true;
   logger.info('Meeting reminder loop started');
 
+  // In-memory only — resets on restart. Duplicate reminder possible if restart
+  // happens within 9 min of meeting start. Acceptable trade-off vs DB complexity.
   const remindedEventIds = new Set<string>();
   let lastClearDate = new Date().toDateString();
 
@@ -68,10 +71,13 @@ async function checkCalendarReminders(
   if (authStatus !== 'connected') return;
 
   const events = await getCalendarEventsLive().catch((err: unknown) => {
-    logger.warn({ err }, 'Failed to fetch calendar events for reminders');
+    calendarFailCount++;
+    const logFn = calendarFailCount >= 3 ? logger.error.bind(logger) : logger.warn.bind(logger);
+    logFn({ err, consecutiveFailures: calendarFailCount }, 'Failed to fetch calendar events for reminders');
     return null;
   });
   if (!events) return;
+  calendarFailCount = 0;
 
   const now = Date.now();
 
@@ -107,6 +113,14 @@ async function checkAdHocReminders(deps: ReminderDeps): Promise<void> {
   const dueReminders = getDueReminders();
 
   for (const reminder of dueReminders) {
+    // Expire reminders that are 1h+ overdue (permanent send failure protection)
+    const remindAtMs = new Date(reminder.remind_at).getTime();
+    if (Date.now() - remindAtMs > 60 * 60 * 1000) {
+      markReminderSent(reminder.id);
+      logger.warn({ reminderId: reminder.id }, 'Reminder expired after repeated failures');
+      continue;
+    }
+
     const text = `*Reminder*\n${reminder.text}`;
 
     try {

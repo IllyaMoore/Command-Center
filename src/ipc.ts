@@ -207,7 +207,7 @@ export async function processTaskIpc(
     targetJid?: string;
     // For set_reminder
     reminderText?: string;
-    remind_at?: string;
+    remindAt?: string;
     // For register_group
     jid?: string;
     name?: string;
@@ -420,7 +420,7 @@ export async function processTaskIpc(
       break;
 
     case 'set_reminder': {
-      if (!data.reminderText || !data.remind_at || !data.chatJid) {
+      if (!data.reminderText || !data.remindAt || !data.chatJid) {
         logger.warn({ data }, 'Invalid set_reminder: missing required fields');
         break;
       }
@@ -446,30 +446,36 @@ export async function processTaskIpc(
       const tz = getTimezone();
       let remindAtMs: number;
       try {
+        // Validate timezone first — an invalid IANA string would silently break all reminders
+        Intl.DateTimeFormat('en-US', { timeZone: tz });
+      } catch (tzErr) {
+        logger.error({ tz, err: tzErr }, 'Invalid timezone configured — cannot process reminders');
+        break;
+      }
+      try {
         // Append 'Z' so the naive timestamp is treated as UTC components,
         // making the offset math correct regardless of server's local TZ.
-        const parsed = new Date(data.remind_at + 'Z');
+        const parsed = new Date(data.remindAt + 'Z');
         if (isNaN(parsed.getTime())) throw new Error('unparseable');
 
-        // Compute TZ offset: format "now" in user TZ via formatToParts, reconstruct
-        // as if it were UTC, and diff against real UTC to get the offset.
-        const nowUtc = Date.now();
+        // Compute TZ offset at the REMINDER's time (not now) to handle DST correctly.
+        // Format the reminder time in user TZ, reconstruct as UTC, diff to get offset.
         const parts = new Intl.DateTimeFormat('en-US', {
           timeZone: tz,
           year: 'numeric', month: '2-digit', day: '2-digit',
           hour: '2-digit', minute: '2-digit', second: '2-digit',
           hour12: false,
-        }).formatToParts(new Date(nowUtc));
+        }).formatToParts(parsed);
 
         const p = (type: string): string =>
           parts.find((v) => v.type === type)?.value ?? '0';
-        const recomposed = `${p('year')}-${p('month')}-${p('day')}T${p('hour')}:${p('minute')}:${p('second')}`;
-        const tzOffsetMs = new Date(recomposed).getTime() - nowUtc;
+        const recomposed = `${p('year')}-${p('month')}-${p('day')}T${p('hour')}:${p('minute')}:${p('second')}Z`;
+        const tzOffsetMs = new Date(recomposed).getTime() - parsed.getTime();
 
         // Apply inverse offset: user says "15:00 local" → subtract offset to get UTC
         remindAtMs = parsed.getTime() - tzOffsetMs;
-      } catch {
-        logger.warn({ remind_at: data.remind_at }, 'Invalid remind_at timestamp');
+      } catch (err) {
+        logger.warn({ remind_at: data.remindAt, tz, err }, 'Invalid remind_at timestamp');
         break;
       }
 
@@ -484,7 +490,7 @@ export async function processTaskIpc(
       });
 
       logger.info(
-        { reminderId, sourceGroup, remind_at: data.remind_at },
+        { reminderId, sourceGroup, remind_at: data.remindAt },
         'Reminder created via IPC',
       );
       break;
