@@ -29,3 +29,8 @@ variable "volume_size" {
   type        = number
   default     = 30
 }
+
+variable "repo_url" {
+  description = "Git repository URL for NanoClaw"
+  type        = string
+}
