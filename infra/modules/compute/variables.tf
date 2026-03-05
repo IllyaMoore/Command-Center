@@ -33,5 +33,4 @@ variable "volume_size" {
 variable "repo_url" {
   description = "Git repository URL for NanoClaw"
   type        = string
-  default     = "https://github.com/StoryFunnels/command-center.git"
 }

@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap 'echo "FATAL: bootstrap failed at line $LINENO (exit $?)" >&2' ERR
 install -m 600 /dev/null /var/log/nanoclaw-bootstrap.log
 exec > >(tee /var/log/nanoclaw-bootstrap.log) 2>&1
 
@@ -34,6 +35,7 @@ echo "--- Installing Tailscale ---"
 dnf config-manager --add-repo https://pkgs.tailscale.com/stable/amazon-linux/2023/tailscale.repo
 dnf install -y tailscale
 systemctl enable --now tailscaled
+timeout 30 bash -c 'until tailscale status 2>/dev/null; do sleep 1; done'
 
 TS_AUTH_KEY=$$(ssm_get "tailscale-auth-key")
 TS_AUTHKEY="$${TS_AUTH_KEY}" tailscale up --hostname="nanoclaw-$${ENVIRONMENT}"
@@ -56,29 +58,34 @@ usermod -aG docker nanoclaw
 
 # --- 7. Clone repo (use git extraheader to keep token out of URL / process args) ---
 echo "--- Cloning repository ---"
-OAUTH_TOKEN=$$(ssm_get "claude-code-oauth-token")
-AUTH_HEADER=$$(echo -n "x-access-token:$${OAUTH_TOKEN}" | base64)
+GITHUB_TOKEN=$$(ssm_get "github-access-token")
+AUTH_HEADER=$$(echo -n "x-access-token:$${GITHUB_TOKEN}" | base64 -w 0)
 git clone --config "http.https://github.com/.extraheader=Authorization: Basic $${AUTH_HEADER}" "$${REPO_URL}" "$${APP_DIR}"
-unset AUTH_HEADER
-chown -R nanoclaw:nanoclaw /opt/nanoclaw
+unset AUTH_HEADER GITHUB_TOKEN
 
-# --- 8. Build ---
-echo "--- Building application ---"
-sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm install && npm run build"
-
-# --- 9. Write .env from SSM parameters (reuse cached OAUTH_TOKEN) ---
+# --- 8. Write .env from SSM parameters (before npm install to keep secrets out of build env) ---
 echo "--- Writing .env from SSM ---"
-cat > "$${APP_DIR}/.env" <<ENV
 ANTHROPIC_API_KEY=$$(ssm_get "anthropic-api-key")
-CLAUDE_CODE_OAUTH_TOKEN=$${OAUTH_TOKEN}
 TELEGRAM_BOT_TOKEN=$$(ssm_get "telegram-bot-token")
 ASSISTANT_NAME=$$(ssm_get "assistant-name")
 ASSISTANT_HAS_OWN_NUMBER=$$(ssm_get "assistant-has-own-number")
+
+cat > "$${APP_DIR}/.env" <<ENV
+ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY}
+TELEGRAM_BOT_TOKEN=$${TELEGRAM_BOT_TOKEN}
+ASSISTANT_NAME=$${ASSISTANT_NAME}
+ASSISTANT_HAS_OWN_NUMBER=$${ASSISTANT_HAS_OWN_NUMBER}
 DEV_MODE=false
 ENV
-unset OAUTH_TOKEN
+unset ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN ASSISTANT_NAME ASSISTANT_HAS_OWN_NUMBER
+
+chown -R nanoclaw:nanoclaw /opt/nanoclaw
 chown nanoclaw:nanoclaw "$${APP_DIR}/.env"
 chmod 600 "$${APP_DIR}/.env"
+
+# --- 9. Build ---
+echo "--- Building application ---"
+sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && npm run build"
 
 # --- 10. Write systemd service (see launchd/com.nanoclaw.plist for macOS equivalent) ---
 echo "--- Creating systemd service ---"
@@ -105,5 +112,12 @@ SERVICE
 echo "--- Starting NanoClaw service ---"
 systemctl daemon-reload
 systemctl enable --now nanoclaw
+
+sleep 5
+if ! systemctl is-active --quiet nanoclaw; then
+  echo "ERROR: NanoClaw failed to start"
+  journalctl -u nanoclaw --no-pager -n 30
+  exit 1
+fi
 
 echo "=== NanoClaw bootstrap complete ==="
