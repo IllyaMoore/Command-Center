@@ -8,6 +8,7 @@ import {
   IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
   SCHEDULER_POLL_INTERVAL,
+  WARNING_MESSAGE,
 } from './config.js';
 import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
 import {
@@ -155,6 +156,9 @@ async function runTask(
         if (streamedOutput.status === 'error') {
           error = streamedOutput.error || 'Unknown error';
         }
+      },
+      () => {
+        deps.sendMessage(task.chat_jid, WARNING_MESSAGE);
       },
     );
 
