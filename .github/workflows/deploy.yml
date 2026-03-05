@@ -66,7 +66,7 @@ jobs:
         env:
           INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
         run: |
-          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin staging && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","echo deploy-complete"]}'
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin staging && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -75,6 +75,7 @@ jobs:
             --timeout-seconds 300 \
             --query "Command.CommandId" \
             --output text)
+          [ -n "$COMMAND_ID" ] || { echo "ERROR: command_id is empty"; exit 1; }
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
           echo "Command ID: $COMMAND_ID"
 
@@ -91,7 +92,15 @@ jobs:
               --command-id "$COMMAND_ID" \
               --instance-id "$INSTANCE_ID" \
               --query "Status" \
-              --output text 2>/dev/null || echo "Pending")
+              --output text 2>/tmp/poll_err) || {
+              ERR=$(cat /tmp/poll_err)
+              if echo "$ERR" | grep -q "InvocationDoesNotExist"; then
+                STATUS="Pending"
+              else
+                echo "WARNING: poll error: $ERR"
+                STATUS="Pending"
+              fi
+            }
 
             echo "Status: $STATUS (${SECONDS_WAITED}s elapsed)"
 
@@ -160,7 +169,7 @@ jobs:
         env:
           INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
         run: |
-          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin master && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","echo deploy-complete"]}'
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin master && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -169,6 +178,7 @@ jobs:
             --timeout-seconds 300 \
             --query "Command.CommandId" \
             --output text)
+          [ -n "$COMMAND_ID" ] || { echo "ERROR: command_id is empty"; exit 1; }
           echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
           echo "Command ID: $COMMAND_ID"
 
@@ -185,7 +195,15 @@ jobs:
               --command-id "$COMMAND_ID" \
               --instance-id "$INSTANCE_ID" \
               --query "Status" \
-              --output text 2>/dev/null || echo "Pending")
+              --output text 2>/tmp/poll_err) || {
+              ERR=$(cat /tmp/poll_err)
+              if echo "$ERR" | grep -q "InvocationDoesNotExist"; then
+                STATUS="Pending"
+              else
+                echo "WARNING: poll error: $ERR"
+                STATUS="Pending"
+              fi
+            }
 
             echo "Status: $STATUS (${SECONDS_WAITED}s elapsed)"
 
