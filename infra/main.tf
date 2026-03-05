@@ -40,4 +40,5 @@ module "compute" {
   environment        = var.environment
   vpc_id             = module.networking.vpc_id
   private_subnet_ids = module.networking.private_subnet_ids
+  repo_url           = var.repo_url
 }

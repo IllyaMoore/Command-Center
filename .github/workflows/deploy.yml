@@ -1,0 +1,243 @@
+---
+name: Deploy
+
+"on":
+  push:
+    branches: [staging, master]
+    paths:
+      - "src/**"
+      - "container/**"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: "us-east-2"
+  NODE_VERSION: "22"
+  APP_DIR: "/opt/nanoclaw/app"
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+
+  deploy-staging:
+    name: Deploy (staging)
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/staging'
+    environment: staging
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: >-
+            arn:aws:iam::796196972655:role/nanoclaw-github-actions-terraform
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get instance ID from SSM
+        id: ssm
+        run: |
+          INSTANCE_ID=$(aws ssm get-parameter \
+            --name "/nanoclaw/staging/instance-id" \
+            --query "Parameter.Value" \
+            --output text)
+          [ -n "$INSTANCE_ID" ] || { echo "ERROR: instance_id is empty"; exit 1; }
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "Instance ID: $INSTANCE_ID"
+
+      - name: Deploy via SSM Run Command
+        id: deploy
+        env:
+          INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
+        run: |
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin staging && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy staging from ${GITHUB_SHA}" \
+            --parameters "$COMMANDS" \
+            --timeout-seconds 300 \
+            --query "Command.CommandId" \
+            --output text)
+          [ -n "$COMMAND_ID" ] || { echo "ERROR: command_id is empty"; exit 1; }
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "Command ID: $COMMAND_ID"
+
+      - name: Wait for deployment
+        env:
+          COMMAND_ID: ${{ steps.deploy.outputs.command_id }}
+          INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
+        run: |
+          echo "Waiting for SSM command $COMMAND_ID..."
+          SECONDS_WAITED=0
+          TIMEOUT=360
+          while [ $SECONDS_WAITED -lt $TIMEOUT ]; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" \
+              --output text 2>/tmp/poll_err) || {
+              ERR=$(cat /tmp/poll_err)
+              if echo "$ERR" | grep -q "InvocationDoesNotExist"; then
+                STATUS="Pending"
+              else
+                echo "WARNING: poll error: $ERR"
+                STATUS="Pending"
+              fi
+            }
+
+            echo "Status: $STATUS (${SECONDS_WAITED}s elapsed)"
+
+            case "$STATUS" in
+              Success)
+                echo "=== Deploy succeeded ==="
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardOutputContent" \
+                  --output text
+                exit 0
+                ;;
+              Failed|TimedOut|Cancelled|AccessDenied|DeliveryTimedOut|Undeliverable)
+                echo "=== Deploy FAILED (status: $STATUS) ==="
+                echo "--- STDOUT ---"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardOutputContent" \
+                  --output text || true
+                echo "--- STDERR ---"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardErrorContent" \
+                  --output text || true
+                exit 1
+                ;;
+              *)
+                sleep 10
+                SECONDS_WAITED=$((SECONDS_WAITED + 10))
+                ;;
+            esac
+          done
+          echo "ERROR: Timed out after ${TIMEOUT}s waiting for SSM command"
+          exit 1
+
+  deploy-prod:
+    name: Deploy (prod)
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/master'
+    environment: production
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: >-
+            arn:aws:iam::796196972655:role/nanoclaw-github-actions-terraform
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get instance ID from SSM
+        id: ssm
+        run: |
+          INSTANCE_ID=$(aws ssm get-parameter \
+            --name "/nanoclaw/prod/instance-id" \
+            --query "Parameter.Value" \
+            --output text)
+          [ -n "$INSTANCE_ID" ] || { echo "ERROR: instance_id is empty"; exit 1; }
+          echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+          echo "Instance ID: $INSTANCE_ID"
+
+      - name: Deploy via SSM Run Command
+        id: deploy
+        env:
+          INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
+        run: |
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin master && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy prod from ${GITHUB_SHA}" \
+            --parameters "$COMMANDS" \
+            --timeout-seconds 300 \
+            --query "Command.CommandId" \
+            --output text)
+          [ -n "$COMMAND_ID" ] || { echo "ERROR: command_id is empty"; exit 1; }
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "Command ID: $COMMAND_ID"
+
+      - name: Wait for deployment
+        env:
+          COMMAND_ID: ${{ steps.deploy.outputs.command_id }}
+          INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
+        run: |
+          echo "Waiting for SSM command $COMMAND_ID..."
+          SECONDS_WAITED=0
+          TIMEOUT=360
+          while [ $SECONDS_WAITED -lt $TIMEOUT ]; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --query "Status" \
+              --output text 2>/tmp/poll_err) || {
+              ERR=$(cat /tmp/poll_err)
+              if echo "$ERR" | grep -q "InvocationDoesNotExist"; then
+                STATUS="Pending"
+              else
+                echo "WARNING: poll error: $ERR"
+                STATUS="Pending"
+              fi
+            }
+
+            echo "Status: $STATUS (${SECONDS_WAITED}s elapsed)"
+
+            case "$STATUS" in
+              Success)
+                echo "=== Deploy succeeded ==="
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardOutputContent" \
+                  --output text
+                exit 0
+                ;;
+              Failed|TimedOut|Cancelled|AccessDenied|DeliveryTimedOut|Undeliverable)
+                echo "=== Deploy FAILED (status: $STATUS) ==="
+                echo "--- STDOUT ---"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardOutputContent" \
+                  --output text || true
+                echo "--- STDERR ---"
+                aws ssm get-command-invocation \
+                  --command-id "$COMMAND_ID" \
+                  --instance-id "$INSTANCE_ID" \
+                  --query "StandardErrorContent" \
+                  --output text || true
+                exit 1
+                ;;
+              *)
+                sleep 10
+                SECONDS_WAITED=$((SECONDS_WAITED + 10))
+                ;;
+            esac
+          done
+          echo "ERROR: Timed out after ${TIMEOUT}s waiting for SSM command"
+          exit 1

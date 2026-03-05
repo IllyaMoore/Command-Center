@@ -8,6 +8,7 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 
 - Repo: `StoryFunnels/command-center`
 - Node.js >= 20, npm
+- Auth: `ANTHROPIC_API_KEY` only. Do NOT use `CLAUDE_CODE_OAUTH_TOKEN` — OAuth accounts get banned.
 
 ## Key Files
 
