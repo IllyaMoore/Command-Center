@@ -183,12 +183,12 @@ resource "aws_ssm_parameter" "assistant_has_own_number" {
   lifecycle { ignore_changes = [value] }
 }
 
-resource "aws_ssm_parameter" "claude_code_oauth_token" {
-  name  = "/nanoclaw/${var.environment}/claude-code-oauth-token"
+resource "aws_ssm_parameter" "github_access_token" {
+  name  = "/nanoclaw/${var.environment}/github-access-token"
   type  = "SecureString"
   value = "CHANGE_ME"
 
-  tags = { Name = "${local.name_prefix}-claude-code-oauth-token" }
+  tags = { Name = "${local.name_prefix}-github-access-token" }
 
   lifecycle { ignore_changes = [value] }
 }
