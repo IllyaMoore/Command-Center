@@ -27,7 +27,7 @@ dnf install -y 'dnf-command(config-manager)'
 
 # --- 2. Install Node.js 22 (NodeSource) ---
 echo "--- Installing Node.js 22 ---"
-dnf install -y https://rpm.nodesource.com/pub_22.x/nodistro/repo/nodesource-release-nodistro-1.noarch.rpm
+curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
 dnf install -y nodejs
 
 # --- 3. Install Tailscale (use TS_AUTHKEY env var to keep secret out of process args) ---
@@ -35,7 +35,8 @@ echo "--- Installing Tailscale ---"
 dnf config-manager --add-repo https://pkgs.tailscale.com/stable/amazon-linux/2023/tailscale.repo
 dnf install -y tailscale
 systemctl enable --now tailscaled
-timeout 30 bash -c 'until tailscale status 2>/dev/null; do sleep 1; done'
+# Wait for tailscaled socket to be ready (status fails before auth, so just wait for daemon)
+timeout 30 bash -c 'until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 1; done'
 
 TS_AUTH_KEY=$$(ssm_get "tailscale-auth-key")
 TS_AUTHKEY="$${TS_AUTH_KEY}" tailscale up --hostname="nanoclaw-$${ENVIRONMENT}"
@@ -69,17 +70,19 @@ unset AUTH_HEADER GITHUB_TOKEN
 echo "--- Writing .env from SSM ---"
 ANTHROPIC_API_KEY=$$(ssm_get "anthropic-api-key")
 TELEGRAM_BOT_TOKEN=$$(ssm_get "telegram-bot-token")
+ATLASSIAN_BASIC_TOKEN=$$(ssm_get "atlassian-basic-token")
 ASSISTANT_NAME=$$(ssm_get "assistant-name")
 ASSISTANT_HAS_OWN_NUMBER=$$(ssm_get "assistant-has-own-number")
 
 cat > "$${APP_DIR}/.env" <<ENV
 ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY}
 TELEGRAM_BOT_TOKEN=$${TELEGRAM_BOT_TOKEN}
+ATLASSIAN_BASIC_TOKEN=$${ATLASSIAN_BASIC_TOKEN}
 ASSISTANT_NAME=$${ASSISTANT_NAME}
 ASSISTANT_HAS_OWN_NUMBER=$${ASSISTANT_HAS_OWN_NUMBER}
 DEV_MODE=false
 ENV
-unset ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN ASSISTANT_NAME ASSISTANT_HAS_OWN_NUMBER
+unset ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN ATLASSIAN_BASIC_TOKEN ASSISTANT_NAME ASSISTANT_HAS_OWN_NUMBER
 
 chown -R nanoclaw:nanoclaw /opt/nanoclaw
 chown nanoclaw:nanoclaw "$${APP_DIR}/.env"

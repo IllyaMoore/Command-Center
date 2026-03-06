@@ -155,7 +155,7 @@ export async function runContainerAgent(
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onWarning?: () => void,
-  onTimeout?: (hadPartialOutput: boolean) => void,
+  onTimeout?: () => void,
 ): Promise<ContainerOutput> {
   if (DEV_MODE) {
     logger.info(
@@ -532,6 +532,7 @@ export async function runContainerAgent(
     agentProcess.on('error', (err) => {
       processExited = true;
       clearTimeout(timeout);
+      if (warningTimer) clearTimeout(warningTimer);
       logger.error({ group: group.name, processName, error: err }, 'Agent spawn error');
       resolve({
         status: 'error',
