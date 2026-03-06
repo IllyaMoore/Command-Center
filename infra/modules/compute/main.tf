@@ -193,6 +193,16 @@ resource "aws_ssm_parameter" "github_access_token" {
   lifecycle { ignore_changes = [value] }
 }
 
+resource "aws_ssm_parameter" "atlassian_basic_token" {
+  name  = "/nanoclaw/${var.environment}/atlassian-basic-token"
+  type  = "SecureString"
+  value = "CHANGE_ME"
+
+  tags = { Name = "${local.name_prefix}-atlassian-basic-token" }
+
+  lifecycle { ignore_changes = [value] }
+}
+
 # No ignore_changes - Terraform must update this when instance is replaced
 resource "aws_ssm_parameter" "instance_id" {
   name  = "/nanoclaw/${var.environment}/instance-id"
