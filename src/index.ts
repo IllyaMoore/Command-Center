@@ -198,10 +198,14 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       }
     },
     () => {
-      whatsapp.sendMessage(chatJid, WARNING_MESSAGE);
+      whatsapp.sendMessage(chatJid, WARNING_MESSAGE).catch((err) => {
+        logger.warn({ chatJid, err }, 'Failed to send warning notification');
+      });
     },
     (hadPartialOutput) => {
-      whatsapp.sendMessage(chatJid, getTimeoutMessage(hadPartialOutput));
+      whatsapp.sendMessage(chatJid, getTimeoutMessage(hadPartialOutput)).catch((err) => {
+        logger.warn({ chatJid, err }, 'Failed to send timeout notification');
+      });
     },
   );
 

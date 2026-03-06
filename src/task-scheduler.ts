@@ -159,10 +159,14 @@ async function runTask(
         }
       },
       () => {
-        deps.sendMessage(task.chat_jid, WARNING_MESSAGE);
+        deps.sendMessage(task.chat_jid, WARNING_MESSAGE).catch((err) => {
+          logger.warn({ taskId: task.id, err }, 'Failed to send warning notification');
+        });
       },
       (hadPartialOutput: boolean) => {
-        deps.sendMessage(task.chat_jid, getTimeoutMessage(hadPartialOutput));
+        deps.sendMessage(task.chat_jid, getTimeoutMessage(hadPartialOutput)).catch((err) => {
+          logger.warn({ taskId: task.id, err }, 'Failed to send timeout notification');
+        });
       },
     );
 

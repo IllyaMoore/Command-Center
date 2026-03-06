@@ -392,7 +392,6 @@ export async function runContainerAgent(
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, containerName }, 'Container timeout, stopping gracefully');
-      if (onTimeout) onTimeout(hadStreamingOutput);
       exec(`docker stop ${containerName}`, { timeout: 15000 }, (err) => {
         if (err) {
           logger.warn({ group: group.name, containerName, err }, 'Graceful stop failed, force killing');
@@ -465,6 +464,8 @@ export async function runContainerAgent(
           { group: group.name, containerName, duration, code },
           'Container timed out with no output',
         );
+
+        if (onTimeout) onTimeout(false);
 
         resolve({
           status: 'error',
@@ -619,6 +620,7 @@ export async function runContainerAgent(
 
     container.on('error', (err) => {
       clearTimeout(timeout);
+      if (warningTimer) clearTimeout(warningTimer);
       logger.error({ group: group.name, containerName, error: err }, 'Container spawn error');
       resolve({
         status: 'error',
