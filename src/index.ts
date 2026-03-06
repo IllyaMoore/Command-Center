@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+
 import fs from 'fs';
 import path from 'path';
 
@@ -411,46 +411,6 @@ function recoverPendingMessages(): void {
   }
 }
 
-function ensureDockerRunning(): void {
-  try {
-    execSync('docker info', { stdio: 'pipe', timeout: 10000 });
-    logger.debug('Docker daemon is running');
-  } catch {
-    logger.error('Docker daemon is not running');
-    console.error('\n╔════════════════════════════════════════════════════════════════╗');
-    console.error('║  FATAL: Docker is not running                                  ║');
-    console.error('║                                                                ║');
-    console.error('║  Agents cannot run without Docker. To fix:                     ║');
-    console.error('║  macOS: Start Docker Desktop                                   ║');
-    console.error('║  Linux: sudo systemctl start docker                            ║');
-    console.error('║  Windows: Start Docker Desktop                                 ║');
-    console.error('║                                                                ║');
-    console.error('║  Install from: https://docker.com/products/docker-desktop      ║');
-    console.error('╚════════════════════════════════════════════════════════════════╝\n');
-    throw new Error('Docker is required but not running');
-  }
-
-  // Kill and clean up orphaned NanoClaw containers from previous runs
-  try {
-    const output = execSync('docker ps --format "{{.Names}}"', {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      encoding: 'utf-8',
-    });
-    const orphans = output.split('\n')
-      .map((name) => name.trim())
-      .filter((name) => name.startsWith('nanoclaw-'));
-    for (const name of orphans) {
-      try {
-        execSync(`docker stop ${name}`, { stdio: 'pipe' });
-      } catch { /* already stopped */ }
-    }
-    if (orphans.length > 0) {
-      logger.info({ count: orphans.length, names: orphans }, 'Stopped orphaned containers');
-    }
-  } catch (err) {
-    logger.warn({ err }, 'Failed to clean up orphaned containers');
-  }
-}
 
 async function main(): Promise<void> {
   initDatabase();
@@ -460,19 +420,10 @@ async function main(): Promise<void> {
   // Share queue with dashboard API
   setDashboardQueue(queue);
 
-  // Start dashboard server (before Docker check so it's always available)
+  // Start dashboard server
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
   startDashboardServer(dashboardPort);
 
-  // Check Docker - if not running, dashboard still works but agents won't
-  try {
-    ensureDockerRunning();
-  } catch (err) {
-    logger.warn('Docker not running - dashboard available but agents disabled');
-    logger.warn('Start Docker Desktop to enable full functionality');
-    // Keep running with just the dashboard
-    return;
-  }
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {

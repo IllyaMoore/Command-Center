@@ -442,7 +442,7 @@ export async function processTaskIpc(
       }
 
       // Parse remind_at as local time in the user's configured timezone.
-      // Agents in Docker (UTC) send times without offset — interpret in user TZ.
+      // Agents may send times without offset — interpret in user TZ.
       const tz = getTimezone();
       let remindAtMs: number;
       try {

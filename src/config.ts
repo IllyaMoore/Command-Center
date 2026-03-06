@@ -20,11 +20,11 @@ export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 export const REMINDER_POLL_INTERVAL = 300000;
 
-// Absolute paths needed for container mounts
+// Absolute paths
 const PROJECT_ROOT = process.cwd();
 const HOME_DIR = process.env.HOME || '/Users/user';
 
-// Mount security: allowlist stored OUTSIDE project root, never mounted into containers
+// Mount security: allowlist stored OUTSIDE project root, never exposed to agents
 export const MOUNT_ALLOWLIST_PATH = path.join(
   HOME_DIR,
   '.config',
@@ -36,8 +36,13 @@ export const GROUPS_DIR = path.resolve(PROJECT_ROOT, 'groups');
 export const DATA_DIR = path.resolve(PROJECT_ROOT, 'data');
 export const MAIN_GROUP_FOLDER = 'ceo';
 
-export const CONTAINER_IMAGE =
-  process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
+export const AGENT_RUNNER_PATH = path.resolve(
+  PROJECT_ROOT,
+  'container',
+  'agent-runner',
+  'dist',
+  'index.js',
+);
 
 export const CONTAINER_TIMEOUT = parseInt(
   process.env.CONTAINER_TIMEOUT || '600000',
@@ -56,7 +61,7 @@ export const IPC_POLL_INTERVAL = 1000;
 export const IDLE_TIMEOUT = parseInt(
   process.env.IDLE_TIMEOUT || '30000',
   10,
-); // 30sec default — how long to keep container alive after last result
+); // 30sec default — how long to keep agent process alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,

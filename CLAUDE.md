@@ -4,11 +4,11 @@ Personal Claude assistant. See [README.md](README.md) for philosophy and setup. 
 
 ## Quick Context
 
-Single Node.js process that connects to WhatsApp, routes messages to Claude Agent SDK running in Docker containers. Each group has isolated filesystem and memory.
+Single Node.js process that connects to WhatsApp, routes messages to Claude Agent SDK running as child processes. Each group has isolated filesystem and memory.
 
 - Repo: `StoryFunnels/command-center`
 - Node.js >= 20, npm
-- Auth: `ANTHROPIC_API_KEY` only. Do NOT use `CLAUDE_CODE_OAUTH_TOKEN` — OAuth accounts get banned.
+- Auth: `ANTHROPIC_API_KEY` only. You're NOT allowed `CLAUDE_CODE_OAUTH_TOKEN`
 
 ## Key Files
 
@@ -19,10 +19,11 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 | `src/ipc.ts` | IPC watcher and task processing |
 | `src/router.ts` | Message formatting and outbound routing |
 | `src/config.ts` | Trigger pattern, paths, intervals |
-| `src/container-runner.ts` | Spawns agent containers with mounts |
+| `src/container-runner.ts` | Spawns agent child processes |
 | `src/task-scheduler.ts` | Runs scheduled tasks |
 | `src/db.ts` | SQLite operations |
 | `groups/{name}/CLAUDE.md` | Per-group memory (isolated) |
+| `container/agent-runner/` | Agent-side code (runs as child process) |
 | `container/skills/agent-browser.md` | Browser automation tool (available to all agents via Bash) |
 | `infra/README.md` | Infrastructure docs, architecture, budget |
 | `.github/workflows/terraform.yml` | CI pipeline: lint, plan, apply |
@@ -64,10 +65,9 @@ Run commands directly—don't tell the user to run them.
 
 ```bash
 npm run dev          # Run with hot reload
-npm run build        # Compile TypeScript
+npm run build        # Compile TypeScript (host + agent-runner)
 npm test             # Run tests (vitest)
 npm run format       # Format with prettier
-./container/build.sh # Rebuild agent container
 ```
 
 Service management:
@@ -75,14 +75,3 @@ Service management:
 launchctl load ~/Library/LaunchAgents/com.nanoclaw.plist
 launchctl unload ~/Library/LaunchAgents/com.nanoclaw.plist
 ```
-
-## Container Build Cache
-
-Docker caches build layers aggressively. To force a clean rebuild:
-
-```bash
-docker builder prune -f
-./container/build.sh
-```
-
-Always verify after rebuild: `docker run -i --rm --entrypoint wc nanoclaw-agent:latest -l /app/src/index.ts`

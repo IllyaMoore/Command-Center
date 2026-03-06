@@ -114,7 +114,7 @@ function main() {
   console.log('');
   console.log('Next steps:');
   console.log('  1. Add ATLASSIAN_BASIC_TOKEN to .env (base64 of email:api_token)');
-  console.log('  2. Rebuild container: docker builder prune -f && ./container/build.sh');
+  console.log('  2. Rebuild: npm run build');
   console.log('  3. Restart: npm run dev');
   console.log(`  4. Test: send "${TRIGGER} What issues are in Jira?" to the registered group`);
 }

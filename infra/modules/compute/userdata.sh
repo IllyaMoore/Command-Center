@@ -46,24 +46,26 @@ echo "--- Installing gh CLI ---"
 dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
 dnf install -y gh
 
-# --- 5. Install Docker ---
-echo "--- Installing Docker ---"
-dnf install -y docker
-systemctl enable --now docker
+# --- 5. Install Chromium (for agent-browser skill) ---
+echo "--- Installing Chromium ---"
+dnf install -y chromium
 
-# --- 6. Create nanoclaw system user ---
+# --- 6. Install Claude Code CLI (used by agent-runner) ---
+echo "--- Installing Claude Code CLI ---"
+npm install -g @anthropic-ai/claude-code
+
+# --- 7. Create nanoclaw system user ---
 echo "--- Creating nanoclaw user ---"
 useradd -r -m -d /opt/nanoclaw -s /bin/bash nanoclaw
-usermod -aG docker nanoclaw
 
-# --- 7. Clone repo (use git extraheader to keep token out of URL / process args) ---
+# --- 8. Clone repo (use git extraheader to keep token out of URL / process args) ---
 echo "--- Cloning repository ---"
 GITHUB_TOKEN=$$(ssm_get "github-access-token")
 AUTH_HEADER=$$(echo -n "x-access-token:$${GITHUB_TOKEN}" | base64 -w 0)
 git clone --config "http.https://github.com/.extraheader=Authorization: Basic $${AUTH_HEADER}" "$${REPO_URL}" "$${APP_DIR}"
 unset AUTH_HEADER GITHUB_TOKEN
 
-# --- 8. Write .env from SSM parameters (before npm install to keep secrets out of build env) ---
+# --- 9. Write .env from SSM parameters (before npm install to keep secrets out of build env) ---
 echo "--- Writing .env from SSM ---"
 ANTHROPIC_API_KEY=$$(ssm_get "anthropic-api-key")
 TELEGRAM_BOT_TOKEN=$$(ssm_get "telegram-bot-token")
@@ -83,11 +85,11 @@ chown -R nanoclaw:nanoclaw /opt/nanoclaw
 chown nanoclaw:nanoclaw "$${APP_DIR}/.env"
 chmod 600 "$${APP_DIR}/.env"
 
-# --- 9. Build ---
+# --- 10. Build (host app + agent-runner) ---
 echo "--- Building application ---"
-sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && npm run build"
+sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && cd container/agent-runner && npm ci && cd ../.. && npm run build"
 
-# --- 10. Write systemd service (see launchd/com.nanoclaw.plist for macOS equivalent) ---
+# --- 11. Write systemd service ---
 echo "--- Creating systemd service ---"
 cat > /etc/systemd/system/nanoclaw.service <<SERVICE
 [Unit]
@@ -108,7 +110,7 @@ EnvironmentFile=$${APP_DIR}/.env
 WantedBy=multi-user.target
 SERVICE
 
-# --- 11. Enable and start ---
+# --- 12. Enable and start ---
 echo "--- Starting NanoClaw service ---"
 systemctl daemon-reload
 systemctl enable --now nanoclaw
