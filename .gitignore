@@ -76,3 +76,5 @@ agents-sdk-docs
 
 # temporary files
 \tmp
+
+/infra/SessionManagerPluginSetup.exe

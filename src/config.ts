@@ -38,10 +38,16 @@ export const MAIN_GROUP_FOLDER = 'ceo';
 
 export const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || 'nanoclaw-agent:latest';
+
 export const CONTAINER_TIMEOUT = parseInt(
-  process.env.CONTAINER_TIMEOUT || '1800000',
+  process.env.CONTAINER_TIMEOUT || '600000',
   10,
-);
+); // 10min hard kill
+export const WARNING_TIMEOUT = parseInt(
+  process.env.WARNING_TIMEOUT || '300000',
+  10,
+); // 5min warning
+
 export const CONTAINER_MAX_OUTPUT_SIZE = parseInt(
   process.env.CONTAINER_MAX_OUTPUT_SIZE || '10485760',
   10,
@@ -55,6 +61,11 @@ export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,
 );
+
+export const WARNING_MESSAGE =
+  'Processing your request \u2014 this may take a few more minutes';
+export const TIMEOUT_MESSAGE =
+  "The agent couldn't complete your request within the time limit. Please try again or simplify your request";
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
