@@ -6,16 +6,17 @@ import { PassThrough } from 'stream';
 const OUTPUT_START_MARKER = '---NANOCLAW_OUTPUT_START---';
 const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 
-// Mock config - IDLE_TIMEOUT and CONTAINER_TIMEOUT set to 30min (1800000ms)
-// so the hard timeout fires at IDLE_TIMEOUT + 30s = 1830000ms
+// Mock config - CONTAINER_TIMEOUT=10min, IDLE_TIMEOUT=10min, WARNING_TIMEOUT=5min
+// Hard timeout fires at IDLE_TIMEOUT + 30s = 630000ms
 vi.mock('./config.js', () => ({
   CONTAINER_IMAGE: 'nanoclaw-agent:latest',
   CONTAINER_MAX_OUTPUT_SIZE: 10_485_760,
-  CONTAINER_TIMEOUT: 1_800_000,
+  CONTAINER_TIMEOUT: 600_000,
+  IDLE_TIMEOUT: 600_000,
+  WARNING_TIMEOUT: 300_000,
   DATA_DIR: '/tmp/nanoclaw-test-data',
   DEV_MODE: false,
   GROUPS_DIR: '/tmp/nanoclaw-test-groups',
-  IDLE_TIMEOUT: 1_800_000,
 }));
 
 // Mock logger
@@ -134,8 +135,8 @@ describe('container-runner timeout behavior', () => {
     // Let output processing settle
     await vi.advanceTimersByTimeAsync(10);
 
-    // Fire the hard timeout (IDLE_TIMEOUT + 30s = 1830000ms)
-    await vi.advanceTimersByTimeAsync(1_830_000);
+    // Fire the hard timeout (IDLE_TIMEOUT + 30s = 630000ms)
+    await vi.advanceTimersByTimeAsync(630_000);
 
     // Emit close event (as if container was stopped by the timeout)
     fakeProc.emit('close', 137);
@@ -160,8 +161,8 @@ describe('container-runner timeout behavior', () => {
       onOutput,
     );
 
-    // No output emitted — fire the hard timeout
-    await vi.advanceTimersByTimeAsync(1_830_000);
+    // Fire the hard timeout (IDLE_TIMEOUT + 30s = 630000ms)
+    await vi.advanceTimersByTimeAsync(630_000);
 
     // Emit close event
     fakeProc.emit('close', 137);
@@ -200,5 +201,111 @@ describe('container-runner timeout behavior', () => {
     const result = await resultPromise;
     expect(result.status).toBe('success');
     expect(result.newSessionId).toBe('session-456');
+  });
+
+  it('warning callback fires at WARNING_TIMEOUT', async () => {
+    const onWarning = vi.fn();
+    const onOutput = vi.fn(async () => {});
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      onOutput,
+      onWarning,
+    );
+
+    // Before 5min
+    await vi.advanceTimersByTimeAsync(299_000);
+    expect(onWarning).not.toHaveBeenCalled();
+
+    // 5min warning
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(onWarning).toHaveBeenCalledOnce();
+
+    // Emit output and close normally
+    emitOutputMarker(fakeProc, { status: 'success', result: 'Done' });
+    await vi.advanceTimersByTimeAsync(10);
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+
+    const result = await resultPromise;
+    expect(result.status).toBe('success');
+  });
+
+  it('onTimeout(false) fires when timeout with no output', async () => {
+    const onOutput = vi.fn(async () => {});
+    const onTimeout = vi.fn();
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      onOutput,
+      undefined,
+      onTimeout,
+    );
+
+    // Fire the hard timeout (IDLE_TIMEOUT + 30s = 630000ms)
+    await vi.advanceTimersByTimeAsync(630_000);
+
+    // Emit close event
+    fakeProc.emit('close', 137);
+    await vi.advanceTimersByTimeAsync(10);
+
+    const result = await resultPromise;
+    expect(result.status).toBe('error');
+    expect(onTimeout).toHaveBeenCalledOnce();
+  });
+
+  it('onTimeout does not fire on idle reap (timeout after output)', async () => {
+    const onOutput = vi.fn(async () => {});
+    const onTimeout = vi.fn();
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      onOutput,
+      undefined,
+      onTimeout,
+    );
+
+    // Emit output
+    emitOutputMarker(fakeProc, {
+      status: 'success',
+      result: 'Here is my response',
+      newSessionId: 'session-123',
+    });
+    await vi.advanceTimersByTimeAsync(10);
+
+    // Fire the hard timeout (idle reap)
+    await vi.advanceTimersByTimeAsync(630_000);
+
+    // Emit close event
+    fakeProc.emit('close', 137);
+    await vi.advanceTimersByTimeAsync(10);
+
+    const result = await resultPromise;
+    expect(result.status).toBe('success');
+    expect(onTimeout).not.toHaveBeenCalled();
+  });
+
+  it('warning callback does not fire if container finishes before WARNING_TIMEOUT', async () => {
+    const onWarning = vi.fn();
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      undefined,
+      onWarning,
+    );
+
+    // Emit output and close before 5min
+    emitOutputMarker(fakeProc, { status: 'success', result: 'Quick response' });
+    await vi.advanceTimersByTimeAsync(10);
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+
+    const result = await resultPromise;
+    expect(result.status).toBe('success');
+    expect(onWarning).not.toHaveBeenCalled();
   });
 });

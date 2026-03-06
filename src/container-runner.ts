@@ -15,6 +15,7 @@ import {
   DEV_MODE,
   GROUPS_DIR,
   IDLE_TIMEOUT,
+  WARNING_TIMEOUT,
 } from './config.js';
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
@@ -225,6 +226,8 @@ export async function runContainerAgent(
   input: ContainerInput,
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
+  onWarning?: () => void,
+  onTimeout?: () => void,
 ): Promise<ContainerOutput> {
   if (DEV_MODE) {
     logger.info(
@@ -399,14 +402,31 @@ export async function runContainerAgent(
 
     let timeout = setTimeout(killOnTimeout, timeoutMs);
 
+    // Warning timer: notify user the agent is still working
+    let warningSent = false;
+    let warningTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const startWarningTimer = () => {
+      if (!onWarning || warningSent || WARNING_TIMEOUT >= timeoutMs) return;
+      if (warningTimer) clearTimeout(warningTimer);
+      warningTimer = setTimeout(() => {
+        warningSent = true;
+        onWarning();
+      }, WARNING_TIMEOUT);
+    };
+
+    startWarningTimer();
+
     // Reset the timeout whenever there's activity (streaming output)
     const resetTimeout = () => {
       clearTimeout(timeout);
       timeout = setTimeout(killOnTimeout, timeoutMs);
+      startWarningTimer();
     };
 
     container.on('close', (code) => {
       clearTimeout(timeout);
+      if (warningTimer) clearTimeout(warningTimer);
       const duration = Date.now() - startTime;
 
       if (timedOut) {
@@ -444,6 +464,8 @@ export async function runContainerAgent(
           { group: group.name, containerName, duration, code },
           'Container timed out with no output',
         );
+
+        if (onTimeout) onTimeout();
 
         resolve({
           status: 'error',
@@ -598,6 +620,7 @@ export async function runContainerAgent(
 
     container.on('error', (err) => {
       clearTimeout(timeout);
+      if (warningTimer) clearTimeout(warningTimer);
       logger.error({ group: group.name, containerName, error: err }, 'Container spawn error');
       resolve({
         status: 'error',
