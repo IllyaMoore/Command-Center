@@ -10,7 +10,7 @@ import {
   POLL_INTERVAL,
   TRIGGER_PATTERN,
   WARNING_MESSAGE,
-  getTimeoutMessage,
+  TIMEOUT_MESSAGE,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
 import {
@@ -202,8 +202,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         logger.warn({ chatJid, err }, 'Failed to send warning notification');
       });
     },
-    (hadPartialOutput) => {
-      whatsapp.sendMessage(chatJid, getTimeoutMessage(hadPartialOutput)).catch((err) => {
+    () => {
+      whatsapp.sendMessage(chatJid, TIMEOUT_MESSAGE).catch((err) => {
         logger.warn({ chatJid, err }, 'Failed to send timeout notification');
       });
     },
@@ -235,7 +235,7 @@ async function runAgent(
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onWarning?: () => void,
-  onTimeout?: (hadPartialOutput: boolean) => void,
+  onTimeout?: () => void,
 ): Promise<'success' | 'error'> {
   const isMain = group.folder === MAIN_GROUP_FOLDER;
   const sessionId = sessions[group.folder];

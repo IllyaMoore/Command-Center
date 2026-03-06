@@ -9,7 +9,7 @@ import {
   MAIN_GROUP_FOLDER,
   SCHEDULER_POLL_INTERVAL,
   WARNING_MESSAGE,
-  getTimeoutMessage,
+  TIMEOUT_MESSAGE,
 } from './config.js';
 import { ContainerOutput, runContainerAgent, writeTasksSnapshot } from './container-runner.js';
 import {
@@ -163,8 +163,8 @@ async function runTask(
           logger.warn({ taskId: task.id, err }, 'Failed to send warning notification');
         });
       },
-      (hadPartialOutput: boolean) => {
-        deps.sendMessage(task.chat_jid, getTimeoutMessage(hadPartialOutput)).catch((err) => {
+      () => {
+        deps.sendMessage(task.chat_jid, TIMEOUT_MESSAGE).catch((err) => {
           logger.warn({ taskId: task.id, err }, 'Failed to send timeout notification');
         });
       },

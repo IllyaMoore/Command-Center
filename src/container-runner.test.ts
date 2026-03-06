@@ -253,7 +253,7 @@ describe('container-runner timeout behavior', () => {
 
     const result = await resultPromise;
     expect(result.status).toBe('error');
-    expect(onTimeout).toHaveBeenCalledWith(false);
+    expect(onTimeout).toHaveBeenCalledOnce();
   });
 
   it('onTimeout does not fire on idle reap (timeout after output)', async () => {

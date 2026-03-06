@@ -227,7 +227,7 @@ export async function runContainerAgent(
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onWarning?: () => void,
-  onTimeout?: (hadPartialOutput: boolean) => void,
+  onTimeout?: () => void,
 ): Promise<ContainerOutput> {
   if (DEV_MODE) {
     logger.info(
@@ -465,7 +465,7 @@ export async function runContainerAgent(
           'Container timed out with no output',
         );
 
-        if (onTimeout) onTimeout(false);
+        if (onTimeout) onTimeout();
 
         resolve({
           status: 'error',
