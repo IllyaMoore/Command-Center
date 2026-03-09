@@ -206,6 +206,9 @@ export async function runContainerAgent(
   const logsDir = path.join(GROUPS_DIR, group.folder, 'logs');
   fs.mkdirSync(logsDir, { recursive: true });
 
+  // Read secrets before spawn so a throw doesn't orphan a child process
+  const secrets = readSecrets();
+
   return new Promise((resolve) => {
     // Strip secrets from inherited env — they're delivered via stdin instead
     const { ANTHROPIC_API_KEY: _, ATLASSIAN_BASIC_TOKEN: __, CLAUDE_CODE_OAUTH_TOKEN: ___, ...sanitizedEnv } = process.env;
@@ -223,14 +226,25 @@ export async function runContainerAgent(
     let stdoutTruncated = false;
     let stderrTruncated = false;
 
+    // Prevent unhandled EPIPE if child dies before reading stdin
+    agentProcess.stdin.on('error', (err) => {
+      logger.warn({ group: group.name, processName, error: err }, 'Agent stdin error (child may have exited early)');
+    });
+
     // Pass secrets via stdin (never written to disk or passed as env vars)
-    const payload = { ...input, secrets: readSecrets() };
+    const payload = { ...input, secrets };
     agentProcess.stdin.write(JSON.stringify(payload));
     agentProcess.stdin.end();
 
     // --- Timeout management (declared before event handlers that reference them) ---
     let timedOut = false;
     let processExited = false;
+    let resolved = false;
+    const safeResolve = (value: ContainerOutput) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(value);
+    };
     const configTimeout = group.containerConfig?.timeout || CONTAINER_TIMEOUT;
     // Grace period: hard timeout must be at least IDLE_TIMEOUT + 30s so the
     // graceful _close sentinel has time to trigger before the hard kill fires.
@@ -379,13 +393,18 @@ export async function runContainerAgent(
             { group: group.name, processName, duration, code },
             'Agent timed out after output (idle cleanup)',
           );
-          outputChain.then(() => {
-            resolve({
-              status: 'success',
-              result: null,
-              newSessionId,
+          outputChain
+            .then(() => {
+              safeResolve({
+                status: 'success',
+                result: null,
+                newSessionId,
+              });
+            })
+            .catch((err) => {
+              logger.error({ group: group.name, error: err }, 'Output chain error during idle cleanup');
+              safeResolve({ status: 'error', result: null, error: `Output callback failed: ${err}` });
             });
-          });
           return;
         }
 
@@ -394,7 +413,7 @@ export async function runContainerAgent(
           'Agent timed out with no output',
         );
 
-        resolve({
+        safeResolve({
           status: 'error',
           result: null,
           error: `Agent timed out after ${configTimeout}ms`,
@@ -461,7 +480,7 @@ export async function runContainerAgent(
           'Agent exited with error',
         );
 
-        resolve({
+        safeResolve({
           status: 'error',
           result: null,
           error: `Agent exited with code ${code}: ${stderr.slice(-200)}`,
@@ -471,17 +490,22 @@ export async function runContainerAgent(
 
       // Streaming mode: wait for output chain to settle, return completion marker
       if (onOutput) {
-        outputChain.then(() => {
-          logger.info(
-            { group: group.name, duration, newSessionId },
-            'Agent completed (streaming mode)',
-          );
-          resolve({
-            status: 'success',
-            result: null,
-            newSessionId,
+        outputChain
+          .then(() => {
+            logger.info(
+              { group: group.name, duration, newSessionId },
+              'Agent completed (streaming mode)',
+            );
+            safeResolve({
+              status: 'success',
+              result: null,
+              newSessionId,
+            });
+          })
+          .catch((err) => {
+            logger.error({ group: group.name, error: err }, 'Output chain error');
+            safeResolve({ status: 'error', result: null, error: `Output callback failed: ${err}` });
           });
-        });
         return;
       }
 
@@ -512,7 +536,7 @@ export async function runContainerAgent(
           'Agent completed',
         );
 
-        resolve(output);
+        safeResolve(output);
       } catch (err) {
         logger.error(
           {
@@ -524,7 +548,7 @@ export async function runContainerAgent(
           'Failed to parse agent output',
         );
 
-        resolve({
+        safeResolve({
           status: 'error',
           result: null,
           error: `Failed to parse agent output: ${err instanceof Error ? err.message : String(err)}`,
@@ -537,7 +561,7 @@ export async function runContainerAgent(
       clearTimeout(timeout);
       if (warningTimer) clearTimeout(warningTimer);
       logger.error({ group: group.name, processName, error: err }, 'Agent spawn error');
-      resolve({
+      safeResolve({
         status: 'error',
         result: null,
         error: `Agent spawn error: ${err.message}`,

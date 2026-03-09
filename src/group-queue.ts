@@ -332,7 +332,7 @@ export class GroupQueue {
     for (const [, state] of this.groups) {
       if (state.process && !state.process.killed && state.containerName) {
         activeProcesses.push({ name: state.containerName, proc: state.process });
-        state.process.kill('SIGTERM');
+        try { state.process.kill('SIGTERM'); } catch { /* ESRCH: already exited */ }
       }
     }
 
@@ -364,7 +364,7 @@ export class GroupQueue {
     for (const { name, proc } of activeProcesses) {
       if (!proc.killed && proc.exitCode === null) {
         logger.warn({ name }, 'Force killing process after grace period');
-        proc.kill('SIGKILL');
+        try { proc.kill('SIGKILL'); } catch { /* ESRCH: already exited */ }
       }
     }
   }
