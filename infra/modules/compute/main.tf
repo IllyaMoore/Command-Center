@@ -215,6 +215,7 @@ resource "aws_ssm_parameter" "instance_id" {
 # Amazon Machine Image
 # most_recent = true: instance will be replaced when Amazon publishes a new AL2023 AMI.
 # Acceptable for staging; pin to a specific version for prod.
+# Excludes al2023-ami-minimal-* which lacks SSM agent.
 
 data "aws_ami" "amazon_linux" {
   most_recent = true
@@ -222,7 +223,7 @@ data "aws_ami" "amazon_linux" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023*-x86_64"]
   }
 
   filter {

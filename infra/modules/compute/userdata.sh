@@ -38,7 +38,7 @@ systemctl enable --now tailscaled
 # Wait for tailscaled socket to be ready (status fails before auth, so just wait for daemon)
 timeout 30 bash -c 'until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 1; done'
 
-TS_AUTH_KEY=$$(ssm_get "tailscale-auth-key")
+TS_AUTH_KEY=$(ssm_get "tailscale-auth-key")
 TS_AUTHKEY="$${TS_AUTH_KEY}" tailscale up --hostname="nanoclaw-$${ENVIRONMENT}"
 unset TS_AUTH_KEY
 
@@ -61,18 +61,18 @@ useradd -r -m -d /opt/nanoclaw -s /bin/bash nanoclaw
 
 # --- 8. Clone repo (use git extraheader to keep token out of URL / process args) ---
 echo "--- Cloning repository ---"
-GITHUB_TOKEN=$$(ssm_get "github-access-token")
-AUTH_HEADER=$$(echo -n "x-access-token:$${GITHUB_TOKEN}" | base64 -w 0)
+GITHUB_TOKEN=$(ssm_get "github-access-token")
+AUTH_HEADER=$(echo -n "x-access-token:$${GITHUB_TOKEN}" | base64 -w 0)
 git clone --config "http.https://github.com/.extraheader=Authorization: Basic $${AUTH_HEADER}" "$${REPO_URL}" "$${APP_DIR}"
 unset AUTH_HEADER GITHUB_TOKEN
 
 # --- 9. Write .env from SSM parameters (before npm install to keep secrets out of build env) ---
 echo "--- Writing .env from SSM ---"
-ANTHROPIC_API_KEY=$$(ssm_get "anthropic-api-key")
-TELEGRAM_BOT_TOKEN=$$(ssm_get "telegram-bot-token")
-ATLASSIAN_BASIC_TOKEN=$$(ssm_get "atlassian-basic-token")
-ASSISTANT_NAME=$$(ssm_get "assistant-name")
-ASSISTANT_HAS_OWN_NUMBER=$$(ssm_get "assistant-has-own-number")
+ANTHROPIC_API_KEY=$(ssm_get "anthropic-api-key")
+TELEGRAM_BOT_TOKEN=$(ssm_get "telegram-bot-token")
+ATLASSIAN_BASIC_TOKEN=$(ssm_get "atlassian-basic-token")
+ASSISTANT_NAME=$(ssm_get "assistant-name")
+ASSISTANT_HAS_OWN_NUMBER=$(ssm_get "assistant-has-own-number")
 
 cat > "$${APP_DIR}/.env" <<ENV
 ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY}
