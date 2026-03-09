@@ -44,10 +44,8 @@ See `infra/README.md` for full docs.
 - GitHub environments: `staging` (deploys from `staging` branch), `production` (deploys from `master`)
 - Default branch: `staging`
 - Backport changes to all 3 branches: `staging`, `master`, `devmoor`
-- AL2023 AMI filter: use `al2023-ami-2023*-x86_64` (not `al2023-ami-*-x86_64`) to exclude minimal variant which lacks SSM agent
-- VPC endpoint gotcha: deleting endpoints can leave orphaned Route 53 private hosted zones (owned by vpce.amazonaws.com) that block new endpoint creation with `private_dns_enabled`
-- Old VPC `vpc-01be8be65db9be59d` still exists as orphan (orphaned hosted zones, needs AWS support ticket)
-- Current VPC: `vpc-0cafee8401c0089ad`, instance: `i-0df8d67eb1b8bac56`
+- AMI filter: use `al2023-ami-2023*-x86_64` to exclude minimal variant (lacks SSM agent)
+- VPC endpoint gotcha: deleting endpoints can orphan Route 53 hosted zones that block re-creation with `private_dns_enabled`
 
 ## Agents
 
