@@ -3,8 +3,7 @@
     "allow": [
       "Bash(npx vitest run src/container-runner.test.ts)",
       "Bash(npx vitest run)",
-      "Bash(npm run typecheck)",
-      "Read(//c/Users/illya/AppData/Local/Temp/claude/e--code-command-center/tasks/**)"
+      "Bash(npm run typecheck)"
     ]
   },
   "enabledPlugins": {
