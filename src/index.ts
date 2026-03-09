@@ -202,7 +202,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         logger.warn({ chatJid, err }, 'Failed to send warning notification');
       });
     },
-    () => {
+    (hadOutput: boolean) => {
+      // Don't send timeout message if agent already produced output (idle cleanup)
+      if (hadOutput) return;
       whatsapp.sendMessage(chatJid, TIMEOUT_MESSAGE).catch((err) => {
         logger.warn({ chatJid, err }, 'Failed to send timeout notification');
       });

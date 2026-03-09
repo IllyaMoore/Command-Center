@@ -163,7 +163,8 @@ async function runTask(
           logger.warn({ taskId: task.id, err }, 'Failed to send warning notification');
         });
       },
-      () => {
+      (hadOutput: boolean) => {
+        if (hadOutput) return;
         deps.sendMessage(task.chat_jid, TIMEOUT_MESSAGE).catch((err) => {
           logger.warn({ taskId: task.id, err }, 'Failed to send timeout notification');
         });

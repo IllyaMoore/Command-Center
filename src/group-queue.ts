@@ -151,7 +151,7 @@ export class GroupQueue {
       const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}.json`;
       const filepath = path.join(inputDir, filename);
       const tempPath = `${filepath}.tmp`;
-      fs.writeFileSync(tempPath, JSON.stringify({ type: 'message', text }));
+      fs.writeFileSync(tempPath, JSON.stringify({ type: 'message', text, source: 'host' }));
       fs.renameSync(tempPath, filepath);
       return true;
     } catch (err) {
@@ -324,22 +324,48 @@ export class GroupQueue {
     return this.activeCount;
   }
 
-  async shutdown(_gracePeriodMs: number): Promise<void> {
+  async shutdown(gracePeriodMs: number): Promise<void> {
     this.shuttingDown = true;
 
-    // Count active containers but don't kill them — they'll finish on their own
-    // via idle timeout or container timeout. The --rm flag cleans them up on exit.
-    // This prevents WhatsApp reconnection restarts from killing working agents.
-    const activeContainers: string[] = [];
-    for (const [jid, state] of this.groups) {
+    // Send SIGTERM to active child processes and wait for them to exit
+    const activeProcesses: { name: string; proc: ChildProcess }[] = [];
+    for (const [, state] of this.groups) {
       if (state.process && !state.process.killed && state.containerName) {
-        activeContainers.push(state.containerName);
+        activeProcesses.push({ name: state.containerName, proc: state.process });
+        state.process.kill('SIGTERM');
       }
     }
 
+    if (activeProcesses.length === 0) {
+      logger.info('GroupQueue shutting down (no active processes)');
+      return;
+    }
+
     logger.info(
-      { activeCount: this.activeCount, detachedContainers: activeContainers },
-      'GroupQueue shutting down (containers detached, not killed)',
+      { activeCount: activeProcesses.length, names: activeProcesses.map((p) => p.name) },
+      'GroupQueue shutting down, sent SIGTERM to active processes',
     );
+
+    // Wait up to gracePeriodMs for processes to exit
+    await Promise.race([
+      Promise.all(
+        activeProcesses.map(
+          ({ proc }) =>
+            new Promise<void>((resolve) => {
+              if (proc.killed || proc.exitCode !== null) return resolve();
+              proc.on('close', () => resolve());
+            }),
+        ),
+      ),
+      new Promise<void>((resolve) => setTimeout(resolve, gracePeriodMs)),
+    ]);
+
+    // Force kill any remaining
+    for (const { name, proc } of activeProcesses) {
+      if (!proc.killed && proc.exitCode === null) {
+        logger.warn({ name }, 'Force killing process after grace period');
+        proc.kill('SIGKILL');
+      }
+    }
   }
 }

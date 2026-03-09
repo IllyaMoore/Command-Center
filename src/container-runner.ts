@@ -224,11 +224,9 @@ export async function runContainerAgent(
     let stderrTruncated = false;
 
     // Pass secrets via stdin (never written to disk or passed as env vars)
-    input.secrets = readSecrets();
-    agentProcess.stdin.write(JSON.stringify(input));
+    const payload = { ...input, secrets: readSecrets() };
+    agentProcess.stdin.write(JSON.stringify(payload));
     agentProcess.stdin.end();
-    // Remove secrets from input so they don't appear in logs
-    delete input.secrets;
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
     let parseBuffer = '';
