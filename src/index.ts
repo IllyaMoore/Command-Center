@@ -235,7 +235,7 @@ async function runAgent(
   chatJid: string,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onWarning?: () => void,
-  onTimeout?: () => void,
+  onTimeout?: (hadOutput: boolean) => void,
 ): Promise<'success' | 'error'> {
   const isMain = group.folder === MAIN_GROUP_FOLDER;
   const sessionId = sessions[group.folder];

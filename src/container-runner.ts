@@ -155,7 +155,7 @@ export async function runContainerAgent(
   onProcess: (proc: ChildProcess, containerName: string) => void,
   onOutput?: (output: ContainerOutput) => Promise<void>,
   onWarning?: () => void,
-  onTimeout?: () => void,
+  onTimeout?: (hadOutput: boolean) => void,
 ): Promise<ContainerOutput> {
   if (DEV_MODE) {
     logger.info(
@@ -207,10 +207,13 @@ export async function runContainerAgent(
   fs.mkdirSync(logsDir, { recursive: true });
 
   return new Promise((resolve) => {
+    // Strip secrets from inherited env — they're delivered via stdin instead
+    const { ANTHROPIC_API_KEY: _, ATLASSIAN_BASIC_TOKEN: __, CLAUDE_CODE_OAUTH_TOKEN: ___, ...sanitizedEnv } = process.env;
+
     const agentProcess = spawn('node', [AGENT_RUNNER_PATH], {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: groupDir,
-      env: { ...process.env, ...agentEnv },
+      env: { ...sanitizedEnv, ...agentEnv },
     });
 
     onProcess(agentProcess, processName);
@@ -231,6 +234,7 @@ export async function runContainerAgent(
     let parseBuffer = '';
     let newSessionId: string | undefined;
     let outputChain = Promise.resolve();
+    let hadStreamingOutput = false;
 
     agentProcess.stdout.on('data', (data) => {
       const chunk = data.toString();
@@ -308,7 +312,6 @@ export async function runContainerAgent(
 
     let timedOut = false;
     let processExited = false;
-    let hadStreamingOutput = false;
     const configTimeout = group.containerConfig?.timeout || CONTAINER_TIMEOUT;
     // Grace period: hard timeout must be at least IDLE_TIMEOUT + 30s so the
     // graceful _close sentinel has time to trigger before the hard kill fires.
