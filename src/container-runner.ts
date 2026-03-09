@@ -228,12 +228,58 @@ export async function runContainerAgent(
     agentProcess.stdin.write(JSON.stringify(payload));
     agentProcess.stdin.end();
 
+    // --- Timeout management (declared before event handlers that reference them) ---
+    let timedOut = false;
+    let processExited = false;
+    const configTimeout = group.containerConfig?.timeout || CONTAINER_TIMEOUT;
+    // Grace period: hard timeout must be at least IDLE_TIMEOUT + 30s so the
+    // graceful _close sentinel has time to trigger before the hard kill fires.
+    const timeoutMs = Math.max(configTimeout, IDLE_TIMEOUT + 30_000);
+
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
     let parseBuffer = '';
     let newSessionId: string | undefined;
     let outputChain = Promise.resolve();
     let hadStreamingOutput = false;
 
+    const killOnTimeout = () => {
+      timedOut = true;
+      logger.error({ group: group.name, processName }, 'Agent timeout, stopping gracefully');
+      if (onTimeout) onTimeout(hadStreamingOutput);
+      agentProcess.kill('SIGTERM');
+      setTimeout(() => {
+        if (!processExited) {
+          logger.warn({ group: group.name, processName }, 'Graceful stop failed, force killing');
+          agentProcess.kill('SIGKILL');
+        }
+      }, 15000);
+    };
+
+    let timeout = setTimeout(killOnTimeout, timeoutMs);
+
+    // Warning timer: notify user the agent is still working
+    let warningSent = false;
+    let warningTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const startWarningTimer = () => {
+      if (!onWarning || warningSent || WARNING_TIMEOUT >= timeoutMs) return;
+      if (warningTimer) clearTimeout(warningTimer);
+      warningTimer = setTimeout(() => {
+        warningSent = true;
+        onWarning();
+      }, WARNING_TIMEOUT);
+    };
+
+    startWarningTimer();
+
+    // Reset the timeout whenever there's activity (streaming output)
+    const resetTimeout = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(killOnTimeout, timeoutMs);
+      startWarningTimer();
+    };
+
+    // --- Event handlers ---
     agentProcess.stdout.on('data', (data) => {
       const chunk = data.toString();
 
@@ -307,50 +353,6 @@ export async function runContainerAgent(
         stderr += chunk;
       }
     });
-
-    let timedOut = false;
-    let processExited = false;
-    const configTimeout = group.containerConfig?.timeout || CONTAINER_TIMEOUT;
-    // Grace period: hard timeout must be at least IDLE_TIMEOUT + 30s so the
-    // graceful _close sentinel has time to trigger before the hard kill fires.
-    const timeoutMs = Math.max(configTimeout, IDLE_TIMEOUT + 30_000);
-
-    const killOnTimeout = () => {
-      timedOut = true;
-      logger.error({ group: group.name, processName }, 'Agent timeout, stopping gracefully');
-      if (onTimeout) onTimeout(hadStreamingOutput);
-      agentProcess.kill('SIGTERM');
-      setTimeout(() => {
-        if (!processExited) {
-          logger.warn({ group: group.name, processName }, 'Graceful stop failed, force killing');
-          agentProcess.kill('SIGKILL');
-        }
-      }, 15000);
-    };
-
-    let timeout = setTimeout(killOnTimeout, timeoutMs);
-
-    // Warning timer: notify user the agent is still working
-    let warningSent = false;
-    let warningTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const startWarningTimer = () => {
-      if (!onWarning || warningSent || WARNING_TIMEOUT >= timeoutMs) return;
-      if (warningTimer) clearTimeout(warningTimer);
-      warningTimer = setTimeout(() => {
-        warningSent = true;
-        onWarning();
-      }, WARNING_TIMEOUT);
-    };
-
-    startWarningTimer();
-
-    // Reset the timeout whenever there's activity (streaming output)
-    const resetTimeout = () => {
-      clearTimeout(timeout);
-      timeout = setTimeout(killOnTimeout, timeoutMs);
-      startWarningTimer();
-    };
 
     agentProcess.on('close', (code) => {
       processExited = true;
@@ -485,8 +487,8 @@ export async function runContainerAgent(
 
       // Legacy mode: parse the last output marker pair from accumulated stdout
       try {
-        const startIdx = stdout.indexOf(OUTPUT_START_MARKER);
-        const endIdx = stdout.indexOf(OUTPUT_END_MARKER);
+        const startIdx = stdout.lastIndexOf(OUTPUT_START_MARKER);
+        const endIdx = stdout.lastIndexOf(OUTPUT_END_MARKER);
 
         let jsonLine: string;
         if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {

@@ -330,6 +330,8 @@ function drainIpcInput(): string[] {
       const filePath = path.join(IPC_INPUT_DIR, file);
       try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        // Skip dashboard-originated files — those are for the host IPC watcher
+        if (data.source === 'dashboard') continue;
         fs.unlinkSync(filePath);
         if (data.type === 'message' && data.text) {
           messages.push(data.text);
