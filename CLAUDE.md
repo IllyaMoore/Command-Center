@@ -34,7 +34,7 @@ Single Node.js process that connects to WhatsApp, routes messages to Claude Agen
 |-------|-------------|
 | `/setup` | First-time installation, authentication, service configuration |
 | `/customize` | Adding channels, integrations, changing behavior |
-| `/debug` | Container issues, logs, troubleshooting |
+| `/debug` | Agent issues, logs, troubleshooting |
 
 ## Infrastructure
 
