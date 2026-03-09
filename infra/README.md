@@ -45,7 +45,7 @@ Per environment:
 ```
 VPC (10.0.0.0/16)
   |-- Private Subnet A (10.0.1.0/24, us-east-2a)
-  |     |-- EC2 (t3.small, 30GB gp3)  [not deployed yet]
+  |     |-- EC2 (t3.small, 30GB gp3)
   |
   |-- Private Subnet B (10.0.3.0/24, us-east-2b)
   |
@@ -57,9 +57,9 @@ VPC (10.0.0.0/16)
   |-- VPC Endpoint (Gateway): S3 (free)
 ```
 
-Access (planned, requires compute module):
+Access:
 - Application: Tailscale mesh (UDP 41641)
-- Shell: SSM Session Manager (`aws ssm start-session`)
+- Shell: SSM Session Manager (`aws ssm start-session --target <instance-id>`)
 - No SSH, no public IPs on EC2
 
 ## Prerequisites
@@ -138,7 +138,7 @@ infra/
 
   modules/
     networking/        VPC, subnets, NAT GW, VPC endpoints
-    compute/           EC2, SG, IAM profile (stub)
+    compute/           EC2, SG, IAM profile, SSM parameters, userdata
 ```
 
 ## Naming Convention
