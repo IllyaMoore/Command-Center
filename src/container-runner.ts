@@ -256,15 +256,17 @@ export async function runContainerAgent(
     let outputChain = Promise.resolve();
     let hadStreamingOutput = false;
 
+    let killFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, processName }, 'Agent timeout, stopping gracefully');
-      if (onTimeout) onTimeout(hadStreamingOutput);
-      agentProcess.kill('SIGTERM');
-      setTimeout(() => {
+      try { if (onTimeout) onTimeout(hadStreamingOutput); } catch { /* don't block SIGTERM */ }
+      try { agentProcess.kill('SIGTERM'); } catch { /* ESRCH: already exited */ }
+      killFallbackTimer = setTimeout(() => {
         if (!processExited) {
           logger.warn({ group: group.name, processName }, 'Graceful stop failed, force killing');
-          agentProcess.kill('SIGKILL');
+          try { agentProcess.kill('SIGKILL'); } catch { /* ESRCH: already exited */ }
         }
       }, 15000);
     };
@@ -335,7 +337,11 @@ export async function runContainerAgent(
             resetTimeout();
             // Call onOutput for all markers (including null results)
             // so idle timers start even for "silent" query completions.
-            outputChain = outputChain.then(() => onOutput(parsed));
+            outputChain = outputChain.then(() =>
+              onOutput(parsed).catch((err) => {
+                logger.error({ group: group.name, error: err }, 'Failed to deliver streamed output chunk');
+              }),
+            );
           } catch (err) {
             logger.warn(
               { group: group.name, error: err },
@@ -372,6 +378,7 @@ export async function runContainerAgent(
       processExited = true;
       clearTimeout(timeout);
       if (warningTimer) clearTimeout(warningTimer);
+      if (killFallbackTimer) clearTimeout(killFallbackTimer);
       const duration = Date.now() - startTime;
 
       if (timedOut) {
