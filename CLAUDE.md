@@ -47,6 +47,11 @@ See `infra/README.md` for full docs.
 - Backport changes to all 3 branches: `staging`, `master`, `devmoor`
 - AMI filter: use `al2023-ami-2023*-x86_64` to exclude minimal variant (lacks SSM agent)
 - VPC endpoint gotcha: deleting endpoints can orphan Route 53 hosted zones that block re-creation with `private_dns_enabled`
+- Deploy workflow: `workflow_dispatch` available for manual deploys (`gh workflow run "Deploy" --ref staging -f environment=staging`)
+- Userdata changes trigger instance replacement via Terraform - wait ~4min for bootstrap before deploying
+- AL2023 quirks: no `git` or `chromium` by default; `tailscale up` needs `--auth-key` flag (env var silently ignored)
+- t3.small OOM: `tsc` needs `NODE_OPTIONS=--max-old-space-size=1536` (2GB RAM not enough for default heap)
+- Deploy build order: full `npm ci` first (not `--omit=dev`), build, then `npm prune --omit=dev`
 
 ## Agents
 
