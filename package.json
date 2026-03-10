@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc && npm run build:agent-runner",
-    "build:agent-runner": "cd container/agent-runner && npm run build",
+    "build:agent-runner": "cd container/agent-runner && npm ci && npm run build",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "auth": "tsx src/whatsapp-auth.ts",
