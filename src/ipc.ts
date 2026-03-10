@@ -74,6 +74,8 @@ export function startIpcWatcher(deps: IpcDeps): void {
               const filePath = path.join(inputDir, file);
               try {
                 const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                // Skip files written by host for the agent (source: 'host')
+                if (data.source === 'host') continue;
                 if (data.type === 'message' && data.chatJid && data.text) {
                   logger.info(
                     { sourceGroup, text: data.text.slice(0, 50) },
@@ -442,7 +444,7 @@ export async function processTaskIpc(
       }
 
       // Parse remind_at as local time in the user's configured timezone.
-      // Agents in Docker (UTC) send times without offset — interpret in user TZ.
+      // Agents may send times without offset — interpret in user TZ.
       const tz = getTimezone();
       let remindAtMs: number;
       try {

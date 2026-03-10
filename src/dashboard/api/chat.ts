@@ -52,7 +52,9 @@ export async function sendGroupMessage(
       source: 'dashboard',
     };
 
-    fs.writeFileSync(filePath, JSON.stringify(message, null, 2));
+    const tempPath = `${filePath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(message, null, 2));
+    fs.renameSync(tempPath, filePath);
     logger.info({ groupFolder, text: text.slice(0, 50) }, 'Dashboard message written to IPC');
 
     storeMessageDirect({
