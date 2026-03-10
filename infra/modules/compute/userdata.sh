@@ -39,7 +39,7 @@ systemctl enable --now tailscaled
 timeout 30 bash -c 'until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 1; done'
 
 TS_AUTH_KEY=$(ssm_get "tailscale-auth-key")
-TS_AUTHKEY="$${TS_AUTH_KEY}" tailscale up --hostname="nanoclaw-$${ENVIRONMENT}"
+tailscale up --hostname="nanoclaw-$${ENVIRONMENT}" --auth-key="$${TS_AUTH_KEY}"
 unset TS_AUTH_KEY
 
 # --- 4. Install GitHub CLI ---
@@ -90,7 +90,7 @@ chmod 600 "$${APP_DIR}/.env"
 
 # --- 10. Build (host app + agent-runner) ---
 echo "--- Building application ---"
-sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && npm run build"
+sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build"
 
 # --- 11. Write systemd service ---
 echo "--- Creating systemd service ---"
