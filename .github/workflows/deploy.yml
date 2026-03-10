@@ -66,7 +66,7 @@ jobs:
         env:
           INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
         run: |
-          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin staging && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin staging && npm ci && npm run build && npm prune --omit=dev'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -169,7 +169,7 @@ jobs:
         env:
           INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
         run: |
-          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin master && npm ci --omit=dev && npm run build'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git pull origin master && npm ci && npm run build && npm prune --omit=dev'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \

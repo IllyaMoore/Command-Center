@@ -23,7 +23,7 @@ ssm_get() {
 
 # --- 1. Install prerequisites ---
 echo "--- Installing prerequisites ---"
-dnf install -y 'dnf-command(config-manager)'
+dnf install -y 'dnf-command(config-manager)' git
 
 # --- 2. Install Node.js 22 (NodeSource) ---
 echo "--- Installing Node.js 22 ---"
@@ -90,7 +90,7 @@ chmod 600 "$${APP_DIR}/.env"
 
 # --- 10. Build (host app + agent-runner) ---
 echo "--- Building application ---"
-sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && cd container/agent-runner && npm ci && cd ../.. && npm run build"
+sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && npm run build"
 
 # --- 11. Write systemd service ---
 echo "--- Creating systemd service ---"
