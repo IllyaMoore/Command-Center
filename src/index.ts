@@ -85,12 +85,15 @@ function groupTrigger(group: RegisteredGroup): RegExp {
 }
 
 function registerGroup(jid: string, group: RegisteredGroup): void {
-  registeredGroups[jid] = group;
+  // DB write first — if it fails, in-memory state stays consistent
   setRegisteredGroup(jid, group);
 
   // Create group folder
   const groupDir = path.join(DATA_DIR, '..', 'groups', group.folder);
   fs.mkdirSync(path.join(groupDir, 'logs'), { recursive: true });
+
+  // Only update in-memory after DB + filesystem succeed
+  registeredGroups[jid] = group;
 
   logger.info(
     { jid, name: group.name, folder: group.folder },
@@ -351,6 +354,26 @@ async function startMessageLoop(): Promise<void> {
           const group = registeredGroups[chatJid];
           if (!group) continue;
 
+          // Handle /activation command before trigger check
+          const activationMsg = groupMessages.find((m) =>
+            /^\/activation\s+(on|off)\s*$/i.test(m.content.trim()),
+          );
+          if (activationMsg) {
+            const mode = activationMsg.content.trim().match(/^\/activation\s+(on|off)\s*$/i)![1].toLowerCase();
+            const newRequiresTrigger = mode === 'off';
+            group.requiresTrigger = newRequiresTrigger;
+            setRegisteredGroup(chatJid, group);
+            const statusText = mode === 'on'
+              ? `Activation: ON — responding to all messages in this group.`
+              : `Activation: OFF — responding only to @${ASSISTANT_NAME} mentions.`;
+            whatsapp.sendMessage(chatJid, statusText);
+            logger.info({ chatJid, mode, requiresTrigger: newRequiresTrigger }, 'Group activation changed');
+            // Advance cursor so /activation message doesn't leak into agent context
+            lastAgentTimestamp[chatJid] = activationMsg.timestamp;
+            saveState();
+            continue;
+          }
+
           const isMainGroup = group.folder === MAIN_GROUP_FOLDER;
           const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
 
@@ -447,17 +470,23 @@ async function main(): Promise<void> {
     onChatMetadata: (chatJid, timestamp) => storeChatMetadata(chatJid, timestamp),
     registeredGroups: () => registeredGroups,
     onUnregisteredTrigger: (chatJid) => {
+      const MAX_AUTO_GROUPS = 20;
+      if (Object.keys(registeredGroups).length >= MAX_AUTO_GROUPS) {
+        logger.warn({ chatJid, max: MAX_AUTO_GROUPS }, 'Auto-registration blocked: group limit reached');
+        return false;
+      }
       const chat = getAllChats().find((c) => c.jid === chatJid);
       const name = chat?.name || chatJid;
-      const folder = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || chatJid.split('@')[0];
+      const jidSlug = chatJid.split('@')[0].replace(/[^a-z0-9]+/gi, '-');
       registerGroup(chatJid, {
         name,
-        folder,
+        folder: jidSlug,
         trigger: `@${ASSISTANT_NAME}`,
         added_at: new Date().toISOString(),
         requiresTrigger: true,
       });
-      logger.info({ chatJid, name, folder }, 'Auto-registered group via trigger');
+      logger.info({ chatJid, name, folder: jidSlug }, 'Auto-registered group via trigger');
+      return true;
     },
   });
 

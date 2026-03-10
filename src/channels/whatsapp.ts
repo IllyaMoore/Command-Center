@@ -11,7 +11,7 @@ import makeWASocket, {
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 
-import { ASSISTANT_HAS_OWN_NUMBER, ASSISTANT_NAME, STORE_DIR } from '../config.js';
+import { ASSISTANT_HAS_OWN_NUMBER, ASSISTANT_NAME, STORE_DIR, TRIGGER_PATTERN } from '../config.js';
 import {
   getLastGroupSync,
   setLastGroupSync,
@@ -26,7 +26,7 @@ export interface WhatsAppChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
   registeredGroups: () => Record<string, RegisteredGroup>;
-  onUnregisteredTrigger?: (chatJid: string) => void;
+  onUnregisteredTrigger?: (chatJid: string) => boolean;
 }
 
 export class WhatsAppChannel implements Channel {
@@ -217,11 +217,13 @@ export class WhatsAppChannel implements Channel {
         let isRegistered = !!groups[chatJid];
 
         // Auto-register: unregistered group with trigger → register first, then store
-        if (!isRegistered && this.opts.onUnregisteredTrigger) {
-          const triggerPattern = new RegExp(`^@${ASSISTANT_NAME.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-          if (triggerPattern.test(content.trim())) {
-            this.opts.onUnregisteredTrigger(chatJid);
-            isRegistered = true;
+        if (!isRegistered && !isBotMessage && chatJid.endsWith('@g.us') && this.opts.onUnregisteredTrigger) {
+          if (TRIGGER_PATTERN.test(content.trim())) {
+            try {
+              isRegistered = this.opts.onUnregisteredTrigger(chatJid);
+            } catch (err) {
+              logger.error({ err, chatJid }, 'Auto-registration failed');
+            }
           }
         }
 

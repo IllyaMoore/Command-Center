@@ -78,3 +78,6 @@ agents-sdk-docs
 \tmp
 
 /infra/SessionManagerPluginSetup.exe
+
+# Ext repos
+openclaw/
