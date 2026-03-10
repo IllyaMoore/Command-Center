@@ -446,6 +446,19 @@ async function main(): Promise<void> {
     onMessage: (chatJid, msg) => storeMessage(msg),
     onChatMetadata: (chatJid, timestamp) => storeChatMetadata(chatJid, timestamp),
     registeredGroups: () => registeredGroups,
+    onUnregisteredTrigger: (chatJid) => {
+      const chat = getAllChats().find((c) => c.jid === chatJid);
+      const name = chat?.name || chatJid;
+      const folder = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || chatJid.split('@')[0];
+      registerGroup(chatJid, {
+        name,
+        folder,
+        trigger: `@${ASSISTANT_NAME}`,
+        added_at: new Date().toISOString(),
+        requiresTrigger: true,
+      });
+      logger.info({ chatJid, name, folder }, 'Auto-registered group via trigger');
+    },
   });
 
   // Connect — resolves when first connected
