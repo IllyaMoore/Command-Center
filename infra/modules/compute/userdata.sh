@@ -23,7 +23,7 @@ ssm_get() {
 
 # --- 1. Install prerequisites ---
 echo "--- Installing prerequisites ---"
-dnf install -y 'dnf-command(config-manager)'
+dnf install -y 'dnf-command(config-manager)' git
 
 # --- 2. Install Node.js 22 (NodeSource) ---
 echo "--- Installing Node.js 22 ---"
@@ -39,7 +39,7 @@ systemctl enable --now tailscaled
 timeout 30 bash -c 'until [ -S /var/run/tailscale/tailscaled.sock ]; do sleep 1; done'
 
 TS_AUTH_KEY=$(ssm_get "tailscale-auth-key")
-TS_AUTHKEY="$${TS_AUTH_KEY}" tailscale up --hostname="nanoclaw-$${ENVIRONMENT}"
+tailscale up --hostname="nanoclaw-$${ENVIRONMENT}" --auth-key="$${TS_AUTH_KEY}"
 unset TS_AUTH_KEY
 
 # --- 4. Install GitHub CLI ---
@@ -49,7 +49,10 @@ dnf install -y gh
 
 # --- 5. Install Chromium (for agent-browser skill) ---
 echo "--- Installing Chromium ---"
-dnf install -y chromium
+dnf install -y chromium || {
+  echo "WARN: chromium not in default repos, installing via amazon-linux-extras or snap"
+  dnf install -y chromium-headless 2>/dev/null || echo "WARN: Chromium not available, agent-browser skill will not work"
+}
 
 # --- 6. Install Claude Code CLI (used by agent-runner) ---
 echo "--- Installing Claude Code CLI ---"
@@ -90,7 +93,7 @@ chmod 600 "$${APP_DIR}/.env"
 
 # --- 10. Build (host app + agent-runner) ---
 echo "--- Building application ---"
-sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && cd container/agent-runner && npm ci && cd ../.. && npm run build"
+sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build"
 
 # --- 11. Write systemd service ---
 echo "--- Creating systemd service ---"
