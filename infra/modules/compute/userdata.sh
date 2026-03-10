@@ -49,7 +49,10 @@ dnf install -y gh
 
 # --- 5. Install Chromium (for agent-browser skill) ---
 echo "--- Installing Chromium ---"
-dnf install -y chromium
+dnf install -y chromium || {
+  echo "WARN: chromium not in default repos, installing via amazon-linux-extras or snap"
+  dnf install -y chromium-headless 2>/dev/null || echo "WARN: Chromium not available, agent-browser skill will not work"
+}
 
 # --- 6. Install Claude Code CLI (used by agent-runner) ---
 echo "--- Installing Claude Code CLI ---"
