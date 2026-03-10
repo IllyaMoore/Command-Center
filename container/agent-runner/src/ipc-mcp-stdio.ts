@@ -11,7 +11,7 @@ import fs from 'fs';
 import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 
-const IPC_DIR = '/workspace/ipc';
+const IPC_DIR = process.env.NANOCLAW_IPC_DIR || '/workspace/ipc';
 const MESSAGES_DIR = path.join(IPC_DIR, 'messages');
 const TASKS_DIR = path.join(IPC_DIR, 'tasks');
 
@@ -297,7 +297,7 @@ TIME FORMAT: Local time WITHOUT "Z" suffix (e.g., "2026-03-04T15:30:00"). Do NOT
       };
     }
 
-    // No past-time check here — container runs UTC but remind_at is naive local time.
+    // No past-time check here — process may run UTC but remind_at is naive local time.
     // The host IPC handler does proper timezone conversion.
 
     const targetJid = isMain && args.target_group_jid ? args.target_group_jid : chatJid;

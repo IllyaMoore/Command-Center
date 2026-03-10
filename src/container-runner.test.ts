@@ -9,7 +9,7 @@ const OUTPUT_END_MARKER = '---NANOCLAW_OUTPUT_END---';
 // Mock config - CONTAINER_TIMEOUT=10min, IDLE_TIMEOUT=10min, WARNING_TIMEOUT=5min
 // Hard timeout fires at IDLE_TIMEOUT + 30s = 630000ms
 vi.mock('./config.js', () => ({
-  CONTAINER_IMAGE: 'nanoclaw-agent:latest',
+  AGENT_RUNNER_PATH: '/tmp/fake-agent-runner.js',
   CONTAINER_MAX_OUTPUT_SIZE: 10_485_760,
   CONTAINER_TIMEOUT: 600_000,
   IDLE_TIMEOUT: 600_000,
@@ -77,10 +77,6 @@ vi.mock('child_process', async () => {
   return {
     ...actual,
     spawn: vi.fn(() => fakeProc),
-    exec: vi.fn((_cmd: string, _opts: unknown, cb?: (err: Error | null) => void) => {
-      if (cb) cb(null);
-      return new EventEmitter();
-    }),
   };
 });
 
@@ -138,7 +134,7 @@ describe('container-runner timeout behavior', () => {
     // Fire the hard timeout (IDLE_TIMEOUT + 30s = 630000ms)
     await vi.advanceTimersByTimeAsync(630_000);
 
-    // Emit close event (as if container was stopped by the timeout)
+    // Emit close event (as if process was stopped by the timeout)
     fakeProc.emit('close', 137);
 
     // Let the promise resolve
@@ -232,7 +228,7 @@ describe('container-runner timeout behavior', () => {
     expect(result.status).toBe('success');
   });
 
-  it('onTimeout(false) fires when timeout with no output', async () => {
+  it('onTimeout fires when timeout with no output', async () => {
     const onOutput = vi.fn(async () => {});
     const onTimeout = vi.fn();
     const resultPromise = runContainerAgent(
@@ -256,7 +252,7 @@ describe('container-runner timeout behavior', () => {
     expect(onTimeout).toHaveBeenCalledOnce();
   });
 
-  it('onTimeout does not fire on idle reap (timeout after output)', async () => {
+  it('onTimeout(true) fires on idle reap (timeout after output)', async () => {
     const onOutput = vi.fn(async () => {});
     const onTimeout = vi.fn();
     const resultPromise = runContainerAgent(
@@ -285,10 +281,10 @@ describe('container-runner timeout behavior', () => {
 
     const result = await resultPromise;
     expect(result.status).toBe('success');
-    expect(onTimeout).not.toHaveBeenCalled();
+    expect(onTimeout).toHaveBeenCalledWith(true);
   });
 
-  it('warning callback does not fire if container finishes before WARNING_TIMEOUT', async () => {
+  it('warning callback does not fire if agent finishes before WARNING_TIMEOUT', async () => {
     const onWarning = vi.fn();
     const resultPromise = runContainerAgent(
       testGroup,

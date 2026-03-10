@@ -1,17 +1,26 @@
 /**
  * NanoClaw Agent Runner
- * Runs inside a container, receives config via stdin, outputs result to stdout
+ * Runs as a child process, receives config via stdin, outputs result to stdout
  *
  * Input protocol:
- *   Stdin: Full ContainerInput JSON (read until EOF, like before)
- *   IPC:   Follow-up messages written as JSON files to /workspace/ipc/input/
+ *   Stdin: Full ContainerInput JSON (read until EOF)
+ *   IPC:   Follow-up messages written as JSON files to IPC_INPUT_DIR
  *          Files: {type:"message", text:"..."}.json — polled and consumed
- *          Sentinel: /workspace/ipc/input/_close — signals session end
+ *          Sentinel: IPC_INPUT_DIR/_close — signals session end
  *
  * Stdout protocol:
  *   Each result is wrapped in OUTPUT_START_MARKER / OUTPUT_END_MARKER pairs.
  *   Multiple results may be emitted (one per agent teams result).
  *   Final marker after loop ends signals completion.
+ *
+ * Required env vars (set by host container-runner):
+ *   NANOCLAW_GROUP_DIR   — working directory for the group
+ *   NANOCLAW_IPC_DIR     — IPC directory for this group
+ * Optional env vars:
+ *   NANOCLAW_GLOBAL_DIR  — shared global memory directory
+ *   NANOCLAW_PROJECT_DIR — project root (main group only)
+ *   NANOCLAW_EXTRA_DIRS  — JSON array of additional directory paths
+ *   NANOCLAW_HOME_DIR    — home directory override (for credential paths)
  */
 
 import fs from 'fs';
@@ -61,9 +70,14 @@ interface SDKUserMessage {
   session_id: string;
 }
 
-const IPC_INPUT_DIR = '/workspace/ipc/input';
+const IPC_BASE_DIR = process.env.NANOCLAW_IPC_DIR || '/workspace/ipc';
+const IPC_INPUT_DIR = path.join(IPC_BASE_DIR, 'input');
 const IPC_INPUT_CLOSE_SENTINEL = path.join(IPC_INPUT_DIR, '_close');
 const IPC_POLL_MS = 500;
+
+const GROUP_DIR = process.env.NANOCLAW_GROUP_DIR || '/workspace/group';
+const GLOBAL_DIR = process.env.NANOCLAW_GLOBAL_DIR || '/workspace/global';
+const HOME_DIR = process.env.NANOCLAW_HOME_DIR || process.env.HOME || '/home/node';
 
 /**
  * Push-based async iterable for streaming user messages to the SDK.
@@ -172,7 +186,7 @@ function createPreCompactHook(assistantName?: string): HookCallback {
       const summary = getSessionSummary(sessionId, transcriptPath);
       const name = summary ? sanitizeFilename(summary) : generateFallbackName();
 
-      const conversationsDir = '/workspace/group/conversations';
+      const conversationsDir = path.join(GROUP_DIR, 'conversations');
       fs.mkdirSync(conversationsDir, { recursive: true });
 
       const date = new Date().toISOString().split('T')[0];
@@ -194,7 +208,7 @@ function createPreCompactHook(assistantName?: string): HookCallback {
 // Secrets to strip from Bash tool subprocess environments.
 // These are needed by claude-code for API auth but should never
 // be visible to commands Kit runs.
-const SECRET_ENV_VARS = ['ANTHROPIC_API_KEY'];
+const SECRET_ENV_VARS = ['ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN'];
 
 function createSanitizeBashHook(): HookCallback {
   return async (input, _toolUseId, _context) => {
@@ -316,6 +330,8 @@ function drainIpcInput(): string[] {
       const filePath = path.join(IPC_INPUT_DIR, file);
       try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        // Skip dashboard-originated files — those are for the host IPC watcher
+        if (data.source === 'dashboard') continue;
         fs.unlinkSync(filePath);
         if (data.type === 'message' && data.text) {
           messages.push(data.text);
@@ -354,7 +370,7 @@ function waitForIpcMessage(): Promise<string | null> {
   });
 }
 
-const GOOGLE_SHEETS_CREDS_DIR = '/home/node/.google-sheets-mcp';
+const GOOGLE_SHEETS_CREDS_DIR = path.join(HOME_DIR, '.google-sheets-mcp');
 const GOOGLE_SHEETS_CREDS_PATH = path.join(GOOGLE_SHEETS_CREDS_DIR, 'gcp-oauth.keys.json');
 
 function readGoogleSheetsCredentials(): { clientId: string; clientSecret: string } | null {
@@ -420,8 +436,8 @@ function buildMcpServers(
       command: 'npx',
       args: ['-y', '@cocal/google-calendar-mcp'],
       env: {
-        GOOGLE_OAUTH_CREDENTIALS: '/home/node/.google-calendar-mcp/credentials.json',
-        GOOGLE_CALENDAR_MCP_TOKEN_PATH: '/home/node/.config/google-calendar-mcp/tokens.json',
+        GOOGLE_OAUTH_CREDENTIALS: path.join(HOME_DIR, '.google-calendar-mcp', 'credentials.json'),
+        GOOGLE_CALENDAR_MCP_TOKEN_PATH: path.join(HOME_DIR, '.config', 'google-calendar-mcp', 'tokens.json'),
       },
     },
   };
@@ -497,22 +513,25 @@ async function runQuery(
   let resultCount = 0;
 
   // Load global CLAUDE.md as additional system context (shared across all groups)
-  const globalClaudeMdPath = '/workspace/global/CLAUDE.md';
+  const globalClaudeMdPath = path.join(GLOBAL_DIR, 'CLAUDE.md');
   let globalClaudeMd: string | undefined;
   if (!containerInput.isMain && fs.existsSync(globalClaudeMdPath)) {
     globalClaudeMd = fs.readFileSync(globalClaudeMdPath, 'utf-8');
   }
 
-  // Discover additional directories mounted at /workspace/extra/*
-  // These are passed to the SDK so their CLAUDE.md files are loaded automatically
+  // Additional directories passed via env var (JSON array of paths)
   const extraDirs: string[] = [];
-  const extraBase = '/workspace/extra';
-  if (fs.existsSync(extraBase)) {
-    for (const entry of fs.readdirSync(extraBase)) {
-      const fullPath = path.join(extraBase, entry);
-      if (fs.statSync(fullPath).isDirectory()) {
-        extraDirs.push(fullPath);
+  const extraDirsEnv = process.env.NANOCLAW_EXTRA_DIRS;
+  if (extraDirsEnv) {
+    try {
+      const parsed = JSON.parse(extraDirsEnv) as string[];
+      for (const dir of parsed) {
+        if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+          extraDirs.push(dir);
+        }
       }
+    } catch {
+      log(`Failed to parse NANOCLAW_EXTRA_DIRS: ${extraDirsEnv}`);
     }
   }
   if (extraDirs.length > 0) {
@@ -522,7 +541,7 @@ async function runQuery(
   for await (const message of query({
     prompt: stream,
     options: {
-      cwd: '/workspace/group',
+      cwd: GROUP_DIR,
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,
       resumeSessionAt: resumeAt,
@@ -533,7 +552,7 @@ async function runQuery(
       env: sdkEnv,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
-      settingSources: ['project', 'user'],
+      settingSources: ['project'],
       mcpServers: buildMcpServers(containerInput, sdkEnv, mcpServerPath),
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],
@@ -582,8 +601,6 @@ async function main(): Promise<void> {
   try {
     const stdinData = await readStdin();
     containerInput = JSON.parse(stdinData);
-    // Delete the temp file the entrypoint wrote — it contains secrets
-    try { fs.unlinkSync('/tmp/input.json'); } catch { /* may not exist */ }
     log(`Received input for group: ${containerInput.groupFolder}`);
   } catch (err) {
     writeOutput({
@@ -600,6 +617,8 @@ async function main(): Promise<void> {
   for (const [key, value] of Object.entries(containerInput.secrets || {})) {
     sdkEnv[key] = value;
   }
+  // Force API key auth — never use OAuth (OAuth accounts get banned).
+  delete sdkEnv.CLAUDE_CODE_OAUTH_TOKEN;
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const mcpServerPath = path.join(__dirname, 'ipc-mcp-stdio.js');

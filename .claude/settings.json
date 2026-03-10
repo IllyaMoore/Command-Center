@@ -1,4 +1,11 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(npx vitest run src/container-runner.test.ts)",
+      "Bash(npx vitest run)",
+      "Bash(npm run typecheck)"
+    ]
+  },
   "enabledPlugins": {
     "code-simplifier@claude-plugins-official": true,
     "linear@claude-plugins-official": true
