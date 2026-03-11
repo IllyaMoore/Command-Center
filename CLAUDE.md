@@ -7,6 +7,7 @@ Personal Claude assistant. See [README.md](README.md) for philosophy and setup. 
 Single Node.js process that connects to WhatsApp, routes messages to Claude Agent SDK running as child processes. Each group has isolated filesystem and memory.
 
 - Repo: `StoryFunnels/command-center`
+- Linear team: **Open Claw** (key: OPC). Use jira-manager skill templates for issue descriptions.
 - Node.js >= 20, npm
 - Auth: `ANTHROPIC_API_KEY` only. You're NOT allowed `CLAUDE_CODE_OAUTH_TOKEN`
 
