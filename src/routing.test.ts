@@ -1,11 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
 import { _initTestDatabase, getAllChats, storeChatMetadata } from './db.js';
-import { getAvailableGroups, _setRegisteredGroups } from './index.js';
+import { getAvailableGroups, _setRegisteredGroups, _setChannels } from './index.js';
+import { Channel } from './types.js';
+
+// Minimal channel stubs for ownsJid routing in tests
+const whatsappStub: Channel = {
+  name: 'whatsapp',
+  ownsJid: (jid: string) => jid.endsWith('@g.us') || jid.endsWith('@s.whatsapp.net'),
+  connect: async () => {},
+  sendMessage: async () => {},
+  isConnected: () => true,
+  disconnect: async () => {},
+};
 
 beforeEach(() => {
   _initTestDatabase();
   _setRegisteredGroups({});
+  _setChannels([whatsappStub]);
 });
 
 // --- JID ownership patterns ---

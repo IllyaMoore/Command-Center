@@ -13,6 +13,7 @@ import {
   TIMEOUT_MESSAGE,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
+import { getRegisteredChannelNames, getChannelFactory } from './channels/index.js';
 import {
   ContainerOutput,
   runContainerAgent,
@@ -39,7 +40,7 @@ import { startIpcWatcher } from './ipc.js';
 import { formatMessages, formatOutbound } from './router.js';
 import { startMeetingReminderLoop } from './meeting-reminders.js';
 import { startSchedulerLoop } from './task-scheduler.js';
-import { NewMessage, RegisteredGroup } from './types.js';
+import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { setDashboardQueue } from './dashboard/context.js';
 import { startDashboardServer } from './dashboard/server.js';
@@ -51,15 +52,35 @@ let lastAgentTimestamp: Record<string, string> = {};
 let messageLoopRunning = false;
 
 let whatsapp: WhatsAppChannel;
+const channels: Channel[] = [];
 const queue = new GroupQueue();
+
+function findChannel(jid: string): Channel | undefined {
+  return channels.find((c) => c.ownsJid(jid) && c.isConnected());
+}
+
+async function sendToChannel(jid: string, text: string): Promise<boolean> {
+  const channel = findChannel(jid);
+  if (!channel) {
+    logger.warn({ jid }, 'No channel found for JID');
+    return false;
+  }
+  try {
+    await channel.sendMessage(jid, text);
+    return true;
+  } catch (err) {
+    logger.error({ jid, channel: channel.name, err }, 'Failed to deliver message');
+    return false;
+  }
+}
 
 function loadState(): void {
   lastTimestamp = getRouterState('last_timestamp') || '';
   const agentTs = getRouterState('last_agent_timestamp');
   try {
     lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
-  } catch {
-    logger.warn('Corrupted last_agent_timestamp in DB, resetting');
+  } catch (err) {
+    logger.warn({ err }, 'Failed to parse last_agent_timestamp in DB, resetting');
     lastAgentTimestamp = {};
   }
   sessions = getAllSessions();
@@ -71,11 +92,16 @@ function loadState(): void {
 }
 
 function saveState(): void {
-  setRouterState('last_timestamp', lastTimestamp);
-  setRouterState(
-    'last_agent_timestamp',
-    JSON.stringify(lastAgentTimestamp),
-  );
+  try {
+    setRouterState('last_timestamp', lastTimestamp);
+    setRouterState(
+      'last_agent_timestamp',
+      JSON.stringify(lastAgentTimestamp),
+    );
+  } catch (err) {
+    logger.error({ err }, 'Failed to persist router state to DB — cursor may be lost on restart');
+    throw err;
+  }
 }
 
 /** Returns the trigger regexp for a specific group (uses group.trigger if set, else global). */
@@ -110,7 +136,7 @@ export function getAvailableGroups(): import('./container-runner.js').AvailableG
   const registeredJids = new Set(Object.keys(registeredGroups));
 
   return chats
-    .filter((c) => c.jid !== '__group_sync__' && (c.jid.endsWith('@g.us') || c.jid.endsWith('@s.whatsapp.net')))
+    .filter((c) => c.jid !== '__group_sync__' && channels.some((ch) => ch.ownsJid(c.jid)))
     .map((c) => ({
       jid: c.jid,
       name: c.name,
@@ -122,6 +148,12 @@ export function getAvailableGroups(): import('./container-runner.js').AvailableG
 /** @internal - exported for testing */
 export function _setRegisteredGroups(groups: Record<string, RegisteredGroup>): void {
   registeredGroups = groups;
+}
+
+/** @internal - exported for testing */
+export function _setChannels(chs: Channel[]): void {
+  channels.length = 0;
+  channels.push(...chs);
 }
 
 /**
@@ -173,7 +205,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     }, IDLE_TIMEOUT);
   };
 
-  await whatsapp.setTyping(chatJid, true);
+  const channel = findChannel(chatJid);
+  await channel?.setTyping?.(chatJid, true);
   let hadError = false;
   let outputSentToUser = false;
 
@@ -189,8 +222,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
         logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
         if (text) {
-          await whatsapp.sendMessage(chatJid, text);
-          outputSentToUser = true;
+          const delivered = await sendToChannel(chatJid, text);
+          if (delivered) outputSentToUser = true;
         }
         // Only reset idle timer on actual results, not session-update markers (result: null)
         resetIdleTimer();
@@ -201,20 +234,20 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
       }
     },
     () => {
-      whatsapp.sendMessage(chatJid, WARNING_MESSAGE).catch((err) => {
+      sendToChannel(chatJid, WARNING_MESSAGE).catch((err) => {
         logger.warn({ chatJid, err }, 'Failed to send warning notification');
       });
     },
     (hadOutput: boolean) => {
       // Don't send timeout message if agent already produced output (idle cleanup)
       if (hadOutput) return;
-      whatsapp.sendMessage(chatJid, TIMEOUT_MESSAGE).catch((err) => {
+      sendToChannel(chatJid, TIMEOUT_MESSAGE).catch((err) => {
         logger.warn({ chatJid, err }, 'Failed to send timeout notification');
       });
     },
   );
 
-  await whatsapp.setTyping(chatJid, false);
+  await channel?.setTyping?.(chatJid, false);
   if (idleTimer) clearTimeout(idleTimer);
 
   if (output === 'error' || hadError) {
@@ -366,7 +399,7 @@ async function startMessageLoop(): Promise<void> {
             const statusText = mode === 'on'
               ? `Activation: ON — responding to all messages in this group.`
               : `Activation: OFF — responding only to @${ASSISTANT_NAME} mentions.`;
-            whatsapp.sendMessage(chatJid, statusText);
+            await sendToChannel(chatJid, statusText);
             logger.info({ chatJid, mode, requiresTrigger: newRequiresTrigger }, 'Group activation changed');
             // Advance cursor so /activation message doesn't leak into agent context
             lastAgentTimestamp[chatJid] = activationMsg.timestamp;
@@ -408,7 +441,9 @@ async function startMessageLoop(): Promise<void> {
               messagesToSend[messagesToSend.length - 1].timestamp;
             saveState();
             // Show typing indicator while the container processes the piped message
-            whatsapp.setTyping(chatJid, true);
+            findChannel(chatJid)?.setTyping?.(chatJid, true)?.catch((err: unknown) => {
+              logger.debug({ chatJid, err }, 'Failed to send typing indicator');
+            });
           } else {
             // No active container — enqueue for a new one
             queue.enqueueMessageCheck(chatJid);
@@ -453,23 +488,34 @@ async function main(): Promise<void> {
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
   startDashboardServer(dashboardPort);
 
-
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
-    await queue.shutdown(10000);
-    await whatsapp.disconnect();
+    try { await queue.shutdown(10000); } catch (err) {
+      logger.error({ err }, 'Error during queue shutdown');
+    }
+    for (const ch of channels) {
+      try { await ch.disconnect(); } catch (err) {
+        logger.error({ channel: ch.name, err }, 'Error disconnecting channel');
+      }
+    }
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 
-  // Create WhatsApp channel
-  whatsapp = new WhatsAppChannel({
-    onMessage: (chatJid, msg) => storeMessage(msg),
-    onChatMetadata: (chatJid, timestamp) => storeChatMetadata(chatJid, timestamp),
+  // Channel callbacks (shared by all channels)
+  const channelOpts = {
+    onMessage: (_chatJid: string, msg: NewMessage) => storeMessage(msg),
+    onChatMetadata: (chatJid: string, timestamp: string, name?: string) =>
+      storeChatMetadata(chatJid, timestamp, name),
     registeredGroups: () => registeredGroups,
-    onUnregisteredTrigger: (chatJid) => {
+  };
+
+  // Create WhatsApp channel (with WhatsApp-specific auto-registration callback)
+  whatsapp = new WhatsAppChannel({
+    ...channelOpts,
+    onUnregisteredTrigger: (chatJid: string) => {
       const MAX_AUTO_GROUPS = 20;
       if (Object.keys(registeredGroups).length >= MAX_AUTO_GROUPS) {
         logger.warn({ chatJid, max: MAX_AUTO_GROUPS }, 'Auto-registration blocked: group limit reached');
@@ -489,9 +535,24 @@ async function main(): Promise<void> {
       return true;
     },
   });
-
-  // Connect — resolves when first connected
+  channels.push(whatsapp);
   await whatsapp.connect();
+
+  // Create registry-based channels (Telegram, etc.) — auto-enabled when credentials present
+  for (const name of getRegisteredChannelNames()) {
+    const factory = getChannelFactory(name);
+    if (!factory) continue;
+    try {
+      const ch = factory(channelOpts);
+      if (ch) {
+        await ch.connect();
+        channels.push(ch);
+        logger.info({ channel: name }, 'Channel connected');
+      }
+    } catch (err) {
+      logger.error({ channel: name, err }, 'Failed to connect channel, continuing without it');
+    }
+  }
 
   // Start subsystems (independently of connection handler)
   startSchedulerLoop({
@@ -501,18 +562,19 @@ async function main(): Promise<void> {
     onProcess: (groupJid, proc, containerName, groupFolder) => queue.registerProcess(groupJid, proc, containerName, groupFolder),
     sendMessage: async (jid, rawText) => {
       const text = formatOutbound(rawText);
-      if (text) await whatsapp.sendMessage(jid, text);
+      if (text) { await sendToChannel(jid, text); }
     },
   });
   startMeetingReminderLoop({
-    sendMessage: async (jid, text) => whatsapp.sendMessage(jid, text),
+    sendMessage: async (jid, text) => { await sendToChannel(jid, text); },
     registeredGroups: () => registeredGroups,
   });
   startIpcWatcher({
-    sendMessage: (jid, text) => whatsapp.sendMessage(jid, text),
+    sendMessage: async (jid, text) => { await sendToChannel(jid, text); },
     registeredGroups: () => registeredGroups,
     registerGroup,
-    syncGroupMetadata: (force) => whatsapp.syncGroupMetadata(force),
+    // WhatsApp-specific: syncGroupMetadata is not part of the Channel interface
+    syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
     writeGroupsSnapshot,
     onDashboardInput: async (groupFolder, chatJid, text) => {
@@ -522,13 +584,11 @@ async function main(): Promise<void> {
         return;
       }
 
-      // Message already stored in DB by sendGroupMessage (chat.ts).
-      // Run agent and stream output back to WhatsApp.
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const result = await runAgent(group, text, chatJid, async (output) => {
         if (output.result) {
           const formatted = formatOutbound(output.result);
-          if (formatted) await whatsapp.sendMessage(chatJid, formatted);
+          if (formatted) await sendToChannel(chatJid, formatted);
         }
       });
       logger.info({ groupFolder, result }, 'Dashboard agent run completed');
