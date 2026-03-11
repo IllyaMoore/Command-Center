@@ -126,7 +126,11 @@ export class TelegramChannel implements Channel {
         }
       }
 
-      this.opts.onChatMetadata(chatJid, timestamp, chatName);
+      try {
+        this.opts.onChatMetadata(chatJid, timestamp, chatName);
+      } catch (err) {
+        logger.error({ chatJid, err }, 'Failed to store Telegram chat metadata');
+      }
 
       const group = this.opts.registeredGroups()[chatJid];
       if (!group) {
@@ -134,15 +138,21 @@ export class TelegramChannel implements Channel {
         return;
       }
 
-      this.opts.onMessage(chatJid, {
-        id: msgId,
-        chat_jid: chatJid,
-        sender,
-        sender_name: senderName,
-        content,
-        timestamp,
-        is_from_me: false,
-      });
+      try {
+        this.opts.onMessage(chatJid, {
+          id: msgId,
+          chat_jid: chatJid,
+          sender,
+          sender_name: senderName,
+          content,
+          timestamp,
+          is_from_me: false,
+        });
+      } catch (err) {
+        logger.error({ chatJid, msgId, sender: senderName, err },
+          'Failed to store Telegram message');
+        return;
+      }
 
       logger.info({ chatJid, chatName, sender: senderName }, 'Telegram message stored');
     });
@@ -161,16 +171,20 @@ export class TelegramChannel implements Channel {
         'Unknown';
       const caption = ctx.message.caption ? ` ${ctx.message.caption}` : '';
 
-      this.opts.onChatMetadata(chatJid, timestamp);
-      this.opts.onMessage(chatJid, {
-        id: ctx.message.message_id.toString(),
-        chat_jid: chatJid,
-        sender: ctx.from?.id?.toString() || '',
-        sender_name: senderName,
-        content: `${placeholder}${caption}`,
-        timestamp,
-        is_from_me: false,
-      });
+      try {
+        this.opts.onChatMetadata(chatJid, timestamp);
+        this.opts.onMessage(chatJid, {
+          id: ctx.message.message_id.toString(),
+          chat_jid: chatJid,
+          sender: ctx.from?.id?.toString() || '',
+          sender_name: senderName,
+          content: `${placeholder}${caption}`,
+          timestamp,
+          is_from_me: false,
+        });
+      } catch (err) {
+        logger.error({ chatJid, placeholder, err }, 'Failed to store Telegram non-text message');
+      }
     };
 
     this.bot.on('message:photo', (ctx) => storeNonText(ctx, '[Photo]'));

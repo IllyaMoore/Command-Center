@@ -498,6 +498,33 @@ describe('TelegramChannel', () => {
       await channel.setTyping('tg:100200300', false);
       expect(currentBot().api.sendChatAction).not.toHaveBeenCalled();
     });
+
+    it('logs error but does not throw on API failure', async () => {
+      const { logger } = await import('../logger.js');
+      const channel = new TelegramChannel('test-token', createTestOpts());
+      await channel.connect();
+      currentBot().api.sendChatAction.mockRejectedValueOnce(new Error('Network error'));
+
+      await channel.setTyping('tg:100200300', true);
+      expect(logger.debug).toHaveBeenCalledWith(
+        expect.objectContaining({ jid: 'tg:100200300' }),
+        'Failed to send Telegram typing indicator',
+      );
+    });
+
+    it('logs warn for 403 (bot blocked) errors', async () => {
+      const { logger } = await import('../logger.js');
+      const channel = new TelegramChannel('test-token', createTestOpts());
+      await channel.connect();
+      const err = Object.assign(new Error('Forbidden'), { error_code: 403 });
+      currentBot().api.sendChatAction.mockRejectedValueOnce(err);
+
+      await channel.setTyping('tg:100200300', true);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ jid: 'tg:100200300' }),
+        'Failed to send Telegram typing indicator',
+      );
+    });
   });
 
   describe('bot commands', () => {
@@ -528,6 +555,79 @@ describe('TelegramChannel', () => {
       await handler(ctx);
 
       expect(ctx.reply).toHaveBeenCalledWith('Andy is online.');
+    });
+  });
+
+  describe('DB callback error resilience', () => {
+    it('logs error when onChatMetadata throws', async () => {
+      const { logger } = await import('../logger.js');
+      const opts = createTestOpts({
+        onChatMetadata: vi.fn(() => { throw new Error('DB locked'); }),
+      });
+      const channel = new TelegramChannel('test-token', opts);
+      await channel.connect();
+
+      const ctx = createTextCtx({ text: 'Hello' });
+      await triggerTextMessage(ctx);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ chatJid: 'tg:100200300' }),
+        'Failed to store Telegram chat metadata',
+      );
+      // onMessage should still be attempted (metadata error is non-fatal for message storage)
+      expect(opts.onMessage).toHaveBeenCalled();
+    });
+
+    it('logs error and skips when onMessage throws', async () => {
+      const { logger } = await import('../logger.js');
+      const opts = createTestOpts({
+        onMessage: vi.fn(() => { throw new Error('DB locked'); }),
+      });
+      const channel = new TelegramChannel('test-token', opts);
+      await channel.connect();
+
+      const ctx = createTextCtx({ text: 'Hello' });
+      await triggerTextMessage(ctx);
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ chatJid: 'tg:100200300', msgId: '1' }),
+        'Failed to store Telegram message',
+      );
+    });
+
+    it('logs error when storeNonText DB callbacks throw', async () => {
+      const { logger } = await import('../logger.js');
+      const opts = createTestOpts({
+        onMessage: vi.fn(() => { throw new Error('DB locked'); }),
+      });
+      const channel = new TelegramChannel('test-token', opts);
+      await channel.connect();
+
+      await triggerMediaMessage('message:photo', createMediaCtx({}));
+
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({ chatJid: 'tg:100200300', placeholder: '[Photo]' }),
+        'Failed to store Telegram non-text message',
+      );
+    });
+  });
+
+  describe('disconnect error handling', () => {
+    it('handles bot.stop() failure gracefully', async () => {
+      const { logger } = await import('../logger.js');
+      const channel = new TelegramChannel('test-token', createTestOpts());
+      await channel.connect();
+
+      // Make bot.stop() throw
+      const bot = currentBot();
+      bot.stop = vi.fn().mockRejectedValue(new Error('stop failed'));
+
+      await channel.disconnect();
+      expect(channel.isConnected()).toBe(false);
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ err: expect.any(Error) }),
+        'Error stopping Telegram bot',
+      );
     });
   });
 
