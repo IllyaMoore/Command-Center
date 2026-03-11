@@ -290,6 +290,7 @@ export function getNewMessages(
   return { messages: rows, newTimestamp };
 }
 
+
 /** Single-chat variant of getNewMessages (same bot-message filtering). */
 export function getMessagesSince(
   chatJid: string,

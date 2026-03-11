@@ -8,6 +8,7 @@ vi.mock('../config.js', () => ({
   STORE_DIR: '/tmp/nanoclaw-test-store',
   ASSISTANT_NAME: 'Andy',
   ASSISTANT_HAS_OWN_NUMBER: false,
+  TRIGGER_PATTERN: /^@Andy\b/i,
 }));
 
 // Mock logger
@@ -352,6 +353,130 @@ describe('WhatsAppChannel', () => {
         'unregistered@g.us',
         expect.any(String),
       );
+      expect(opts.onMessage).not.toHaveBeenCalled();
+    });
+
+    it('auto-registers unregistered group when trigger message arrives', async () => {
+      const onTrigger = vi.fn(() => true);
+      const opts = createTestOpts({ onUnregisteredTrigger: onTrigger });
+      const channel = new WhatsAppChannel(opts);
+
+      await connectChannel(channel);
+
+      await triggerMessages([
+        {
+          key: {
+            id: 'msg-auto',
+            remoteJid: 'newgroup@g.us',
+            participant: '5551234@s.whatsapp.net',
+            fromMe: false,
+          },
+          message: { conversation: '@Andy help me' },
+          pushName: 'Alice',
+          messageTimestamp: Math.floor(Date.now() / 1000),
+        },
+      ]);
+
+      expect(onTrigger).toHaveBeenCalledWith('newgroup@g.us');
+      expect(opts.onMessage).toHaveBeenCalled();
+    });
+
+    it('does not auto-register when trigger callback returns false (limit reached)', async () => {
+      const onTrigger = vi.fn(() => false);
+      const opts = createTestOpts({ onUnregisteredTrigger: onTrigger });
+      const channel = new WhatsAppChannel(opts);
+
+      await connectChannel(channel);
+
+      await triggerMessages([
+        {
+          key: {
+            id: 'msg-limit',
+            remoteJid: 'newgroup@g.us',
+            participant: '5551234@s.whatsapp.net',
+            fromMe: false,
+          },
+          message: { conversation: '@Andy help me' },
+          pushName: 'Alice',
+          messageTimestamp: Math.floor(Date.now() / 1000),
+        },
+      ]);
+
+      expect(onTrigger).toHaveBeenCalled();
+      expect(opts.onMessage).not.toHaveBeenCalled();
+    });
+
+    it('does not auto-register from bot own messages', async () => {
+      const onTrigger = vi.fn(() => true);
+      const opts = createTestOpts({ onUnregisteredTrigger: onTrigger });
+      const channel = new WhatsAppChannel(opts);
+
+      await connectChannel(channel);
+
+      await triggerMessages([
+        {
+          key: {
+            id: 'msg-self',
+            remoteJid: 'newgroup@g.us',
+            participant: '5551234@s.whatsapp.net',
+            fromMe: false,
+          },
+          message: { conversation: 'Andy: @Andy something' },
+          pushName: 'Andy',
+          messageTimestamp: Math.floor(Date.now() / 1000),
+        },
+      ]);
+
+      // Content starts with "Andy:" so isBotMessage=true (ASSISTANT_HAS_OWN_NUMBER=false)
+      expect(onTrigger).not.toHaveBeenCalled();
+    });
+
+    it('does not auto-register DMs (only groups)', async () => {
+      const onTrigger = vi.fn(() => true);
+      const opts = createTestOpts({ onUnregisteredTrigger: onTrigger });
+      const channel = new WhatsAppChannel(opts);
+
+      await connectChannel(channel);
+
+      await triggerMessages([
+        {
+          key: {
+            id: 'msg-dm',
+            remoteJid: '5559999@s.whatsapp.net',
+            fromMe: false,
+          },
+          message: { conversation: '@Andy hello' },
+          pushName: 'Bob',
+          messageTimestamp: Math.floor(Date.now() / 1000),
+        },
+      ]);
+
+      expect(onTrigger).not.toHaveBeenCalled();
+    });
+
+    it('handles auto-registration callback exception gracefully', async () => {
+      const onTrigger = vi.fn(() => { throw new Error('DB error'); });
+      const opts = createTestOpts({ onUnregisteredTrigger: onTrigger });
+      const channel = new WhatsAppChannel(opts);
+
+      await connectChannel(channel);
+
+      await triggerMessages([
+        {
+          key: {
+            id: 'msg-err',
+            remoteJid: 'newgroup@g.us',
+            participant: '5551234@s.whatsapp.net',
+            fromMe: false,
+          },
+          message: { conversation: '@Andy help' },
+          pushName: 'Alice',
+          messageTimestamp: Math.floor(Date.now() / 1000),
+        },
+      ]);
+
+      expect(onTrigger).toHaveBeenCalled();
+      // Message should NOT be stored since registration failed
       expect(opts.onMessage).not.toHaveBeenCalled();
     });
 

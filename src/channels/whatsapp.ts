@@ -11,7 +11,7 @@ import makeWASocket, {
   useMultiFileAuthState,
 } from '@whiskeysockets/baileys';
 
-import { ASSISTANT_HAS_OWN_NUMBER, ASSISTANT_NAME, STORE_DIR } from '../config.js';
+import { ASSISTANT_HAS_OWN_NUMBER, ASSISTANT_NAME, STORE_DIR, TRIGGER_PATTERN } from '../config.js';
 import {
   getLastGroupSync,
   setLastGroupSync,
@@ -26,6 +26,7 @@ export interface WhatsAppChannelOpts {
   onMessage: OnInboundMessage;
   onChatMetadata: OnChatMetadata;
   registeredGroups: () => Record<string, RegisteredGroup>;
+  onUnregisteredTrigger?: (chatJid: string) => boolean;
 }
 
 export class WhatsAppChannel implements Channel {
@@ -194,27 +195,39 @@ export class WhatsAppChannel implements Channel {
         // Always notify about chat metadata for group discovery
         this.opts.onChatMetadata(chatJid, timestamp);
 
-        // Only deliver full message for registered groups
+        const content =
+          msg.message?.conversation ||
+          msg.message?.extendedTextMessage?.text ||
+          msg.message?.imageMessage?.caption ||
+          msg.message?.videoMessage?.caption ||
+          '';
+        const sender = msg.key.participant || msg.key.remoteJid || '';
+        const senderName = msg.pushName || sender.split('@')[0];
+
+        const fromMe = msg.key.fromMe || false;
+        // Detect bot messages: with own number, fromMe is reliable
+        // since only the bot sends from that number.
+        // With shared number, bot messages carry the assistant name prefix
+        // (even in DMs/self-chat) so we check for that.
+        const isBotMessage = ASSISTANT_HAS_OWN_NUMBER
+          ? fromMe
+          : content.startsWith(`${ASSISTANT_NAME}:`);
+
         const groups = this.opts.registeredGroups();
-        if (groups[chatJid]) {
-          const content =
-            msg.message?.conversation ||
-            msg.message?.extendedTextMessage?.text ||
-            msg.message?.imageMessage?.caption ||
-            msg.message?.videoMessage?.caption ||
-            '';
-          const sender = msg.key.participant || msg.key.remoteJid || '';
-          const senderName = msg.pushName || sender.split('@')[0];
+        let isRegistered = !!groups[chatJid];
 
-          const fromMe = msg.key.fromMe || false;
-          // Detect bot messages: with own number, fromMe is reliable
-          // since only the bot sends from that number.
-          // With shared number, bot messages carry the assistant name prefix
-          // (even in DMs/self-chat) so we check for that.
-          const isBotMessage = ASSISTANT_HAS_OWN_NUMBER
-            ? fromMe
-            : content.startsWith(`${ASSISTANT_NAME}:`);
+        // Auto-register: unregistered group with trigger → register first, then store
+        if (!isRegistered && !isBotMessage && chatJid.endsWith('@g.us') && this.opts.onUnregisteredTrigger) {
+          if (TRIGGER_PATTERN.test(content.trim())) {
+            try {
+              isRegistered = this.opts.onUnregisteredTrigger(chatJid);
+            } catch (err) {
+              logger.error({ err, chatJid }, 'Auto-registration failed');
+            }
+          }
+        }
 
+        if (isRegistered) {
           this.opts.onMessage(chatJid, {
             id: msg.key.id || '',
             chat_jid: chatJid,
