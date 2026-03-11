@@ -4,7 +4,9 @@
       "Bash(npx vitest run src/container-runner.test.ts)",
       "Bash(npx vitest run)",
       "Bash(npm run typecheck)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(npm audit:*)",
+      "Bash(tailscale status:*)"
     ]
   },
   "enabledPlugins": {
