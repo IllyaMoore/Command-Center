@@ -99,7 +99,8 @@ function saveState(): void {
       JSON.stringify(lastAgentTimestamp),
     );
   } catch (err) {
-    logger.error({ err }, 'Failed to persist router state to DB');
+    logger.error({ err }, 'Failed to persist router state to DB — cursor may be lost on restart');
+    throw err;
   }
 }
 

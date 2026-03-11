@@ -17,7 +17,6 @@ interface RegisterArgs {
   name: string;
   trigger: string;
   folder: string;
-  channel: string;
   requiresTrigger: boolean;
 }
 
@@ -27,7 +26,6 @@ function parseArgs(args: string[]): RegisterArgs {
     name: '',
     trigger: '',
     folder: '',
-    channel: 'whatsapp',
     requiresTrigger: true,
   };
 
@@ -44,9 +42,6 @@ function parseArgs(args: string[]): RegisterArgs {
         break;
       case '--folder':
         result.folder = args[++i] || '';
-        break;
-      case '--channel':
-        result.channel = (args[++i] || '').toLowerCase();
         break;
       case '--no-trigger-required':
         result.requiresTrigger = false;
@@ -67,18 +62,16 @@ export async function run(args: string[]): Promise<void> {
   const parsed = parseArgs(args);
 
   if (!parsed.jid || !parsed.name || !parsed.trigger || !parsed.folder) {
-    emitStatus('REGISTER_CHANNEL', {
-      STATUS: 'failed',
-      ERROR: 'Missing required args: --jid, --name, --trigger, --folder',
-    });
+    const msg = 'Missing required args: --jid, --name, --trigger, --folder';
+    logger.error(msg);
+    emitStatus('REGISTER_CHANNEL', { STATUS: 'failed', ERROR: msg });
     process.exit(4);
   }
 
   if (!isValidFolder(parsed.folder)) {
-    emitStatus('REGISTER_CHANNEL', {
-      STATUS: 'failed',
-      ERROR: 'Invalid folder name (use lowercase alphanumeric, hyphens, underscores)',
-    });
+    const msg = 'Invalid folder name (use lowercase alphanumeric, hyphens, underscores)';
+    logger.error({ folder: parsed.folder }, msg);
+    emitStatus('REGISTER_CHANNEL', { STATUS: 'failed', ERROR: msg });
     process.exit(4);
   }
 
@@ -106,7 +99,6 @@ export async function run(args: string[]): Promise<void> {
     JID: parsed.jid,
     NAME: parsed.name,
     FOLDER: parsed.folder,
-    CHANNEL: parsed.channel,
     TRIGGER: parsed.trigger,
     REQUIRES_TRIGGER: parsed.requiresTrigger,
     STATUS: 'success',

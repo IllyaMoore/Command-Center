@@ -30,6 +30,25 @@ async function sendTelegramMessage(
   }
 }
 
+const MAX_MESSAGE_LENGTH = 4096;
+
+/** Split text at line boundaries to avoid breaking Markdown entities mid-chunk. */
+function splitMessage(text: string): string[] {
+  if (text.length <= MAX_MESSAGE_LENGTH) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > MAX_MESSAGE_LENGTH) {
+    // Find last newline within the limit
+    const cutoff = remaining.lastIndexOf('\n', MAX_MESSAGE_LENGTH);
+    const splitAt = cutoff > 0 ? cutoff + 1 : MAX_MESSAGE_LENGTH;
+    chunks.push(remaining.slice(0, splitAt));
+    remaining = remaining.slice(splitAt);
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
 export class TelegramChannel implements Channel {
   readonly name = 'telegram';
 
@@ -206,15 +225,11 @@ export class TelegramChannel implements Channel {
     }
 
     const numericId = this.parseChatId(jid);
-    const MAX_LENGTH = 4096;
-    if (text.length <= MAX_LENGTH) {
-      await sendTelegramMessage(this.bot.api, numericId, text);
-    } else {
-      for (let i = 0; i < text.length; i += MAX_LENGTH) {
-        await sendTelegramMessage(this.bot.api, numericId, text.slice(i, i + MAX_LENGTH));
-      }
+    const chunks = splitMessage(text);
+    for (const chunk of chunks) {
+      await sendTelegramMessage(this.bot.api, numericId, chunk);
     }
-    logger.info({ jid, length: text.length }, 'Telegram message sent');
+    logger.info({ jid, length: text.length, chunks: chunks.length }, 'Telegram message sent');
   }
 
   isConnected(): boolean {
@@ -229,12 +244,12 @@ export class TelegramChannel implements Channel {
     if (this.bot) {
       try {
         await this.bot.stop();
+        logger.info('Telegram bot stopped');
       } catch (err) {
         logger.warn({ err }, 'Error stopping Telegram bot');
       }
       this.bot = null;
       this.running = false;
-      logger.info('Telegram bot stopped');
     }
   }
 
@@ -243,12 +258,18 @@ export class TelegramChannel implements Channel {
     try {
       await this.bot.api.sendChatAction(this.parseChatId(jid), 'typing');
     } catch (err) {
-      logger.debug({ jid, err }, 'Failed to send Telegram typing indicator');
+      // 403 = bot blocked/kicked — worth knowing about in production
+      const status = (err as any)?.error_code;
+      const level = status === 403 ? 'warn' : 'debug';
+      logger[level]({ jid, err }, 'Failed to send Telegram typing indicator');
     }
   }
 
   private parseChatId(jid: string): string {
-    return jid.replace(/^tg:/, '');
+    if (!jid.startsWith('tg:')) {
+      throw new Error(`Invalid Telegram JID: ${jid} (expected tg: prefix)`);
+    }
+    return jid.slice(3);
   }
 }
 
