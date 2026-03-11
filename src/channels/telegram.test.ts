@@ -63,11 +63,12 @@ vi.mock('grammy', () => ({
   },
 }));
 
-import { TelegramChannel, TelegramChannelOpts } from './telegram.js';
+import { TelegramChannel } from './telegram.js';
+import type { ChannelOpts } from './registry.js';
 
 // --- Test helpers ---
 
-function createTestOpts(overrides?: Partial<TelegramChannelOpts>): TelegramChannelOpts {
+function createTestOpts(overrides?: Partial<ChannelOpts>): ChannelOpts {
   return {
     onMessage: vi.fn(),
     onChatMetadata: vi.fn(),
@@ -427,18 +428,17 @@ describe('TelegramChannel', () => {
       expect(currentBot().api.sendMessage).toHaveBeenCalledTimes(2);
     });
 
-    it('handles send failure gracefully', async () => {
+    it('propagates send errors to caller', async () => {
       const channel = new TelegramChannel('test-token', createTestOpts());
       await channel.connect();
       currentBot().api.sendMessage.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(channel.sendMessage('tg:100200300', 'Will fail')).resolves.toBeUndefined();
+      await expect(channel.sendMessage('tg:100200300', 'Will fail')).rejects.toThrow('Network error');
     });
 
-    it('does nothing when bot is not initialized', async () => {
+    it('throws when bot is not initialized', async () => {
       const channel = new TelegramChannel('test-token', createTestOpts());
-      await channel.sendMessage('tg:100200300', 'No bot');
-      // No error, no API call
+      await expect(channel.sendMessage('tg:100200300', 'No bot')).rejects.toThrow('not initialized');
     });
 
     it('falls back to plain text on Markdown parse error', async () => {
@@ -459,7 +459,7 @@ describe('TelegramChannel', () => {
       await channel.connect();
       currentBot().api.sendMessage.mockRejectedValueOnce(new Error('Forbidden: bot was blocked'));
 
-      await channel.sendMessage('tg:100200300', 'Hello');
+      await expect(channel.sendMessage('tg:100200300', 'Hello')).rejects.toThrow('Forbidden');
       expect(currentBot().api.sendMessage).toHaveBeenCalledTimes(1);
     });
   });
@@ -535,6 +535,10 @@ describe('TelegramChannel', () => {
     it('has name "telegram"', () => {
       const channel = new TelegramChannel('test-token', createTestOpts());
       expect(channel.name).toBe('telegram');
+    });
+
+    it('throws on empty bot token', () => {
+      expect(() => new TelegramChannel('', createTestOpts())).toThrow('bot token is required');
     });
   });
 });

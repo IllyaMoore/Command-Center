@@ -65,7 +65,11 @@ async function sendToChannel(jid: string, text: string): Promise<void> {
     logger.warn({ jid }, 'No channel found for JID');
     return;
   }
-  await channel.sendMessage(jid, text);
+  try {
+    await channel.sendMessage(jid, text);
+  } catch (err) {
+    logger.error({ jid, channel: channel.name, err }, 'Failed to deliver message');
+  }
 }
 
 function loadState(): void {
@@ -73,8 +77,8 @@ function loadState(): void {
   const agentTs = getRouterState('last_agent_timestamp');
   try {
     lastAgentTimestamp = agentTs ? JSON.parse(agentTs) : {};
-  } catch {
-    logger.warn('Corrupted last_agent_timestamp in DB, resetting');
+  } catch (err) {
+    logger.warn({ err }, 'Failed to parse last_agent_timestamp in DB, resetting');
     lastAgentTimestamp = {};
   }
   sessions = getAllSessions();
@@ -388,7 +392,7 @@ async function startMessageLoop(): Promise<void> {
             const statusText = mode === 'on'
               ? `Activation: ON — responding to all messages in this group.`
               : `Activation: OFF — responding only to @${ASSISTANT_NAME} mentions.`;
-            sendToChannel(chatJid, statusText);
+            await sendToChannel(chatJid, statusText);
             logger.info({ chatJid, mode, requiresTrigger: newRequiresTrigger }, 'Group activation changed');
             // Advance cursor so /activation message doesn't leak into agent context
             lastAgentTimestamp[chatJid] = activationMsg.timestamp;
@@ -523,11 +527,15 @@ async function main(): Promise<void> {
   for (const name of getRegisteredChannelNames()) {
     const factory = getChannelFactory(name);
     if (!factory) continue;
-    const ch = factory(channelOpts);
-    if (ch) {
-      await ch.connect();
-      channels.push(ch);
-      logger.info({ channel: name }, 'Channel connected');
+    try {
+      const ch = factory(channelOpts);
+      if (ch) {
+        await ch.connect();
+        channels.push(ch);
+        logger.info({ channel: name }, 'Channel connected');
+      }
+    } catch (err) {
+      logger.error({ channel: name, err }, 'Failed to connect channel, continuing without it');
     }
   }
 

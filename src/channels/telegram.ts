@@ -6,8 +6,6 @@ import { logger } from '../logger.js';
 import { registerChannel, type ChannelOpts } from './registry.js';
 import { Channel } from '../types.js';
 
-export type TelegramChannelOpts = ChannelOpts;
-
 /**
  * Send a message with Telegram Markdown parse mode, falling back to plain text.
  * Claude's output naturally matches Telegram's Markdown v1 format:
@@ -32,15 +30,16 @@ async function sendTelegramMessage(
 }
 
 export class TelegramChannel implements Channel {
-  name = 'telegram';
+  readonly name = 'telegram';
 
   private bot: Bot | null = null;
   private running = false;
   private connecting = false;
-  private opts: TelegramChannelOpts;
+  private opts: ChannelOpts;
   private botToken: string;
 
-  constructor(botToken: string, opts: TelegramChannelOpts) {
+  constructor(botToken: string, opts: ChannelOpts) {
+    if (!botToken) throw new Error('Telegram bot token is required');
     this.botToken = botToken;
     this.opts = opts;
   }
@@ -53,7 +52,7 @@ export class TelegramChannel implements Channel {
     this.connecting = true;
     this.bot = new Bot(this.botToken);
 
-    this.bot.command('chatid', (ctx) => {
+    this.bot.command('chatid', async (ctx) => {
       const chatId = ctx.chat.id;
       const chatType = ctx.chat.type;
       const chatName =
@@ -61,14 +60,14 @@ export class TelegramChannel implements Channel {
           ? ctx.from?.first_name || 'Private'
           : (ctx.chat as any).title || 'Unknown';
 
-      ctx.reply(
+      await ctx.reply(
         `Chat ID: \`tg:${chatId}\`\nName: ${chatName}\nType: ${chatType}`,
         { parse_mode: 'Markdown' },
       );
     });
 
-    this.bot.command('ping', (ctx) => {
-      ctx.reply(`${ASSISTANT_NAME} is online.`);
+    this.bot.command('ping', async (ctx) => {
+      await ctx.reply(`${ASSISTANT_NAME} is online.`);
     });
 
     this.bot.on('message:text', async (ctx) => {
@@ -172,7 +171,10 @@ export class TelegramChannel implements Channel {
     this.bot.on('message:contact', (ctx) => storeNonText(ctx, '[Contact]'));
 
     this.bot.catch((err) => {
-      logger.error({ err: err.message }, 'Telegram bot error');
+      logger.error(
+        { err: err.error, chatId: err.ctx?.chat?.id },
+        'Telegram bot error',
+      );
     });
 
     return new Promise<void>((resolve, reject) => {
@@ -199,24 +201,19 @@ export class TelegramChannel implements Channel {
 
   async sendMessage(jid: string, text: string): Promise<void> {
     if (!this.bot) {
-      logger.warn('Telegram bot not initialized');
-      return;
+      throw new Error('Telegram bot not initialized, cannot send message');
     }
 
-    try {
-      const numericId = jid.replace(/^tg:/, '');
-      const MAX_LENGTH = 4096;
-      if (text.length <= MAX_LENGTH) {
-        await sendTelegramMessage(this.bot.api, numericId, text);
-      } else {
-        for (let i = 0; i < text.length; i += MAX_LENGTH) {
-          await sendTelegramMessage(this.bot.api, numericId, text.slice(i, i + MAX_LENGTH));
-        }
+    const numericId = this.parseChatId(jid);
+    const MAX_LENGTH = 4096;
+    if (text.length <= MAX_LENGTH) {
+      await sendTelegramMessage(this.bot.api, numericId, text);
+    } else {
+      for (let i = 0; i < text.length; i += MAX_LENGTH) {
+        await sendTelegramMessage(this.bot.api, numericId, text.slice(i, i + MAX_LENGTH));
       }
-      logger.info({ jid, length: text.length }, 'Telegram message sent');
-    } catch (err) {
-      logger.error({ jid, err }, 'Failed to send Telegram message');
     }
+    logger.info({ jid, length: text.length }, 'Telegram message sent');
   }
 
   isConnected(): boolean {
@@ -229,7 +226,11 @@ export class TelegramChannel implements Channel {
 
   async disconnect(): Promise<void> {
     if (this.bot) {
-      await this.bot.stop();
+      try {
+        await this.bot.stop();
+      } catch (err) {
+        logger.warn({ err }, 'Error stopping Telegram bot');
+      }
       this.bot = null;
       this.running = false;
       logger.info('Telegram bot stopped');
@@ -239,11 +240,14 @@ export class TelegramChannel implements Channel {
   async setTyping(jid: string, isTyping: boolean): Promise<void> {
     if (!this.bot || !isTyping) return;
     try {
-      const numericId = jid.replace(/^tg:/, '');
-      await this.bot.api.sendChatAction(numericId, 'typing');
+      await this.bot.api.sendChatAction(this.parseChatId(jid), 'typing');
     } catch (err) {
       logger.debug({ jid, err }, 'Failed to send Telegram typing indicator');
     }
+  }
+
+  private parseChatId(jid: string): string {
+    return jid.replace(/^tg:/, '');
   }
 }
 

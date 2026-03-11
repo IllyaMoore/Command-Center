@@ -79,7 +79,7 @@ export interface TaskRunLog {
 // --- Channel abstraction ---
 
 export interface Channel {
-  name: string;
+  readonly name: string;
   connect(): Promise<void>;
   sendMessage(jid: string, text: string): Promise<void>;
   isConnected(): boolean;

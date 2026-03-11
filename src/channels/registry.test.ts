@@ -30,11 +30,10 @@ describe('channel registry', () => {
     expect(names).toContain('another-channel');
   });
 
-  it('later registration overwrites earlier one', () => {
+  it('throws on duplicate registration', () => {
     const factory1 = () => null;
     const factory2 = () => null;
-    registerChannel('overwrite-test', factory1);
-    registerChannel('overwrite-test', factory2);
-    expect(getChannelFactory('overwrite-test')).toBe(factory2);
+    registerChannel('duplicate-test', factory1);
+    expect(() => registerChannel('duplicate-test', factory2)).toThrow('already registered');
   });
 });

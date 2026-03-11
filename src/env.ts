@@ -12,8 +12,9 @@ export function readEnvFile(keys: string[]): Record<string, string> {
   let content: string;
   try {
     content = fs.readFileSync(envFile, 'utf-8');
-  } catch {
-    return {};
+  } catch (err: any) {
+    if (err?.code === 'ENOENT') return {};
+    throw err;
   }
 
   const result: Record<string, string> = {};
