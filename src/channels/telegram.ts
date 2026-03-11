@@ -22,6 +22,7 @@ async function sendTelegramMessage(
     // Only retry as plain text for Markdown parse errors, not all API errors
     const message = err instanceof Error ? err.message : String(err);
     if (message.includes("can't parse entities")) {
+      logger.debug({ chatId }, 'Telegram Markdown parse failed, retrying as plain text');
       await api.sendMessage(chatId, text);
     } else {
       throw err;

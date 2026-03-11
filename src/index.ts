@@ -59,16 +59,18 @@ function findChannel(jid: string): Channel | undefined {
   return channels.find((c) => c.ownsJid(jid) && c.isConnected());
 }
 
-async function sendToChannel(jid: string, text: string): Promise<void> {
+async function sendToChannel(jid: string, text: string): Promise<boolean> {
   const channel = findChannel(jid);
   if (!channel) {
     logger.warn({ jid }, 'No channel found for JID');
-    return;
+    return false;
   }
   try {
     await channel.sendMessage(jid, text);
+    return true;
   } catch (err) {
     logger.error({ jid, channel: channel.name, err }, 'Failed to deliver message');
+    return false;
   }
 }
 
@@ -90,11 +92,15 @@ function loadState(): void {
 }
 
 function saveState(): void {
-  setRouterState('last_timestamp', lastTimestamp);
-  setRouterState(
-    'last_agent_timestamp',
-    JSON.stringify(lastAgentTimestamp),
-  );
+  try {
+    setRouterState('last_timestamp', lastTimestamp);
+    setRouterState(
+      'last_agent_timestamp',
+      JSON.stringify(lastAgentTimestamp),
+    );
+  } catch (err) {
+    logger.error({ err }, 'Failed to persist router state to DB');
+  }
 }
 
 /** Returns the trigger regexp for a specific group (uses group.trigger if set, else global). */
@@ -215,8 +221,8 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
         const text = raw.replace(/<internal>[\s\S]*?<\/internal>/g, '').trim();
         logger.info({ group: group.name }, `Agent output: ${raw.slice(0, 200)}`);
         if (text) {
-          await sendToChannel(chatJid, text);
-          outputSentToUser = true;
+          const delivered = await sendToChannel(chatJid, text);
+          if (delivered) outputSentToUser = true;
         }
         // Only reset idle timer on actual results, not session-update markers (result: null)
         resetIdleTimer();
@@ -434,7 +440,9 @@ async function startMessageLoop(): Promise<void> {
               messagesToSend[messagesToSend.length - 1].timestamp;
             saveState();
             // Show typing indicator while the container processes the piped message
-            findChannel(chatJid)?.setTyping?.(chatJid, true);
+            findChannel(chatJid)?.setTyping?.(chatJid, true)?.catch((err: unknown) => {
+              logger.debug({ chatJid, err }, 'Failed to send typing indicator');
+            });
           } else {
             // No active container — enqueue for a new one
             queue.enqueueMessageCheck(chatJid);
@@ -482,8 +490,14 @@ async function main(): Promise<void> {
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
-    await queue.shutdown(10000);
-    for (const ch of channels) await ch.disconnect();
+    try { await queue.shutdown(10000); } catch (err) {
+      logger.error({ err }, 'Error during queue shutdown');
+    }
+    for (const ch of channels) {
+      try { await ch.disconnect(); } catch (err) {
+        logger.error({ channel: ch.name, err }, 'Error disconnecting channel');
+      }
+    }
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
@@ -547,15 +561,15 @@ async function main(): Promise<void> {
     onProcess: (groupJid, proc, containerName, groupFolder) => queue.registerProcess(groupJid, proc, containerName, groupFolder),
     sendMessage: async (jid, rawText) => {
       const text = formatOutbound(rawText);
-      if (text) await sendToChannel(jid, text);
+      if (text) { await sendToChannel(jid, text); }
     },
   });
   startMeetingReminderLoop({
-    sendMessage: async (jid, text) => sendToChannel(jid, text),
+    sendMessage: async (jid, text) => { await sendToChannel(jid, text); },
     registeredGroups: () => registeredGroups,
   });
   startIpcWatcher({
-    sendMessage: (jid, text) => sendToChannel(jid, text),
+    sendMessage: async (jid, text) => { await sendToChannel(jid, text); },
     registeredGroups: () => registeredGroups,
     registerGroup,
     // WhatsApp-specific: syncGroupMetadata is not part of the Channel interface
