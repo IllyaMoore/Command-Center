@@ -52,6 +52,17 @@ See `infra/README.md` for full docs.
 - GitHub environments: `shared`, `staging` (from `staging` branch), `production` (from `master`)
 - Default branch: `staging`
 - Backport changes to all 3 branches: `staging`, `master`, `devmoor`
+
+Environment parameters (instance IDs change on userdata updates, check SSM):
+
+| Parameter | Staging | Prod |
+|-----------|---------|------|
+| SSM instance-id | `/nanoclaw/staging/instance-id` | `/nanoclaw/prod/instance-id` |
+| SSM prefix | `/nanoclaw/staging/` | `/nanoclaw/prod/` |
+| Terraform state key | `nanoclaw/staging/terraform.tfstate` | `nanoclaw/prod/terraform.tfstate` |
+| GitHub environment | `staging` | `production` |
+| Branch | `staging` | `master` |
+| Deploy command | `gh workflow run "Deploy" --ref staging -f environment=staging` | `gh workflow run "Deploy" --ref master -f environment=production` |
 - AMI filter: use `al2023-ami-2023*-x86_64` to exclude minimal variant (lacks SSM agent)
 - VPC endpoint gotcha: deleting endpoints can orphan Route 53 hosted zones that block re-creation with `private_dns_enabled`
 - Deploy workflow: `workflow_dispatch` available for manual deploys (`gh workflow run "Deploy" --ref staging -f environment=staging`)
