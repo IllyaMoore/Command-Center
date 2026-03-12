@@ -75,12 +75,12 @@ async function loadCalendarEvents(view = 'day') {
   try {
     const res = await fetch(`${API_BASE}/api/calendar/events?view=${view}`);
     const result = await res.json();
-    const events = result.events ?? result;
-    calendarEvents = events;
     if (result.error) {
-      document.getElementById('calendarEvents').innerHTML = '<div class="loading">Calendar unavailable — check credentials</div>';
+      const msg = result.error === 'auth_failed' ? 'Calendar auth expired — re-connect in settings' : 'Calendar unavailable — check credentials';
+      document.getElementById('calendarEvents').innerHTML = `<div class="loading">${msg}</div>`;
     } else {
-      renderCalendarEvents(events, view);
+      calendarEvents = result.events ?? result;
+      renderCalendarEvents(calendarEvents, view);
     }
   } catch (err) {
     console.error('Failed to load calendar:', err);

@@ -519,8 +519,8 @@ export function getRegisteredGroup(
   if (row.container_config) {
     try {
       containerConfig = JSON.parse(row.container_config);
-    } catch {
-      logger.warn({ jid: row.jid }, 'Failed to parse container_config, ignoring');
+    } catch (err) {
+      logger.warn({ jid: row.jid, err }, 'Failed to parse container_config, ignoring');
     }
   }
   return {
@@ -570,8 +570,8 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
     if (row.container_config) {
       try {
         containerConfig = JSON.parse(row.container_config);
-      } catch {
-        logger.warn({ jid: row.jid }, 'Failed to parse container_config, ignoring');
+      } catch (err) {
+        logger.warn({ jid: row.jid, err }, 'Failed to parse container_config, ignoring');
       }
     }
     result[row.jid] = {

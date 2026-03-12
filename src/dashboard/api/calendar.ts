@@ -67,7 +67,8 @@ function loadClientConfig(): OAuthClientConfig | null {
     const config: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
     if (!config.installed?.client_id || !config.installed?.client_secret) return null;
     return config;
-  } catch {
+  } catch (err) {
+    logger.error({ err, path: CREDENTIALS_PATH }, 'Failed to read or parse credentials.json');
     return null;
   }
 }
@@ -191,7 +192,9 @@ export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<C
     return { events };
   } catch (err) {
     logger.error({ err }, 'Error fetching calendar events');
-    return { events: [], error: 'fetch_failed' };
+    const msg = err instanceof Error ? err.message : String(err);
+    const isAuthError = msg.includes('invalid_grant') || msg.includes('Token has been expired') || msg.includes('UNAUTHENTICATED');
+    return { events: [], error: isAuthError ? 'auth_failed' : 'fetch_failed' };
   }
 }
 

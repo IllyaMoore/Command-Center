@@ -405,11 +405,10 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       });
       if (newActivity.length > 0) {
         lastActivityTs = newActivity[0].timestamp;
-        seenActivityKeys = new Set(
-          newActivity
-            .filter((a) => a.timestamp === lastActivityTs)
-            .map((a) => `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`),
-        );
+        for (const a of newActivity.filter((x) => x.timestamp === lastActivityTs)) {
+          seenActivityKeys.add(`${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`);
+        }
+        if (seenActivityKeys.size > 500) seenActivityKeys = new Set();
         res.write(`data: ${JSON.stringify({ type: 'activity', items: newActivity })}\n\n`);
       }
 
@@ -420,11 +419,10 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       );
       if (newMessages.length > 0) {
         lastMessageTs = newMessages[0].timestamp;
-        seenMessageIds = new Set(
-          newMessages
-            .filter((m) => m.timestamp === lastMessageTs)
-            .map((m) => m.id),
-        );
+        for (const m of newMessages.filter((x) => x.timestamp === lastMessageTs)) {
+          seenMessageIds.add(m.id);
+        }
+        if (seenMessageIds.size > 500) seenMessageIds = new Set();
         res.write(`data: ${JSON.stringify({ type: 'messages', items: newMessages })}\n\n`);
       }
 

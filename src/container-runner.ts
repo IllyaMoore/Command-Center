@@ -238,7 +238,11 @@ export async function runContainerAgent(
       agentProcess.stdin.end();
     } else {
       logger.warn({ group: group.name, processName }, 'Agent stdin not writable at write time');
-      try { agentProcess.kill('SIGTERM'); } catch { /* already exited */ }
+      try { agentProcess.kill('SIGTERM'); } catch (killErr) {
+        if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
+          logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error killing agent process');
+        }
+      }
       resolve({ status: 'error', result: null, error: 'Agent stdin not writable — process exited before receiving input' });
       return;
     }
