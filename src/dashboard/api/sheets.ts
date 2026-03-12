@@ -10,7 +10,7 @@ const OAUTH_KEYS_PATH = path.join(HOME, '.google-sheets-mcp', 'gcp-oauth.keys.js
 const TOKENS_PATH = path.join(HOME, '.google-sheets-mcp', 'credentials.json');
 
 
-export type SheetsAuthStatus = 'connected' | 'expired' | 'error' | 'missing_tokens' | 'missing_credentials';
+export type SheetsAuthStatus = 'connected' | 'expired' | 'check_failed' | 'missing_tokens' | 'missing_credentials';
 
 const SHEETS_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
@@ -68,7 +68,7 @@ export async function getSheetsAuthStatus(): Promise<SheetsAuthStatus> {
       return 'expired';
     }
     logger.error({ err }, 'Sheets auth status check failed');
-    return 'error';
+    return 'check_failed';
   }
 }
 
