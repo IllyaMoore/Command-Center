@@ -9,10 +9,6 @@ const HOME = process.env.HOME || process.env.USERPROFILE || '';
 const OAUTH_KEYS_PATH = path.join(HOME, '.google-sheets-mcp', 'gcp-oauth.keys.json');
 const TOKENS_PATH = path.join(HOME, '.google-sheets-mcp', 'credentials.json');
 
-interface OAuthClientConfig {
-  installed?: { client_id: string; client_secret: string };
-  web?: { client_id: string; client_secret: string };
-}
 
 export type SheetsAuthStatus = 'connected' | 'expired' | 'error' | 'missing_tokens' | 'missing_credentials';
 
@@ -24,13 +20,13 @@ const REDIRECT_URI = `${DASHBOARD_URL}/api/auth/google-sheets/callback`;
 
 let cachedAuthStatus: SheetsAuthStatus | null = null;
 
-function loadClientConfig(): OAuthClientConfig | null {
+function loadClientConfig(): { client_id: string; client_secret: string } | null {
   if (!fs.existsSync(OAUTH_KEYS_PATH)) return null;
   try {
-    const config: OAuthClientConfig = JSON.parse(fs.readFileSync(OAUTH_KEYS_PATH, 'utf-8'));
+    const config = JSON.parse(fs.readFileSync(OAUTH_KEYS_PATH, 'utf-8'));
     const creds = config.installed ?? config.web;
     if (!creds?.client_id || !creds?.client_secret) return null;
-    return config;
+    return { client_id: creds.client_id, client_secret: creds.client_secret };
   } catch (err: unknown) {
     logger.warn({ err }, 'Failed to load Google Sheets client config');
     return null;
@@ -49,8 +45,7 @@ export async function getSheetsAuthStatus(): Promise<SheetsAuthStatus> {
     const tokens = JSON.parse(fs.readFileSync(TOKENS_PATH, 'utf-8'));
     if (!tokens.refresh_token) return 'missing_tokens';
 
-    const creds = config.installed ?? config.web!;
-    const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret);
+    const oauth2 = new google.auth.OAuth2(config.client_id, config.client_secret);
     oauth2.setCredentials({
       refresh_token: tokens.refresh_token,
       access_token: tokens.access_token,
@@ -61,8 +56,9 @@ export async function getSheetsAuthStatus(): Promise<SheetsAuthStatus> {
     try {
       await sheets.spreadsheets.get({ spreadsheetId: 'test', fields: 'spreadsheetId' });
     } catch (testErr: unknown) {
-      const code = (testErr as { code?: number }).code;
-      if (code !== 404) throw testErr;
+      // GaxiosError exposes HTTP status in .status; .code is a string like "NOT_FOUND"
+      const status = (testErr as { status?: number }).status;
+      if (status !== 404) throw testErr;
     }
     cachedAuthStatus = 'connected';
     return 'connected';
@@ -80,8 +76,7 @@ export function getSheetsAuthUrl(): string | null {
   const config = loadClientConfig();
   if (!config) return null;
 
-  const creds = config.installed ?? config.web!;
-  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
+  const oauth2 = new google.auth.OAuth2(config.client_id, config.client_secret, REDIRECT_URI);
 
   return oauth2.generateAuthUrl({
     access_type: 'offline',
@@ -94,8 +89,7 @@ export async function handleSheetsOAuthCallback(code: string): Promise<void> {
   const config = loadClientConfig();
   if (!config) throw new Error('Missing gcp-oauth.keys.json');
 
-  const creds = config.installed ?? config.web!;
-  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
+  const oauth2 = new google.auth.OAuth2(config.client_id, config.client_secret, REDIRECT_URI);
 
   const { tokens } = await oauth2.getToken(code);
 

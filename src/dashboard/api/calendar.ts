@@ -60,13 +60,13 @@ let calendarClient: calendar_v3.Calendar | null = null;
 let authClient: InstanceType<typeof google.auth.OAuth2> | null = null;
 let cachedAuthStatus: CalendarAuthStatus | null = null;
 
-function loadClientConfig(): OAuthClientConfig | null {
+function loadClientConfig(): { client_id: string; client_secret: string } | null {
   if (!fs.existsSync(CREDENTIALS_PATH)) return null;
   try {
     const config: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
     const creds = config.installed ?? config.web;
     if (!creds?.client_id || !creds?.client_secret) return null;
-    return config;
+    return { client_id: creds.client_id, client_secret: creds.client_secret };
   } catch (err) {
     logger.error({ err, path: CREDENTIALS_PATH }, 'Failed to read or parse credentials.json');
     return null;
@@ -243,8 +243,7 @@ export function getCalendarAuthUrl(): string | null {
   const config = loadClientConfig();
   if (!config) return null;
 
-  const creds = config.installed ?? config.web!;
-  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
+  const oauth2 = new google.auth.OAuth2(config.client_id, config.client_secret, REDIRECT_URI);
 
   return oauth2.generateAuthUrl({
     access_type: 'offline',
@@ -257,8 +256,7 @@ export async function handleCalendarOAuthCallback(code: string): Promise<void> {
   const config = loadClientConfig();
   if (!config) throw new Error('Missing credentials.json');
 
-  const creds = config.installed ?? config.web!;
-  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
+  const oauth2 = new google.auth.OAuth2(config.client_id, config.client_secret, REDIRECT_URI);
 
   const { tokens } = await oauth2.getToken(code);
 
