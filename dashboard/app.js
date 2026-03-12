@@ -628,6 +628,9 @@ function applyAuthStatus(statusElId, btnElId, status, notifications) {
     el.textContent = 'Not authorized';
     if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Connect'; }
     if (notifications?.onMissing) showNotification(notifications.onMissing);
+  } else if (status === 'check_failed') {
+    el.textContent = 'Check failed';
+    if (btn) { btn.style.display = 'inline-block'; btn.textContent = 'Reconnect'; }
   } else {
     el.textContent = 'Not configured';
     if (btn) btn.style.display = 'none';
