@@ -233,8 +233,19 @@ export async function runContainerAgent(
 
     // Pass secrets via stdin (never written to disk or passed as env vars)
     const payload = { ...input, secrets };
-    agentProcess.stdin.write(JSON.stringify(payload));
-    agentProcess.stdin.end();
+    if (agentProcess.stdin.writable) {
+      agentProcess.stdin.write(JSON.stringify(payload));
+      agentProcess.stdin.end();
+    } else {
+      logger.warn({ group: group.name, processName }, 'Agent stdin not writable at write time');
+      try { agentProcess.kill('SIGTERM'); } catch (killErr) {
+        if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
+          logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error killing agent process');
+        }
+      }
+      resolve({ status: 'error', result: null, error: 'Agent stdin not writable — process exited before receiving input' });
+      return;
+    }
 
     // --- Timeout management (declared before event handlers that reference them) ---
     let timedOut = false;
@@ -261,12 +272,22 @@ export async function runContainerAgent(
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, processName }, 'Agent timeout, stopping gracefully');
-      try { if (onTimeout) onTimeout(hadStreamingOutput); } catch { /* don't block SIGTERM */ }
-      try { agentProcess.kill('SIGTERM'); } catch { /* ESRCH: already exited */ }
+      try { if (onTimeout) onTimeout(hadStreamingOutput); } catch (err) {
+        logger.warn({ group: group.name, processName, err }, 'onTimeout callback threw');
+      }
+      try { agentProcess.kill('SIGTERM'); } catch (killErr) {
+        if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
+          logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error sending SIGTERM on timeout');
+        }
+      }
       killFallbackTimer = setTimeout(() => {
         if (!processExited) {
           logger.warn({ group: group.name, processName }, 'Graceful stop failed, force killing');
-          try { agentProcess.kill('SIGKILL'); } catch { /* ESRCH: already exited */ }
+          try { agentProcess.kill('SIGKILL'); } catch (killErr) {
+            if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
+              logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error sending SIGKILL on timeout');
+            }
+          }
         }
       }, 15000);
     };

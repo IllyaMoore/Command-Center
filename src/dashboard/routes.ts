@@ -153,7 +153,8 @@ export async function handleApiRoute(
       req.on('end', () => {
         try {
           resolve(body ? JSON.parse(body) : {});
-        } catch {
+        } catch (err) {
+          logger.warn({ err }, 'Failed to parse request body as JSON');
           reject(new Error('Invalid JSON'));
         }
       });
@@ -297,8 +298,8 @@ export async function handleApiRoute(
   // Calendar endpoints
   if ((pathname === '/api/calendar' || pathname === '/api/calendar/events') && method === 'GET') {
     const view = (url.searchParams.get('view') || 'day') as 'day' | 'week';
-    const events = await getCalendarEvents(view);
-    json(events);
+    const result = await getCalendarEvents(view);
+    json(result);
     return;
   }
 
@@ -391,22 +392,40 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
 
   let lastActivityTs = new Date().toISOString();
   let lastMessageTs = new Date().toISOString();
+  let seenMessageIds = new Set<string>();
+  let seenActivityKeys = new Set<string>();
 
   const interval = setInterval(() => {
     try {
       // New activity (task runs + messages combined)
       const activity = getRecentActivity(10);
-      const newActivity = activity.filter((a) => a.timestamp > lastActivityTs);
+      const newActivity = activity.filter((a) => {
+        if (a.timestamp < lastActivityTs) return false;
+        const key = `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`;
+        return !seenActivityKeys.has(key);
+      });
       if (newActivity.length > 0) {
         lastActivityTs = newActivity[0].timestamp;
+        for (const a of newActivity) {
+          seenActivityKeys.add(`${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`);
+        }
+        if (seenActivityKeys.size > 500) seenActivityKeys = new Set(
+          newActivity.map((a) => `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`),
+        );
         res.write(`data: ${JSON.stringify({ type: 'activity', items: newActivity })}\n\n`);
       }
 
       // New messages
       const messages = getRecentMessages(10);
-      const newMessages = messages.filter((m) => m.timestamp > lastMessageTs);
+      const newMessages = messages.filter(
+        (m) => m.timestamp >= lastMessageTs && !seenMessageIds.has(m.id),
+      );
       if (newMessages.length > 0) {
         lastMessageTs = newMessages[0].timestamp;
+        for (const m of newMessages.filter((x) => x.timestamp === lastMessageTs)) {
+          seenMessageIds.add(m.id);
+        }
+        if (seenMessageIds.size > 500) seenMessageIds = new Set();
         res.write(`data: ${JSON.stringify({ type: 'messages', items: newMessages })}\n\n`);
       }
 
@@ -423,8 +442,9 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       });
       res.write(`data: ${JSON.stringify({ type: 'agents', agents })}\n\n`);
     } catch (err) {
-      logger.error({ err }, 'Error in activity stream');
-      res.write(': heartbeat\n\n');
+      logger.error({ err }, 'Error in activity stream, closing stream');
+      clearInterval(interval);
+      try { res.end(); } catch { /* already closed */ }
     }
   }, 2000);
 
