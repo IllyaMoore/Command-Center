@@ -3,6 +3,7 @@ import path from 'path';
 import { google, calendar_v3 } from 'googleapis';
 
 import { logger } from '../../logger.js';
+import { DASHBOARD_URL } from '../../config.js';
 
 // Paths to Google Calendar MCP credentials
 const HOME = process.env.HOME || process.env.USERPROFILE || '';
@@ -55,7 +56,7 @@ const CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/calendar.events',
 ];
-const REDIRECT_URI = 'http://localhost:3000/api/auth/google-calendar/callback';
+const REDIRECT_URI = `${DASHBOARD_URL}/api/auth/google-calendar/callback`;
 
 let calendarClient: calendar_v3.Calendar | null = null;
 let authClient: InstanceType<typeof google.auth.OAuth2> | null = null;

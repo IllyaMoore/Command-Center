@@ -3,6 +3,7 @@ import path from 'path';
 import { google } from 'googleapis';
 
 import { logger } from '../../logger.js';
+import { DASHBOARD_URL } from '../../config.js';
 
 const HOME = process.env.HOME || process.env.USERPROFILE || '';
 const OAUTH_KEYS_PATH = path.join(HOME, '.google-sheets-mcp', 'gcp-oauth.keys.json');
@@ -21,7 +22,7 @@ const SHEETS_SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets.readonly',
   'https://www.googleapis.com/auth/spreadsheets',
 ];
-const REDIRECT_URI = 'http://localhost:3000/api/auth/google-sheets/callback';
+const REDIRECT_URI = `${DASHBOARD_URL}/api/auth/google-sheets/callback`;
 
 let cachedAuthStatus: SheetsAuthStatus | null = null;
 

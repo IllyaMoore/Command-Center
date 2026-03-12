@@ -76,6 +76,18 @@ TELEGRAM_BOT_TOKEN=$(ssm_get "telegram-bot-token")
 ATLASSIAN_BASIC_TOKEN=$(ssm_get "atlassian-basic-token")
 ASSISTANT_NAME=$(ssm_get "assistant-name")
 ASSISTANT_HAS_OWN_NUMBER=$(ssm_get "assistant-has-own-number")
+TS_IP=""
+for i in $(seq 1 15); do
+  TS_IP=$(tailscale ip -4 2>/dev/null || true)
+  [[ -n "$${TS_IP}" ]] && break
+  echo "WARN: tailscale ip -4 empty, retrying ($${i}/15)..."
+  sleep 2
+done
+if [[ -z "$${TS_IP}" ]]; then
+  echo "ERROR: tailscale ip -4 returned empty after 30s. Tailscale status:" >&2
+  tailscale status >&2 || true
+  exit 1
+fi
 
 cat > "$${APP_DIR}/.env" <<ENV
 ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY}
@@ -84,7 +96,9 @@ ATLASSIAN_BASIC_TOKEN=$${ATLASSIAN_BASIC_TOKEN}
 ASSISTANT_NAME=$${ASSISTANT_NAME}
 ASSISTANT_HAS_OWN_NUMBER=$${ASSISTANT_HAS_OWN_NUMBER}
 DEV_MODE=false
+DASHBOARD_URL=http://$${TS_IP}:3000
 ENV
+unset TS_IP
 unset ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN ATLASSIAN_BASIC_TOKEN ASSISTANT_NAME ASSISTANT_HAS_OWN_NUMBER
 
 chown -R nanoclaw:nanoclaw /opt/nanoclaw

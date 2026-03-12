@@ -3,6 +3,7 @@ import path from 'path';
 import { google } from 'googleapis';
 
 import { logger } from '../../logger.js';
+import { DASHBOARD_URL } from '../../config.js';
 
 // Paths to Gmail MCP credentials
 const HOME = process.env.HOME || process.env.USERPROFILE || '';
@@ -23,7 +24,7 @@ const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.modify',
 ];
-const REDIRECT_URI = 'http://localhost:3000/api/auth/gmail/callback';
+const REDIRECT_URI = `${DASHBOARD_URL}/api/auth/gmail/callback`;
 
 let cachedAuthStatus: GmailAuthStatus | null = null;
 

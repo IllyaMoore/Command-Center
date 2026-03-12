@@ -5,7 +5,7 @@ import { readEnvFile } from './env.js';
 // Read config values from .env (falls back to process.env).
 // Secrets are NOT read here — they stay on disk and are loaded only
 // where needed (container-runner.ts) to avoid leaking to child processes.
-const envConfig = readEnvFile(['ASSISTANT_NAME', 'ASSISTANT_HAS_OWN_NUMBER', 'DEV_MODE']);
+const envConfig = readEnvFile(['ASSISTANT_NAME', 'ASSISTANT_HAS_OWN_NUMBER', 'DEV_MODE', 'DASHBOARD_URL']);
 
 export const ASSISTANT_NAME =
   process.env.ASSISTANT_NAME || envConfig.ASSISTANT_NAME || 'Assistant';
@@ -15,6 +15,15 @@ export const ASSISTANT_HAS_OWN_NUMBER =
 
 const devMode = process.env.DEV_MODE || envConfig.DEV_MODE || 'false';
 export const DEV_MODE = devMode === 'true' || devMode === '1';
+
+export const DASHBOARD_URL =
+  process.env.DASHBOARD_URL || envConfig.DASHBOARD_URL || 'http://localhost:3000';
+
+if (DASHBOARD_URL === 'http://localhost:3000' && !DEV_MODE) {
+  console.warn(
+    '[config] DASHBOARD_URL not set — OAuth redirect URIs will use localhost:3000, which will break OAuth in production',
+  );
+}
 
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
