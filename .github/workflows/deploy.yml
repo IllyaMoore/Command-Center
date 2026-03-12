@@ -62,11 +62,17 @@ jobs:
       - name: Get instance ID from SSM
         id: ssm
         run: |
-          INSTANCE_ID=$(aws ssm get-parameter \
-            --name "/nanoclaw/staging/instance-id" \
-            --query "Parameter.Value" \
-            --output text)
-          [ -n "$INSTANCE_ID" ] || { echo "ERROR: instance_id is empty"; exit 1; }
+          MAX_ATTEMPTS=20
+          INTERVAL=30
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            INSTANCE_ID=$(aws ssm get-parameter \
+              --name "/nanoclaw/staging/instance-id" \
+              --query "Parameter.Value" \
+              --output text 2>/dev/null) && break
+            echo "SSM parameter not found, retrying in ${INTERVAL}s ($i/$MAX_ATTEMPTS)..."
+            sleep $INTERVAL
+          done
+          [ -n "$INSTANCE_ID" ] || { echo "ERROR: instance_id not found after $((MAX_ATTEMPTS * INTERVAL))s"; exit 1; }
           echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
           echo "Instance ID: $INSTANCE_ID"
 
@@ -165,11 +171,17 @@ jobs:
       - name: Get instance ID from SSM
         id: ssm
         run: |
-          INSTANCE_ID=$(aws ssm get-parameter \
-            --name "/nanoclaw/prod/instance-id" \
-            --query "Parameter.Value" \
-            --output text)
-          [ -n "$INSTANCE_ID" ] || { echo "ERROR: instance_id is empty"; exit 1; }
+          MAX_ATTEMPTS=20
+          INTERVAL=30
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            INSTANCE_ID=$(aws ssm get-parameter \
+              --name "/nanoclaw/prod/instance-id" \
+              --query "Parameter.Value" \
+              --output text 2>/dev/null) && break
+            echo "SSM parameter not found, retrying in ${INTERVAL}s ($i/$MAX_ATTEMPTS)..."
+            sleep $INTERVAL
+          done
+          [ -n "$INSTANCE_ID" ] || { echo "ERROR: instance_id not found after $((MAX_ATTEMPTS * INTERVAL))s"; exit 1; }
           echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
           echo "Instance ID: $INSTANCE_ID"
 
