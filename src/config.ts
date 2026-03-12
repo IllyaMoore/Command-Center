@@ -19,6 +19,12 @@ export const DEV_MODE = devMode === 'true' || devMode === '1';
 export const DASHBOARD_URL =
   process.env.DASHBOARD_URL || envConfig.DASHBOARD_URL || 'http://localhost:3000';
 
+if (DASHBOARD_URL === 'http://localhost:3000' && !DEV_MODE) {
+  console.warn(
+    '[config] DASHBOARD_URL not set — OAuth redirect URIs will use localhost:3000, which will break OAuth in production',
+  );
+}
+
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 export const REMINDER_POLL_INTERVAL = 300000;
