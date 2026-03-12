@@ -49,7 +49,7 @@ export interface CalendarEventsResult {
   error?: string;
 }
 
-export type CalendarAuthStatus = 'connected' | 'expired' | 'missing_tokens' | 'missing_credentials';
+export type CalendarAuthStatus = 'connected' | 'expired' | 'check_failed' | 'missing_tokens' | 'missing_credentials';
 
 const CALENDAR_SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
@@ -235,7 +235,7 @@ export async function getCalendarAuthStatus(): Promise<CalendarAuthStatus> {
       return 'expired';
     }
     logger.error({ err }, 'Calendar auth status check failed');
-    return 'expired';
+    return 'check_failed';
   }
 }
 

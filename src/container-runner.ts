@@ -272,12 +272,22 @@ export async function runContainerAgent(
     const killOnTimeout = () => {
       timedOut = true;
       logger.error({ group: group.name, processName }, 'Agent timeout, stopping gracefully');
-      try { if (onTimeout) onTimeout(hadStreamingOutput); } catch { /* don't block SIGTERM */ }
-      try { agentProcess.kill('SIGTERM'); } catch { /* ESRCH: already exited */ }
+      try { if (onTimeout) onTimeout(hadStreamingOutput); } catch (err) {
+        logger.warn({ group: group.name, processName, err }, 'onTimeout callback threw');
+      }
+      try { agentProcess.kill('SIGTERM'); } catch (killErr) {
+        if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
+          logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error sending SIGTERM on timeout');
+        }
+      }
       killFallbackTimer = setTimeout(() => {
         if (!processExited) {
           logger.warn({ group: group.name, processName }, 'Graceful stop failed, force killing');
-          try { agentProcess.kill('SIGKILL'); } catch { /* ESRCH: already exited */ }
+          try { agentProcess.kill('SIGKILL'); } catch (killErr) {
+            if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
+              logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error sending SIGKILL on timeout');
+            }
+          }
         }
       }, 15000);
     };

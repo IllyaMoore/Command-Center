@@ -153,7 +153,8 @@ export async function handleApiRoute(
       req.on('end', () => {
         try {
           resolve(body ? JSON.parse(body) : {});
-        } catch {
+        } catch (err) {
+          logger.warn({ err }, 'Failed to parse request body as JSON');
           reject(new Error('Invalid JSON'));
         }
       });
@@ -405,10 +406,12 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       });
       if (newActivity.length > 0) {
         lastActivityTs = newActivity[0].timestamp;
-        for (const a of newActivity.filter((x) => x.timestamp === lastActivityTs)) {
+        for (const a of newActivity) {
           seenActivityKeys.add(`${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`);
         }
-        if (seenActivityKeys.size > 500) seenActivityKeys = new Set();
+        if (seenActivityKeys.size > 500) seenActivityKeys = new Set(
+          newActivity.map((a) => `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`),
+        );
         res.write(`data: ${JSON.stringify({ type: 'activity', items: newActivity })}\n\n`);
       }
 
@@ -439,8 +442,9 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       });
       res.write(`data: ${JSON.stringify({ type: 'agents', agents })}\n\n`);
     } catch (err) {
-      logger.error({ err }, 'Error in activity stream');
-      res.write(': heartbeat\n\n');
+      logger.error({ err }, 'Error in activity stream, closing stream');
+      clearInterval(interval);
+      try { res.end(); } catch { /* already closed */ }
     }
   }, 2000);
 
