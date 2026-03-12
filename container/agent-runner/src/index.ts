@@ -376,8 +376,9 @@ const GOOGLE_SHEETS_CREDS_PATH = path.join(GOOGLE_SHEETS_CREDS_DIR, 'gcp-oauth.k
 function readGoogleSheetsCredentials(): { clientId: string; clientSecret: string } | null {
   try {
     const config = JSON.parse(fs.readFileSync(GOOGLE_SHEETS_CREDS_PATH, 'utf-8'));
-    const clientId = config.installed?.client_id;
-    const clientSecret = config.installed?.client_secret;
+    const creds = config.installed ?? config.web;
+    const clientId = creds?.client_id;
+    const clientSecret = creds?.client_secret;
     if (clientId && clientSecret) return { clientId, clientSecret };
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
@@ -413,6 +414,29 @@ function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string
   return tools;
 }
 
+/**
+ * @cocal/google-calendar-mcp expects credentials in "installed" format.
+ * If the credentials file uses "web" format (Web app OAuth client), write a
+ * normalized copy with the "installed" key so the MCP server can parse it.
+ * Returns the path to use (original if already "installed", normalized if "web").
+ */
+function resolveCalendarCredentialsPath(): string {
+  const orig = path.join(HOME_DIR, '.google-calendar-mcp', 'credentials.json');
+  try {
+    const config = JSON.parse(fs.readFileSync(orig, 'utf-8'));
+    if (config.installed) return orig;
+    if (config.web) {
+      const normalized = path.join(HOME_DIR, '.google-calendar-mcp', 'credentials-mcp.json');
+      fs.writeFileSync(normalized, JSON.stringify({ installed: config.web }, null, 2));
+      return normalized;
+    }
+    log('Calendar credentials file has neither "installed" nor "web" key');
+  } catch {
+    // File missing or unreadable — return original path and let MCP handle it
+  }
+  return orig;
+}
+
 function buildMcpServers(
   containerInput: ContainerInput,
   sdkEnv: Record<string, string | undefined>,
@@ -436,7 +460,7 @@ function buildMcpServers(
       command: 'npx',
       args: ['-y', '@cocal/google-calendar-mcp'],
       env: {
-        GOOGLE_OAUTH_CREDENTIALS: path.join(HOME_DIR, '.google-calendar-mcp', 'credentials.json'),
+        GOOGLE_OAUTH_CREDENTIALS: resolveCalendarCredentialsPath(),
         GOOGLE_CALENDAR_MCP_TOKEN_PATH: path.join(HOME_DIR, '.config', 'google-calendar-mcp', 'tokens.json'),
       },
     },
