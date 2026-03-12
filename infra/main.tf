@@ -41,4 +41,5 @@ module "compute" {
   vpc_id             = module.networking.vpc_id
   private_subnet_ids = module.networking.private_subnet_ids
   repo_url           = var.repo_url
+  ami_id             = var.ami_id
 }

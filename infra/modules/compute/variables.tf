@@ -34,3 +34,9 @@ variable "repo_url" {
   description = "Git repository URL for NanoClaw"
   type        = string
 }
+
+variable "ami_id" {
+  description = "Pinned AMI ID. When null, uses latest AL2023 AMI (most_recent = true)."
+  type        = string
+  default     = null
+}

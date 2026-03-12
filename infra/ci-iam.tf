@@ -204,6 +204,7 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         Action = [
           "ssm:GetParameter",
           "ssm:GetParameters",
+          "ssm:GetParametersByPath",
           "ssm:PutParameter",
           "ssm:DeleteParameter",
           "ssm:AddTagsToResource",

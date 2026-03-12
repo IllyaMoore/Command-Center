@@ -51,3 +51,9 @@ variable "repo_url" {
   type        = string
   default     = "https://github.com/StoryFunnels/command-center.git"
 }
+
+variable "ami_id" {
+  description = "Pinned AMI ID for EC2 instance. When null, uses latest AL2023 AMI."
+  type        = string
+  default     = null
+}

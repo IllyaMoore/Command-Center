@@ -213,8 +213,8 @@ resource "aws_ssm_parameter" "instance_id" {
 }
 
 # Amazon Machine Image
-# most_recent = true: instance will be replaced when Amazon publishes a new AL2023 AMI.
-# Acceptable for staging; pin to a specific version for prod.
+# When var.ami_id is set, that exact AMI is used (pin for prod).
+# When null, most_recent = true picks the latest AL2023 AMI (ok for staging).
 # Excludes al2023-ami-minimal-* which lacks SSM agent.
 
 data "aws_ami" "amazon_linux" {
@@ -235,7 +235,7 @@ data "aws_ami" "amazon_linux" {
 #! EC2  
 
 resource "aws_instance" "main" {
-  ami                         = data.aws_ami.amazon_linux.id
+  ami                         = coalesce(var.ami_id, data.aws_ami.amazon_linux.id)
   instance_type               = var.instance_type
   subnet_id                   = var.private_subnet_ids[0]
   associate_public_ip_address = false
