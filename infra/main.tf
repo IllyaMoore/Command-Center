@@ -12,7 +12,7 @@ provider "aws" {
   }
 }
 
-# Account validation — refuse to plan/apply against any account other than 796196972655
+# Account validation - refuse to plan/apply against any account other than 796196972655
 data "aws_caller_identity" "current" {
   lifecycle {
     postcondition {
@@ -22,24 +22,24 @@ data "aws_caller_identity" "current" {
   }
 }
 
-module "networking" {
-  source = "./modules/networking"
+# Shared networking state (VPC, subnets, NAT, endpoints)
+data "terraform_remote_state" "shared" {
+  backend = "s3"
 
-  environment        = var.environment
-  vpc_cidr           = var.vpc_cidr
-  private_subnets    = var.private_subnets
-  public_subnets     = var.public_subnets
-  availability_zones = var.availability_zones
-  aws_region         = var.aws_region
-  vpce_az_count      = var.vpce_az_count
+  config = {
+    bucket  = "nanoclaw-tf-state-796196972655"
+    key     = "nanoclaw/shared/terraform.tfstate"
+    region  = "us-east-2"
+    profile = var.aws_profile
+  }
 }
 
 module "compute" {
   source = "./modules/compute"
 
   environment        = var.environment
-  vpc_id             = module.networking.vpc_id
-  private_subnet_ids = module.networking.private_subnet_ids
+  vpc_id             = data.terraform_remote_state.shared.outputs.vpc_id
+  private_subnet_ids = data.terraform_remote_state.shared.outputs.private_subnet_ids
   repo_url           = var.repo_url
   ami_id             = var.ami_id
 }

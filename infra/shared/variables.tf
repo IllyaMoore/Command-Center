@@ -1,12 +1,13 @@
-variable "environment" {
-  description = "Deployment environment (staging or prod)"
+variable "aws_region" {
+  description = "AWS region for all resources"
   type        = string
+  default     = "us-east-2"
 }
 
-variable "name_prefix" {
-  description = "Name prefix for resources (defaults to nanoclaw-{environment})"
+variable "aws_profile" {
+  description = "AWS CLI profile (default sam for local, null in CI)"
   type        = string
-  default     = ""
+  default     = null
 }
 
 variable "vpc_cidr" {
@@ -20,7 +21,7 @@ variable "private_subnets" {
 }
 
 variable "public_subnets" {
-  description = "CIDR blocks for public subnets (NAT Gateway only)"
+  description = "CIDR blocks for public subnets (NAT Gateway only, no EC2)"
   type        = list(string)
 }
 
@@ -29,13 +30,8 @@ variable "availability_zones" {
   type        = list(string)
 }
 
-variable "aws_region" {
-  description = "AWS region for VPC endpoint service names"
-  type        = string
-}
-
 variable "vpce_az_count" {
-  description = "Number of AZs for VPC interface endpoints (0 = all AZs)"
+  description = "Number of AZs for VPC interface endpoints (reduces cost in non-prod)"
   type        = number
   default     = 0
 }
