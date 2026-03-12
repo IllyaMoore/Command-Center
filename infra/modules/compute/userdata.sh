@@ -76,6 +76,8 @@ TELEGRAM_BOT_TOKEN=$(ssm_get "telegram-bot-token")
 ATLASSIAN_BASIC_TOKEN=$(ssm_get "atlassian-basic-token")
 ASSISTANT_NAME=$(ssm_get "assistant-name")
 ASSISTANT_HAS_OWN_NUMBER=$(ssm_get "assistant-has-own-number")
+TS_IP=$(tailscale ip -4)
+[[ -n "$${TS_IP}" ]] || { echo "ERROR: tailscale ip -4 returned empty, cannot set DASHBOARD_URL"; exit 1; }
 
 cat > "$${APP_DIR}/.env" <<ENV
 ANTHROPIC_API_KEY=$${ANTHROPIC_API_KEY}
@@ -84,7 +86,9 @@ ATLASSIAN_BASIC_TOKEN=$${ATLASSIAN_BASIC_TOKEN}
 ASSISTANT_NAME=$${ASSISTANT_NAME}
 ASSISTANT_HAS_OWN_NUMBER=$${ASSISTANT_HAS_OWN_NUMBER}
 DEV_MODE=false
+DASHBOARD_URL=http://$${TS_IP}:3000
 ENV
+unset TS_IP
 unset ANTHROPIC_API_KEY TELEGRAM_BOT_TOKEN ATLASSIAN_BASIC_TOKEN ASSISTANT_NAME ASSISTANT_HAS_OWN_NUMBER
 
 chown -R nanoclaw:nanoclaw /opt/nanoclaw
