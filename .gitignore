@@ -59,6 +59,7 @@ nul
 
 # Terraform
 infra/.terraform/
+infra/shared/.terraform/
 infra/*.tfstate
 infra/*.tfstate.backup
 infra/tfplan-*
