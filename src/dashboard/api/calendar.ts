@@ -44,6 +44,11 @@ export interface CalendarEvent {
   color?: string;
 }
 
+export interface CalendarEventsResult {
+  events: CalendarEvent[];
+  error?: string;
+}
+
 export type CalendarAuthStatus = 'connected' | 'expired' | 'missing_tokens' | 'missing_credentials';
 
 const CALENDAR_SCOPES = [
@@ -173,19 +178,20 @@ async function fetchEvents(
   return (response.data.items || []).map(mapGoogleEvent);
 }
 
-export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<CalendarEvent[]> {
+export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<CalendarEventsResult> {
   const client = await getCalendarClient();
 
   if (!client) {
     logger.debug('Returning mock calendar events (no credentials)');
-    return getMockEvents(view);
+    return { events: getMockEvents(view) };
   }
 
   try {
-    return await fetchEvents(client, view === 'week' ? 7 : 1);
+    const events = await fetchEvents(client, view === 'week' ? 7 : 1);
+    return { events };
   } catch (err) {
     logger.error({ err }, 'Error fetching calendar events');
-    return getMockEvents(view);
+    return { events: [], error: 'fetch_failed' };
   }
 }
 

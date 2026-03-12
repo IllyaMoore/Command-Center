@@ -13,7 +13,7 @@ export const ASSISTANT_NAME =
 export const ASSISTANT_HAS_OWN_NUMBER =
   (process.env.ASSISTANT_HAS_OWN_NUMBER || envConfig.ASSISTANT_HAS_OWN_NUMBER) === 'true';
 
-const devMode = process.env.DEV_MODE || envConfig.DEV_MODE || 'true';
+const devMode = process.env.DEV_MODE || envConfig.DEV_MODE || 'false';
 export const DEV_MODE = devMode === 'true' || devMode === '1';
 
 export const POLL_INTERVAL = 2000;

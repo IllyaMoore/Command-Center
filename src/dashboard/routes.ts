@@ -297,8 +297,8 @@ export async function handleApiRoute(
   // Calendar endpoints
   if ((pathname === '/api/calendar' || pathname === '/api/calendar/events') && method === 'GET') {
     const view = (url.searchParams.get('view') || 'day') as 'day' | 'week';
-    const events = await getCalendarEvents(view);
-    json(events);
+    const result = await getCalendarEvents(view);
+    json(result);
     return;
   }
 
@@ -391,22 +391,40 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
 
   let lastActivityTs = new Date().toISOString();
   let lastMessageTs = new Date().toISOString();
+  let seenMessageIds = new Set<string>();
+  let seenActivityKeys = new Set<string>();
 
   const interval = setInterval(() => {
     try {
       // New activity (task runs + messages combined)
       const activity = getRecentActivity(10);
-      const newActivity = activity.filter((a) => a.timestamp > lastActivityTs);
+      const newActivity = activity.filter((a) => {
+        if (a.timestamp < lastActivityTs) return false;
+        const key = `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`;
+        return !seenActivityKeys.has(key);
+      });
       if (newActivity.length > 0) {
         lastActivityTs = newActivity[0].timestamp;
+        seenActivityKeys = new Set(
+          newActivity
+            .filter((a) => a.timestamp === lastActivityTs)
+            .map((a) => `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`),
+        );
         res.write(`data: ${JSON.stringify({ type: 'activity', items: newActivity })}\n\n`);
       }
 
       // New messages
       const messages = getRecentMessages(10);
-      const newMessages = messages.filter((m) => m.timestamp > lastMessageTs);
+      const newMessages = messages.filter(
+        (m) => m.timestamp >= lastMessageTs && !seenMessageIds.has(m.id),
+      );
       if (newMessages.length > 0) {
         lastMessageTs = newMessages[0].timestamp;
+        seenMessageIds = new Set(
+          newMessages
+            .filter((m) => m.timestamp === lastMessageTs)
+            .map((m) => m.id),
+        );
         res.write(`data: ${JSON.stringify({ type: 'messages', items: newMessages })}\n\n`);
       }
 

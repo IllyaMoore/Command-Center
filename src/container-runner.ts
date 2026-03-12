@@ -233,8 +233,15 @@ export async function runContainerAgent(
 
     // Pass secrets via stdin (never written to disk or passed as env vars)
     const payload = { ...input, secrets };
-    agentProcess.stdin.write(JSON.stringify(payload));
-    agentProcess.stdin.end();
+    if (agentProcess.stdin.writable) {
+      agentProcess.stdin.write(JSON.stringify(payload));
+      agentProcess.stdin.end();
+    } else {
+      logger.warn({ group: group.name, processName }, 'Agent stdin not writable at write time');
+      try { agentProcess.kill('SIGTERM'); } catch { /* already exited */ }
+      resolve({ status: 'error', result: null, error: 'Agent stdin not writable — process exited before receiving input' });
+      return;
+    }
 
     // --- Timeout management (declared before event handlers that reference them) ---
     let timedOut = false;
