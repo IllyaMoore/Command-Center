@@ -10,10 +10,8 @@ const OAUTH_KEYS_PATH = path.join(HOME, '.google-sheets-mcp', 'gcp-oauth.keys.js
 const TOKENS_PATH = path.join(HOME, '.google-sheets-mcp', 'credentials.json');
 
 interface OAuthClientConfig {
-  installed: {
-    client_id: string;
-    client_secret: string;
-  };
+  installed?: { client_id: string; client_secret: string };
+  web?: { client_id: string; client_secret: string };
 }
 
 export type SheetsAuthStatus = 'connected' | 'expired' | 'error' | 'missing_tokens' | 'missing_credentials';
@@ -30,7 +28,8 @@ function loadClientConfig(): OAuthClientConfig | null {
   if (!fs.existsSync(OAUTH_KEYS_PATH)) return null;
   try {
     const config: OAuthClientConfig = JSON.parse(fs.readFileSync(OAUTH_KEYS_PATH, 'utf-8'));
-    if (!config.installed?.client_id || !config.installed?.client_secret) return null;
+    const creds = config.installed ?? config.web;
+    if (!creds?.client_id || !creds?.client_secret) return null;
     return config;
   } catch (err: unknown) {
     logger.warn({ err }, 'Failed to load Google Sheets client config');
@@ -50,10 +49,8 @@ export async function getSheetsAuthStatus(): Promise<SheetsAuthStatus> {
     const tokens = JSON.parse(fs.readFileSync(TOKENS_PATH, 'utf-8'));
     if (!tokens.refresh_token) return 'missing_tokens';
 
-    const oauth2 = new google.auth.OAuth2(
-      config.installed.client_id,
-      config.installed.client_secret,
-    );
+    const creds = config.installed ?? config.web!;
+    const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret);
     oauth2.setCredentials({
       refresh_token: tokens.refresh_token,
       access_token: tokens.access_token,
@@ -83,11 +80,8 @@ export function getSheetsAuthUrl(): string | null {
   const config = loadClientConfig();
   if (!config) return null;
 
-  const oauth2 = new google.auth.OAuth2(
-    config.installed.client_id,
-    config.installed.client_secret,
-    REDIRECT_URI,
-  );
+  const creds = config.installed ?? config.web!;
+  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
 
   return oauth2.generateAuthUrl({
     access_type: 'offline',
@@ -100,11 +94,8 @@ export async function handleSheetsOAuthCallback(code: string): Promise<void> {
   const config = loadClientConfig();
   if (!config) throw new Error('Missing gcp-oauth.keys.json');
 
-  const oauth2 = new google.auth.OAuth2(
-    config.installed.client_id,
-    config.installed.client_secret,
-    REDIRECT_URI,
-  );
+  const creds = config.installed ?? config.web!;
+  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
 
   const { tokens } = await oauth2.getToken(code);
 

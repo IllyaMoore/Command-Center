@@ -10,12 +10,10 @@ const HOME = process.env.HOME || process.env.USERPROFILE || '';
 const CREDENTIALS_PATH = path.join(HOME, '.google-calendar-mcp', 'credentials.json');
 const TOKENS_PATH = path.join(HOME, '.config', 'google-calendar-mcp', 'tokens.json');
 
-// OAuth client config structure (credentials.json)
+// OAuth client config structure (credentials.json) — supports both Desktop ("installed") and Web ("web") app types
 interface OAuthClientConfig {
-  installed: {
-    client_id: string;
-    client_secret: string;
-  };
+  installed?: { client_id: string; client_secret: string };
+  web?: { client_id: string; client_secret: string };
 }
 
 // Tokens file structure (tokens.json)
@@ -66,7 +64,8 @@ function loadClientConfig(): OAuthClientConfig | null {
   if (!fs.existsSync(CREDENTIALS_PATH)) return null;
   try {
     const config: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
-    if (!config.installed?.client_id || !config.installed?.client_secret) return null;
+    const creds = config.installed ?? config.web;
+    if (!creds?.client_id || !creds?.client_secret) return null;
     return config;
   } catch (err) {
     logger.error({ err, path: CREDENTIALS_PATH }, 'Failed to read or parse credentials.json');
@@ -83,8 +82,9 @@ function loadCredentials(): CalendarCredentials | null {
     }
     const clientConfig: OAuthClientConfig = JSON.parse(fs.readFileSync(CREDENTIALS_PATH, 'utf-8'));
 
-    if (!clientConfig.installed?.client_id || !clientConfig.installed?.client_secret) {
-      logger.warn('Invalid credentials.json structure: missing installed.client_id or installed.client_secret');
+    const creds = clientConfig.installed ?? clientConfig.web;
+    if (!creds?.client_id || !creds?.client_secret) {
+      logger.warn('Invalid credentials.json structure: missing client_id or client_secret');
       return null;
     }
 
@@ -102,8 +102,8 @@ function loadCredentials(): CalendarCredentials | null {
 
     // Merge into flat structure for OAuth2 client
     return {
-      client_id: clientConfig.installed.client_id,
-      client_secret: clientConfig.installed.client_secret,
+      client_id: creds.client_id,
+      client_secret: creds.client_secret,
       refresh_token: tokensFile.normal.refresh_token,
       access_token: tokensFile.normal.access_token,
     };
@@ -244,11 +244,8 @@ export function getCalendarAuthUrl(): string | null {
   const config = loadClientConfig();
   if (!config) return null;
 
-  const oauth2 = new google.auth.OAuth2(
-    config.installed.client_id,
-    config.installed.client_secret,
-    REDIRECT_URI,
-  );
+  const creds = config.installed ?? config.web!;
+  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
 
   return oauth2.generateAuthUrl({
     access_type: 'offline',
@@ -261,11 +258,8 @@ export async function handleCalendarOAuthCallback(code: string): Promise<void> {
   const config = loadClientConfig();
   if (!config) throw new Error('Missing credentials.json');
 
-  const oauth2 = new google.auth.OAuth2(
-    config.installed.client_id,
-    config.installed.client_secret,
-    REDIRECT_URI,
-  );
+  const creds = config.installed ?? config.web!;
+  const oauth2 = new google.auth.OAuth2(creds.client_id, creds.client_secret, REDIRECT_URI);
 
   const { tokens } = await oauth2.getToken(code);
 
