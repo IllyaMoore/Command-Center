@@ -63,6 +63,7 @@ infra/shared/.terraform/
 infra/*.tfstate
 infra/*.tfstate.backup
 infra/tfplan-*
+infra/shared/tfplan-*
 
 # Temp files
 *.tmp

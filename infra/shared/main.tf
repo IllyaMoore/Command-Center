@@ -350,12 +350,22 @@ resource "aws_iam_policy" "developer_access" {
           "ssm:GetParametersByPath",
           "ssm:PutParameter",
           "ssm:DeleteParameter",
-          "ssm:DescribeParameters",
           "ssm:AddTagsToResource",
           "ssm:RemoveTagsFromResource",
           "ssm:ListTagsForResource",
         ]
         Resource = "arn:aws:ssm:us-east-2:796196972655:parameter/nanoclaw/*"
+      },
+      {
+        Sid    = "SSMDescribeParameters"
+        Effect = "Allow"
+        Action = [
+          "ssm:DescribeParameters",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = { "aws:RequestedRegion" = "us-east-2" }
+        }
       },
       {
         Sid    = "SSMSessionManager"
