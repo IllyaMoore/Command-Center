@@ -33,7 +33,8 @@ function loadClientConfig(): OAuthClientConfig | null {
     const creds = config.installed ?? config.web;
     if (!creds?.client_id || !creds?.client_secret) return null;
     return config;
-  } catch {
+  } catch (err) {
+    logger.warn({ err, path: OAUTH_KEYS_PATH }, 'Failed to read or parse gcp-oauth.keys.json');
     return null;
   }
 }

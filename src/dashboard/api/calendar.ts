@@ -184,8 +184,7 @@ export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<C
   const client = await getCalendarClient();
 
   if (!client) {
-    logger.debug('Returning mock calendar events (no credentials)');
-    return { events: getMockEvents(view) };
+    return { events: getMockEvents(view), error: 'missing_credentials' };
   }
 
   try {

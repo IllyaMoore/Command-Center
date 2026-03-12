@@ -427,12 +427,17 @@ function resolveCalendarCredentialsPath(): string {
     if (config.installed) return orig;
     if (config.web) {
       const normalized = path.join(HOME_DIR, '.google-calendar-mcp', 'credentials-mcp.json');
-      fs.writeFileSync(normalized, JSON.stringify({ installed: config.web }, null, 2));
+      const tmp = `${normalized}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ installed: config.web }, null, 2));
+      fs.renameSync(tmp, normalized);
       return normalized;
     }
     log('Calendar credentials file has neither "installed" nor "web" key');
-  } catch {
-    // File missing or unreadable — return original path and let MCP handle it
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      log(`Failed to resolve calendar credentials path: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
   return orig;
 }
