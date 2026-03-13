@@ -411,6 +411,37 @@ describe('TelegramChannel', () => {
       );
     });
 
+    it('stores sent message in DB for dashboard', async () => {
+      const { storeMessageDirect } = await import('../db.js');
+      const channel = new TelegramChannel('test-token', createTestOpts());
+      await channel.connect();
+
+      await channel.sendMessage('tg:100200300', 'Hello');
+      expect(storeMessageDirect).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chat_jid: 'tg:100200300',
+          sender: 'bot',
+          content: 'Hello',
+          is_from_me: true,
+          is_bot_message: true,
+        }),
+      );
+    });
+
+    it('stores full text once for chunked messages', async () => {
+      const { storeMessageDirect } = await import('../db.js');
+      (storeMessageDirect as ReturnType<typeof vi.fn>).mockClear();
+      const channel = new TelegramChannel('test-token', createTestOpts());
+      await channel.connect();
+
+      const longText = 'x'.repeat(5000);
+      await channel.sendMessage('tg:100200300', longText);
+      expect(storeMessageDirect).toHaveBeenCalledTimes(1);
+      expect(storeMessageDirect).toHaveBeenCalledWith(
+        expect.objectContaining({ content: longText }),
+      );
+    });
+
     it('strips tg: prefix from JID', async () => {
       const channel = new TelegramChannel('test-token', createTestOpts());
       await channel.connect();
