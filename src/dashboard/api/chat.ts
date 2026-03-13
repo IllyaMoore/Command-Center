@@ -14,8 +14,7 @@ interface ChatMessage {
   sender: 'user' | 'agent';
   timestamp: string;
   agentName?: string;
-  senderName?: string;
-  source?: 'whatsapp' | 'telegram' | 'dashboard';
+  source: 'whatsapp' | 'telegram' | 'dashboard';
 }
 
 function getCeoJid(): string | null {
@@ -159,7 +158,6 @@ function getChatHistory(ceoJid: string | null, limit: number): ChatMessage[] {
           sender: msg.is_bot_message ? 'agent' : 'user',
           timestamp: msg.timestamp,
           agentName: msg.is_bot_message ? 'CEO Agent' : undefined,
-          senderName: msg.is_bot_message ? undefined : msg.sender_name,
           source,
         };
       })
