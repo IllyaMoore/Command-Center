@@ -460,6 +460,10 @@ function buildMcpServers(
     gmail: {
       command: 'npx',
       args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
+      env: {
+        GMAIL_OAUTH_PATH: path.join(HOME_DIR, '.gmail-mcp', 'gcp-oauth.keys.json'),
+        GMAIL_CREDENTIALS_PATH: path.join(HOME_DIR, '.gmail-mcp', 'credentials.json'),
+      },
     },
     calendar: {
       command: 'npx',
