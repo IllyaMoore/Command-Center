@@ -14,6 +14,7 @@ interface ChatMessage {
   sender: 'user' | 'agent';
   timestamp: string;
   agentName?: string;
+  source: 'whatsapp' | 'telegram' | 'dashboard';
 }
 
 function getCeoJid(): string | null {
@@ -141,13 +142,25 @@ function getChatHistory(ceoJid: string | null, limit: number): ChatMessage[] {
 
     // Convert to chat format and reverse (oldest first for chat display)
     return messages
-      .map((msg): ChatMessage => ({
-        id: msg.id,
-        text: msg.content,
-        sender: msg.is_bot_message ? 'agent' : 'user',
-        timestamp: msg.timestamp,
-        agentName: msg.is_bot_message ? 'CEO Agent' : undefined,
-      }))
+      .map((msg): ChatMessage => {
+        let source: ChatMessage['source'];
+        if (msg.sender === 'dashboard') {
+          source = 'dashboard';
+        } else if (ceoJid.startsWith('tg:')) {
+          source = 'telegram';
+        } else {
+          source = 'whatsapp';
+        }
+
+        return {
+          id: msg.id,
+          text: msg.content,
+          sender: msg.is_bot_message ? 'agent' : 'user',
+          timestamp: msg.timestamp,
+          agentName: msg.is_bot_message ? 'CEO Agent' : undefined,
+          source,
+        };
+      })
       .reverse();
   } catch (err) {
     logger.error({ err }, 'Error fetching chat history');

@@ -435,8 +435,11 @@ function sendMobileMessage() {
 
 function addChatMessage(msg, mobileOnly = false) {
   const isUser = msg.sender === 'user';
+  const VALID_SOURCES = ['whatsapp', 'telegram', 'dashboard'];
+  const source = VALID_SOURCES.includes(msg.source) ? msg.source : null;
+  const sourceLabel = source ? `<span class="source-badge source-${source}">${escapeHtml(source)}</span>` : '';
   const html = isUser
-    ? `<div class="msg msg-u">${escapeHtml(msg.text)}</div>`
+    ? `<div class="msg msg-u">${sourceLabel}${escapeHtml(msg.text)}</div>`
     : `<div class="msg msg-a"><div class="agent-label">${escapeHtml(msg.agentName || 'CEO Agent')}</div>${escapeHtml(msg.text)}</div>`;
 
   if (!mobileOnly) {
