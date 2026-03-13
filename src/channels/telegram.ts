@@ -1,6 +1,7 @@
 import { Api, Bot } from 'grammy';
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { setRegisteredGroup } from '../db.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { registerChannel, type ChannelOpts } from './registry.js';
@@ -88,6 +89,32 @@ export class TelegramChannel implements Channel {
 
     this.bot.command('ping', async (ctx) => {
       await ctx.reply(`${ASSISTANT_NAME} is online.`);
+    });
+
+    this.bot.command('activation', async (ctx) => {
+      const chatJid = `tg:${ctx.chat.id}`;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) {
+        await ctx.reply('This chat is not registered.');
+        return;
+      }
+
+      const arg = ctx.match?.trim().toLowerCase();
+      if (arg !== 'on' && arg !== 'off') {
+        const current = group.requiresTrigger === false ? 'ON' : 'OFF';
+        await ctx.reply(
+          `Usage: /activation on|off\nCurrently: ${current}`,
+        );
+        return;
+      }
+
+      group.requiresTrigger = arg === 'off';
+      setRegisteredGroup(chatJid, group);
+      const statusText = arg === 'on'
+        ? `Activation: ON — responding to all messages in this group.`
+        : `Activation: OFF — responding only to @${ASSISTANT_NAME} mentions.`;
+      await ctx.reply(statusText);
+      logger.info({ chatJid, mode: arg, requiresTrigger: group.requiresTrigger }, 'Telegram group activation changed');
     });
 
     this.bot.on('message:text', async (ctx) => {
