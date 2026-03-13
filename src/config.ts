@@ -76,6 +76,11 @@ export const MAX_CONCURRENT_CONTAINERS = Math.max(
   parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '3', 10) || 3,
 );
 
+export const DAILY_API_LIMIT = Math.max(
+  0,
+  parseInt(process.env.DAILY_API_LIMIT || '40', 10) || 40,
+); // 0 = unlimited
+
 export const WARNING_MESSAGE =
   'Processing your request \u2014 this may take a few more minutes';
 export const TIMEOUT_MESSAGE =
