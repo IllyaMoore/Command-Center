@@ -38,6 +38,7 @@ export class WhatsAppChannel implements Channel {
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
   private flushing = false;
   private groupSyncTimerStarted = false;
+  private authFailed = false;
 
   private opts: WhatsAppChannelOpts;
 
@@ -47,11 +48,11 @@ export class WhatsAppChannel implements Channel {
 
   async connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      this.connectInternal(resolve).catch(reject);
+      this.connectInternal(resolve, reject).catch(reject);
     });
   }
 
-  private async connectInternal(onFirstOpen?: () => void): Promise<void> {
+  private async connectInternal(onFirstOpen?: () => void, onReject?: (err: Error) => void): Promise<void> {
     // Prevent multiple simultaneous connection attempts
     if (this.connecting) {
       logger.debug('Connection already in progress, skipping');
@@ -91,11 +92,16 @@ export class WhatsAppChannel implements Channel {
       if (qr) {
         const msg =
           'WhatsApp authentication required. Run /setup in Claude Code.';
-        logger.error(msg);
-        exec(
-          `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
-        );
-        setTimeout(() => process.exit(1), 1000);
+        logger.warn(msg);
+        this.authFailed = true;
+        this.connected = false;
+        this.connecting = false;
+        try { this.sock?.end(undefined); } catch { /* ignore */ }
+        if (onFirstOpen) {
+          onFirstOpen = undefined;
+          onReject?.(new Error(msg));
+          onReject = undefined;
+        }
       }
 
       if (connection === 'close') {
@@ -103,8 +109,8 @@ export class WhatsAppChannel implements Channel {
         this.connecting = false;
         const reason = (lastDisconnect?.error as any)?.output?.statusCode;
         const isConflict = reason === 440 || reason === DisconnectReason.connectionReplaced;
-        const shouldReconnect = reason !== DisconnectReason.loggedOut;
-        logger.info({ reason, isConflict, shouldReconnect, queuedMessages: this.outgoingQueue.length }, 'Connection closed');
+        const shouldReconnect = reason !== DisconnectReason.loggedOut && !this.authFailed;
+        logger.info({ reason, isConflict, shouldReconnect, authFailed: this.authFailed, queuedMessages: this.outgoingQueue.length }, 'Connection closed');
 
         if (shouldReconnect) {
           this.reconnectAttempts++;
@@ -125,7 +131,7 @@ export class WhatsAppChannel implements Channel {
               }, 5000);
             });
           }, delay);
-        } else {
+        } else if (!this.authFailed) {
           logger.info('Logged out. Run /setup to re-authenticate.');
           process.exit(0);
         }
