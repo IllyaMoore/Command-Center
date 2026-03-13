@@ -308,25 +308,27 @@ export class GroupQueue {
 
   private drainGroup(groupJid: string): void {
     if (this.shuttingDown) return;
-    if (!this.checkDailyLimit()) return;
 
     const state = this.getGroup(groupJid);
 
-    // Tasks first (they won't be re-discovered from SQLite like messages)
+    // Already-accepted items drain even if daily limit was hit (they passed the
+    // check at enqueue time). Tasks especially cannot be re-discovered from SQLite.
     if (state.pendingTasks.length > 0) {
       const task = state.pendingTasks.shift()!;
       this.runTask(groupJid, task);
       return;
     }
 
-    // Then pending messages
     if (state.pendingMessages) {
       this.runForGroup(groupJid, 'drain');
       return;
     }
 
     // Nothing pending for this group; check if other groups are waiting for a slot
-    this.drainWaiting();
+    // (daily limit applies here — new groups should not start if over limit)
+    if (this.checkDailyLimit()) {
+      this.drainWaiting();
+    }
   }
 
   private drainWaiting(): void {
