@@ -394,8 +394,8 @@ async function startMessageLoop(): Promise<void> {
           if (activationMsg) {
             const mode = activationMsg.content.trim().match(/^\/activation\s+(on|off)\s*$/i)![1].toLowerCase();
             const newRequiresTrigger = mode === 'off';
+            setRegisteredGroup(chatJid, { ...group, requiresTrigger: newRequiresTrigger });
             group.requiresTrigger = newRequiresTrigger;
-            setRegisteredGroup(chatJid, group);
             const statusText = mode === 'on'
               ? `Activation: ON — responding to all messages in this group.`
               : `Activation: OFF — responding only to @${ASSISTANT_NAME} mentions.`;
