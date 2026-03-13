@@ -585,10 +585,14 @@ async function main(): Promise<void> {
       }
 
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
-      const result = await runAgent(group, text, chatJid, async (output) => {
+      const prompt = `[Via Dashboard] ${text}`;
+      const result = await runAgent(group, prompt, chatJid, async (output) => {
         if (output.result) {
           const formatted = formatOutbound(output.result);
-          if (formatted) await sendToChannel(chatJid, formatted);
+          if (formatted) {
+            const wrapped = `📱 _Dashboard_ › ${text}\n\n${formatted}`;
+            await sendToChannel(chatJid, wrapped);
+          }
         }
       });
       logger.info({ groupFolder, result }, 'Dashboard agent run completed');
