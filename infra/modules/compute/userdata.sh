@@ -105,6 +105,14 @@ chown -R nanoclaw:nanoclaw /opt/nanoclaw
 chown nanoclaw:nanoclaw "$${APP_DIR}/.env"
 chmod 600 "$${APP_DIR}/.env"
 
+# --- 9.5. Configure swap (1GB) for OOM protection ---
+echo "--- Configuring swap ---"
+fallocate -l 1G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
 # --- 10. Build (host app + agent-runner) ---
 echo "--- Building application ---"
 sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build"
@@ -125,6 +133,8 @@ ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=10
 EnvironmentFile=$${APP_DIR}/.env
+MemoryMax=1536M
+OOMPolicy=stop
 
 [Install]
 WantedBy=multi-user.target

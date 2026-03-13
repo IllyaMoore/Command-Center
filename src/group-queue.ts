@@ -2,8 +2,9 @@ import { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
-import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
+import { DAILY_API_LIMIT, DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
 import { logger } from './logger.js';
+import { killProcessGroup } from './process-utils.js';
 
 interface QueuedTask {
   id: string;
@@ -42,6 +43,32 @@ export class GroupQueue {
   private processMessagesFn: ((groupJid: string) => Promise<boolean>) | null =
     null;
   private shuttingDown = false;
+  private dailyInvocations = 0;
+  private dailyDate = new Date().toISOString().split('T')[0];
+
+  private checkDailyLimit(): boolean {
+    if (DAILY_API_LIMIT === 0) return true;
+    const today = new Date().toISOString().split('T')[0];
+    if (today !== this.dailyDate) {
+      this.dailyDate = today;
+      this.dailyInvocations = 0;
+    }
+    return this.dailyInvocations < DAILY_API_LIMIT;
+  }
+
+  private recordInvocation(): void {
+    this.dailyInvocations++;
+    logger.info(
+      { dailyInvocations: this.dailyInvocations, dailyLimit: DAILY_API_LIMIT },
+      'Agent invocation recorded',
+    );
+  }
+
+  getDailyUsage(): { used: number; limit: number } {
+    const today = new Date().toISOString().split('T')[0];
+    if (today !== this.dailyDate) return { used: 0, limit: DAILY_API_LIMIT };
+    return { used: this.dailyInvocations, limit: DAILY_API_LIMIT };
+  }
 
   private getGroup(groupJid: string): GroupState {
     let state = this.groups.get(groupJid);
@@ -67,6 +94,13 @@ export class GroupQueue {
 
   enqueueMessageCheck(groupJid: string): void {
     if (this.shuttingDown) return;
+    if (!this.checkDailyLimit()) {
+      logger.warn(
+        { groupJid, dailyInvocations: this.dailyInvocations, limit: DAILY_API_LIMIT },
+        'Daily API limit reached, dropping message',
+      );
+      return;
+    }
 
     const state = this.getGroup(groupJid);
 
@@ -93,6 +127,13 @@ export class GroupQueue {
 
   enqueueTask(groupJid: string, taskId: string, fn: () => Promise<void>): void {
     if (this.shuttingDown) return;
+    if (!this.checkDailyLimit()) {
+      logger.warn(
+        { groupJid, taskId, dailyInvocations: this.dailyInvocations, limit: DAILY_API_LIMIT },
+        'Daily API limit reached, dropping task',
+      );
+      return;
+    }
 
     const state = this.getGroup(groupJid);
 
@@ -185,6 +226,7 @@ export class GroupQueue {
     state.pendingMessages = false;
     state.currentTaskId = '_messages';
     this.activeCount++;
+    this.recordInvocation();
 
     logger.debug(
       { groupJid, reason, activeCount: this.activeCount },
@@ -219,6 +261,7 @@ export class GroupQueue {
     state.active = true;
     state.currentTaskId = task.id;
     this.activeCount++;
+    this.recordInvocation();
 
     logger.debug(
       { groupJid, taskId: task.id, activeCount: this.activeCount },
@@ -268,21 +311,24 @@ export class GroupQueue {
 
     const state = this.getGroup(groupJid);
 
-    // Tasks first (they won't be re-discovered from SQLite like messages)
+    // Already-accepted items drain even if daily limit was hit (they passed the
+    // check at enqueue time). Tasks especially cannot be re-discovered from SQLite.
     if (state.pendingTasks.length > 0) {
       const task = state.pendingTasks.shift()!;
       this.runTask(groupJid, task);
       return;
     }
 
-    // Then pending messages
     if (state.pendingMessages) {
       this.runForGroup(groupJid, 'drain');
       return;
     }
 
     // Nothing pending for this group; check if other groups are waiting for a slot
-    this.drainWaiting();
+    // (daily limit applies here — new groups should not start if over limit)
+    if (this.checkDailyLimit()) {
+      this.drainWaiting();
+    }
   }
 
   private drainWaiting(): void {
@@ -332,7 +378,7 @@ export class GroupQueue {
     for (const [, state] of this.groups) {
       if (state.process && !state.process.killed && state.containerName) {
         activeProcesses.push({ name: state.containerName, proc: state.process });
-        try { state.process.kill('SIGTERM'); } catch { /* ESRCH: already exited */ }
+        killProcessGroup(state.process.pid, 'SIGTERM');
       }
     }
 
@@ -364,7 +410,7 @@ export class GroupQueue {
     for (const { name, proc } of activeProcesses) {
       if (!proc.killed && proc.exitCode === null) {
         logger.warn({ name }, 'Force killing process after grace period');
-        try { proc.kill('SIGKILL'); } catch { /* ESRCH: already exited */ }
+        killProcessGroup(proc.pid, 'SIGKILL');
       }
     }
   }

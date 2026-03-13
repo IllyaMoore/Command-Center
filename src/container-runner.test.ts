@@ -52,6 +52,12 @@ vi.mock('./mount-security.js', () => ({
   validateAdditionalMounts: vi.fn(() => []),
 }));
 
+// Mock process-utils (killProcessGroup)
+const mockKillProcessGroup = vi.fn();
+vi.mock('./process-utils.js', () => ({
+  killProcessGroup: (...args: unknown[]) => mockKillProcessGroup(...args),
+}));
+
 // Create a controllable fake ChildProcess
 function createFakeProcess() {
   const proc = new EventEmitter() as EventEmitter & {
@@ -80,6 +86,7 @@ vi.mock('child_process', async () => {
   };
 });
 
+import { spawn } from 'child_process';
 import { runContainerAgent, ContainerOutput } from './container-runner.js';
 import type { RegisteredGroup } from './types.js';
 
@@ -106,6 +113,7 @@ describe('container-runner timeout behavior', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     fakeProc = createFakeProcess();
+    mockKillProcessGroup.mockClear();
   });
 
   afterEach(() => {
@@ -303,5 +311,45 @@ describe('container-runner timeout behavior', () => {
     const result = await resultPromise;
     expect(result.status).toBe('success');
     expect(onWarning).not.toHaveBeenCalled();
+  });
+
+  it('spawns agent with detached: true on non-win32', async () => {
+    const resultPromise = runContainerAgent(testGroup, testInput, () => {});
+
+    // Verify spawn was called with detached option
+    const spawnMock = vi.mocked(spawn);
+    const spawnCall = spawnMock.mock.calls[0];
+    const opts = spawnCall[2] as { detached?: boolean };
+    expect(opts.detached).toBe(process.platform !== 'win32');
+
+    // Clean up
+    emitOutputMarker(fakeProc, { status: 'success', result: 'Done' });
+    await vi.advanceTimersByTimeAsync(10);
+    fakeProc.emit('close', 0);
+    await vi.advanceTimersByTimeAsync(10);
+    await resultPromise;
+  });
+
+  it('kills process group on timeout (negative PID)', async () => {
+    const resultPromise = runContainerAgent(
+      testGroup,
+      testInput,
+      () => {},
+      undefined,
+      undefined,
+      vi.fn(),
+    );
+
+    // Fire the hard timeout
+    await vi.advanceTimersByTimeAsync(630_000);
+
+    // killProcessGroup should have been called with the PID and SIGTERM
+    expect(mockKillProcessGroup).toHaveBeenCalledWith(12345, 'SIGTERM');
+
+    // Emit close event
+    fakeProc.emit('close', 137);
+    await vi.advanceTimersByTimeAsync(10);
+
+    await resultPromise;
   });
 });

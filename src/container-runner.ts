@@ -20,6 +20,7 @@ import {
 import { readEnvFile } from './env.js';
 import { logger } from './logger.js';
 import { validateAdditionalMounts } from './mount-security.js';
+import { killProcessGroup } from './process-utils.js';
 import { RegisteredGroup } from './types.js';
 
 // Sentinel markers for robust output parsing (must match agent-runner)
@@ -217,6 +218,7 @@ export async function runContainerAgent(
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: groupDir,
       env: { ...sanitizedEnv, ...agentEnv },
+      detached: process.platform !== 'win32',
     });
 
     onProcess(agentProcess, processName);
@@ -238,11 +240,7 @@ export async function runContainerAgent(
       agentProcess.stdin.end();
     } else {
       logger.warn({ group: group.name, processName }, 'Agent stdin not writable at write time');
-      try { agentProcess.kill('SIGTERM'); } catch (killErr) {
-        if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
-          logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error killing agent process');
-        }
-      }
+      killProcessGroup(agentProcess.pid, 'SIGTERM');
       resolve({ status: 'error', result: null, error: 'Agent stdin not writable — process exited before receiving input' });
       return;
     }
@@ -275,19 +273,11 @@ export async function runContainerAgent(
       try { if (onTimeout) onTimeout(hadStreamingOutput); } catch (err) {
         logger.warn({ group: group.name, processName, err }, 'onTimeout callback threw');
       }
-      try { agentProcess.kill('SIGTERM'); } catch (killErr) {
-        if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
-          logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error sending SIGTERM on timeout');
-        }
-      }
+      killProcessGroup(agentProcess.pid, 'SIGTERM');
       killFallbackTimer = setTimeout(() => {
         if (!processExited) {
           logger.warn({ group: group.name, processName }, 'Graceful stop failed, force killing');
-          try { agentProcess.kill('SIGKILL'); } catch (killErr) {
-            if ((killErr as NodeJS.ErrnoException).code !== 'ESRCH') {
-              logger.warn({ group: group.name, processName, err: killErr }, 'Unexpected error sending SIGKILL on timeout');
-            }
-          }
+          killProcessGroup(agentProcess.pid, 'SIGKILL');
         }
       }, 15000);
     };
