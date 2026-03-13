@@ -1,7 +1,7 @@
 import { Api, Bot } from 'grammy';
 
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
-import { setRegisteredGroup } from '../db.js';
+import { setRegisteredGroup, storeMessageDirect } from '../db.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { registerChannel, type ChannelOpts } from './registry.js';
@@ -279,6 +279,19 @@ export class TelegramChannel implements Channel {
     for (const chunk of chunks) {
       await sendTelegramMessage(this.bot.api, numericId, chunk);
     }
+
+    // Store sent message in DB so dashboard can display bot responses
+    storeMessageDirect({
+      id: `tg-out-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      chat_jid: jid,
+      sender: 'bot',
+      sender_name: this.bot.botInfo?.first_name || 'Assistant',
+      content: text,
+      timestamp: new Date().toISOString(),
+      is_from_me: true,
+      is_bot_message: true,
+    });
+
     logger.info({ jid, length: text.length, chunks: chunks.length }, 'Telegram message sent');
   }
 

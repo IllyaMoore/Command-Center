@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 vi.mock('./registry.js', () => ({ registerChannel: vi.fn() }));
 vi.mock('../env.js', () => ({ readEnvFile: vi.fn(() => ({})) }));
+vi.mock('../db.js', () => ({ setRegisteredGroup: vi.fn(), storeMessageDirect: vi.fn() }));
 vi.mock('../config.js', () => ({
   ASSISTANT_NAME: 'Andy',
   TRIGGER_PATTERN: /^@Andy\b/i,
