@@ -324,6 +324,7 @@ resource "aws_iam_policy" "developer_access" {
         Effect = "Allow"
         Action = [
           "ec2:RunInstances",
+          "ec2:RebootInstances",
           "ec2:StartInstances",
           "ec2:StopInstances",
           "ec2:TerminateInstances",
