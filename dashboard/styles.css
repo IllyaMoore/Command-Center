@@ -352,6 +352,11 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
 .msg-u { background:var(--g); color:#fff; align-self:flex-end; border-bottom-right-radius:4px; }
 .msg-a { background:var(--s2); color:var(--t); align-self:flex-start; border-bottom-left-radius:4px; }
 .msg-a .agent-label { font-size:8px; font-weight:700; color:var(--g); margin-bottom:1px; }
+.source-badge { display:block; font-size:7px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; margin-bottom:2px; opacity:.85; }
+.source-telegram { color:#0088cc; }
+.source-whatsapp { color:#25d366; }
+.source-dashboard { color:rgba(255,255,255,.6); }
+[data-theme="light"] .source-dashboard { color:rgba(0,0,0,.4); }
 .msg-sys { background:var(--gd); color:var(--g); align-self:center; font-size:9px; font-weight:600; border-radius:5px; padding:3px 8px; }
 .chat-input-bar {
   display:flex; gap:5px; padding:8px 12px; border-top:1px solid var(--b); flex-shrink:0;
