@@ -92,29 +92,36 @@ export class TelegramChannel implements Channel {
     });
 
     this.bot.command('activation', async (ctx) => {
-      const chatJid = `tg:${ctx.chat.id}`;
-      const group = this.opts.registeredGroups()[chatJid];
-      if (!group) {
-        await ctx.reply('This chat is not registered.');
-        return;
-      }
+      try {
+        const chatJid = `tg:${ctx.chat.id}`;
+        const group = this.opts.registeredGroups()[chatJid];
+        if (!group) {
+          await ctx.reply('This chat is not registered.');
+          return;
+        }
 
-      const arg = ctx.match?.trim().toLowerCase();
-      if (arg !== 'on' && arg !== 'off') {
-        const current = group.requiresTrigger === false ? 'ON' : 'OFF';
-        await ctx.reply(
-          `Usage: /activation on|off\nCurrently: ${current}`,
-        );
-        return;
-      }
+        const arg = ctx.match?.trim().toLowerCase();
+        if (arg !== 'on' && arg !== 'off') {
+          const current = group.requiresTrigger === false ? 'ON' : 'OFF';
+          await ctx.reply(
+            `Usage: /activation on|off\nCurrently: ${current}`,
+          );
+          return;
+        }
 
-      group.requiresTrigger = arg === 'off';
-      setRegisteredGroup(chatJid, group);
-      const statusText = arg === 'on'
-        ? `Activation: ON — responding to all messages in this group.`
-        : `Activation: OFF — responding only to @${ASSISTANT_NAME} mentions.`;
-      await ctx.reply(statusText);
-      logger.info({ chatJid, mode: arg, requiresTrigger: group.requiresTrigger }, 'Telegram group activation changed');
+        const newRequiresTrigger = arg === 'off';
+        setRegisteredGroup(chatJid, { ...group, requiresTrigger: newRequiresTrigger });
+        group.requiresTrigger = newRequiresTrigger;
+
+        const statusText = arg === 'on'
+          ? `Activation: ON — responding to all messages in this group.`
+          : `Activation: OFF — responding only to @${ASSISTANT_NAME} mentions.`;
+        await ctx.reply(statusText);
+        logger.info({ chatJid, mode: arg, requiresTrigger: newRequiresTrigger }, 'Telegram group activation changed');
+      } catch (err) {
+        logger.error({ chatId: ctx.chat.id, err }, 'Failed to process /activation command');
+        try { await ctx.reply('Failed to update activation setting.'); } catch { /* already logged */ }
+      }
     });
 
     this.bot.on('message:text', async (ctx) => {
