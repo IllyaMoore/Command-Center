@@ -586,16 +586,42 @@ async function main(): Promise<void> {
 
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const prompt = `[Via Dashboard] ${text}`;
-      const result = await runAgent(group, prompt, chatJid, async (output) => {
-        if (output.result) {
-          const formatted = formatOutbound(output.result);
-          if (formatted) {
-            const wrapped = `📱 _Dashboard_ › ${text}\n\n${formatted}`;
-            await sendToChannel(chatJid, wrapped);
+      const safeText = text.replace(/[_*~`]/g, '');
+      const result = await runAgent(
+        group,
+        prompt,
+        chatJid,
+        async (output) => {
+          if (output.result) {
+            const formatted = formatOutbound(output.result);
+            if (formatted) {
+              const wrapped = `📱 _Dashboard_ › ${safeText}\n\n${formatted}`;
+              const delivered = await sendToChannel(chatJid, wrapped);
+              if (!delivered) {
+                logger.error({ groupFolder, chatJid }, 'Dashboard agent response could not be delivered');
+              }
+            } else {
+              logger.warn({ groupFolder, resultLength: output.result.length }, 'Agent output stripped by formatOutbound');
+            }
           }
-        }
-      });
-      logger.info({ groupFolder, result }, 'Dashboard agent run completed');
+        },
+        () => {
+          sendToChannel(chatJid, WARNING_MESSAGE).catch((err) => {
+            logger.warn({ chatJid, err }, 'Failed to send dashboard warning notification');
+          });
+        },
+        (hadOutput: boolean) => {
+          if (hadOutput) return;
+          sendToChannel(chatJid, TIMEOUT_MESSAGE).catch((err) => {
+            logger.warn({ chatJid, err }, 'Failed to send dashboard timeout notification');
+          });
+        },
+      );
+      if (result === 'error') {
+        logger.error({ groupFolder }, 'Dashboard agent run failed');
+      } else {
+        logger.info({ groupFolder, result }, 'Dashboard agent run completed');
+      }
     },
   });
   queue.setProcessMessagesFn(processGroupMessages);
