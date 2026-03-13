@@ -120,7 +120,9 @@ export class TelegramChannel implements Channel {
         logger.info({ chatJid, mode: arg, requiresTrigger: newRequiresTrigger }, 'Telegram group activation changed');
       } catch (err) {
         logger.error({ chatId: ctx.chat.id, err }, 'Failed to process /activation command');
-        try { await ctx.reply('Failed to update activation setting.'); } catch { /* already logged */ }
+        try { await ctx.reply('Failed to update activation setting.'); } catch (replyErr) {
+          logger.warn({ chatId: ctx.chat.id, replyErr }, 'Failed to send error reply for /activation');
+        }
       }
     });
 
