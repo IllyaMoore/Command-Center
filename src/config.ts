@@ -73,7 +73,7 @@ export const IDLE_TIMEOUT = parseInt(
 ); // 30sec default — how long to keep agent process alive after last result
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
-  parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '5', 10) || 5,
+  parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '3', 10) || 3,
 );
 
 export const WARNING_MESSAGE =

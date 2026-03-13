@@ -4,6 +4,7 @@ import path from 'path';
 
 import { DATA_DIR, MAX_CONCURRENT_CONTAINERS } from './config.js';
 import { logger } from './logger.js';
+import { killProcessGroup } from './process-utils.js';
 
 interface QueuedTask {
   id: string;
@@ -332,7 +333,7 @@ export class GroupQueue {
     for (const [, state] of this.groups) {
       if (state.process && !state.process.killed && state.containerName) {
         activeProcesses.push({ name: state.containerName, proc: state.process });
-        try { state.process.kill('SIGTERM'); } catch { /* ESRCH: already exited */ }
+        killProcessGroup(state.process.pid, 'SIGTERM');
       }
     }
 
@@ -364,7 +365,7 @@ export class GroupQueue {
     for (const { name, proc } of activeProcesses) {
       if (!proc.killed && proc.exitCode === null) {
         logger.warn({ name }, 'Force killing process after grace period');
-        try { proc.kill('SIGKILL'); } catch { /* ESRCH: already exited */ }
+        killProcessGroup(proc.pid, 'SIGKILL');
       }
     }
   }
