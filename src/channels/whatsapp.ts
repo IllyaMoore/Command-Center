@@ -38,6 +38,7 @@ export class WhatsAppChannel implements Channel {
   private outgoingQueue: Array<{ jid: string; text: string }> = [];
   private flushing = false;
   private groupSyncTimerStarted = false;
+  private authFailed = false;
 
   private opts: WhatsAppChannelOpts;
 
@@ -92,11 +93,11 @@ export class WhatsAppChannel implements Channel {
         const msg =
           'WhatsApp authentication required. Run /setup in Claude Code.';
         logger.warn(msg);
-        try { this.sock?.end(undefined); } catch { /* ignore */ }
+        this.authFailed = true;
         this.connected = false;
         this.connecting = false;
+        try { this.sock?.end(undefined); } catch { /* ignore */ }
         if (onFirstOpen) {
-          // Reject the connect() promise so caller can handle gracefully
           onFirstOpen = undefined;
           onReject?.(new Error(msg));
           onReject = undefined;
@@ -108,8 +109,8 @@ export class WhatsAppChannel implements Channel {
         this.connecting = false;
         const reason = (lastDisconnect?.error as any)?.output?.statusCode;
         const isConflict = reason === 440 || reason === DisconnectReason.connectionReplaced;
-        const shouldReconnect = reason !== DisconnectReason.loggedOut;
-        logger.info({ reason, isConflict, shouldReconnect, queuedMessages: this.outgoingQueue.length }, 'Connection closed');
+        const shouldReconnect = reason !== DisconnectReason.loggedOut && !this.authFailed;
+        logger.info({ reason, isConflict, shouldReconnect, authFailed: this.authFailed, queuedMessages: this.outgoingQueue.length }, 'Connection closed');
 
         if (shouldReconnect) {
           this.reconnectAttempts++;

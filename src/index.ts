@@ -540,6 +540,7 @@ async function main(): Promise<void> {
     channels.push(whatsapp);
   } catch (err) {
     logger.warn({ err }, 'WhatsApp not available (auth required?), continuing without it');
+    await whatsapp.disconnect().catch(() => {});
   }
 
   // Create registry-based channels (Telegram, etc.) — auto-enabled when credentials present
