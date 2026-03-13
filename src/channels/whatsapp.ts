@@ -47,11 +47,11 @@ export class WhatsAppChannel implements Channel {
 
   async connect(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      this.connectInternal(resolve).catch(reject);
+      this.connectInternal(resolve, reject).catch(reject);
     });
   }
 
-  private async connectInternal(onFirstOpen?: () => void): Promise<void> {
+  private async connectInternal(onFirstOpen?: () => void, onReject?: (err: Error) => void): Promise<void> {
     // Prevent multiple simultaneous connection attempts
     if (this.connecting) {
       logger.debug('Connection already in progress, skipping');
@@ -91,11 +91,16 @@ export class WhatsAppChannel implements Channel {
       if (qr) {
         const msg =
           'WhatsApp authentication required. Run /setup in Claude Code.';
-        logger.error(msg);
-        exec(
-          `osascript -e 'display notification "${msg}" with title "NanoClaw" sound name "Basso"'`,
-        );
-        setTimeout(() => process.exit(1), 1000);
+        logger.warn(msg);
+        try { this.sock?.end(undefined); } catch { /* ignore */ }
+        this.connected = false;
+        this.connecting = false;
+        if (onFirstOpen) {
+          // Reject the connect() promise so caller can handle gracefully
+          onFirstOpen = undefined;
+          onReject?.(new Error(msg));
+          onReject = undefined;
+        }
       }
 
       if (connection === 'close') {

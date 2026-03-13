@@ -535,8 +535,12 @@ async function main(): Promise<void> {
       return true;
     },
   });
-  channels.push(whatsapp);
-  await whatsapp.connect();
+  try {
+    await whatsapp.connect();
+    channels.push(whatsapp);
+  } catch (err) {
+    logger.warn({ err }, 'WhatsApp not available (auth required?), continuing without it');
+  }
 
   // Create registry-based channels (Telegram, etc.) — auto-enabled when credentials present
   for (const name of getRegisteredChannelNames()) {
