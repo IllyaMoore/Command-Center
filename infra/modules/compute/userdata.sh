@@ -145,7 +145,7 @@ OOMPolicy=stop
 WantedBy=multi-user.target
 SERVICE
 
-# --- 12. Enable and start ---
+# --- 13. Enable and start ---
 echo "--- Starting NanoClaw service ---"
 systemctl daemon-reload
 systemctl enable --now nanoclaw

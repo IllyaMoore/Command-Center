@@ -1,9 +1,10 @@
 #!/bin/bash
 # setup-instance.sh — Provision NanoClaw instance after bootstrap.
 # Called from userdata.sh, but can also be run manually via SSM:
-#   sudo /opt/nanoclaw/app/infra/scripts/setup-instance.sh
+#   sudo ENVIRONMENT=staging AWS_REGION=us-east-2 bash /opt/nanoclaw/app/infra/scripts/setup-instance.sh
 #
-# Requires: ENVIRONMENT, AWS_REGION, APP_DIR env vars (set by userdata)
+# Requires: ENVIRONMENT, AWS_REGION env vars (set by userdata or caller)
+# Optional: APP_DIR (defaults to /opt/nanoclaw/app)
 # Reads SSM parameters: gcp-oauth-credentials, telegram-chat-jid
 set -euo pipefail
 
@@ -17,7 +18,7 @@ ssm_get() {
     --with-decryption \
     --query "Parameter.Value" \
     --output text \
-    --region "${AWS_REGION}"
+    --region "${AWS_REGION}" 2>/dev/null || echo ""
 }
 
 echo "=== Provisioning instance (env=${ENVIRONMENT}) ==="
@@ -28,7 +29,8 @@ if [[ "${GCP_CREDS}" != "CHANGE_ME" && -n "${GCP_CREDS}" ]]; then
   for CRED_DIR in .google-calendar-mcp .gmail-mcp .google-sheets-mcp; do
     sudo -u nanoclaw mkdir -p "/opt/nanoclaw/${CRED_DIR}"
   done
-  echo "${GCP_CREDS}" | sudo -u nanoclaw tee \
+  sudo -u nanoclaw mkdir -p "${APP_DIR}/data"
+  printf '%s\n' "${GCP_CREDS}" | sudo -u nanoclaw tee \
     /opt/nanoclaw/.google-calendar-mcp/credentials.json \
     /opt/nanoclaw/.gmail-mcp/gcp-oauth.keys.json \
     /opt/nanoclaw/.google-sheets-mcp/gcp-oauth.keys.json \
@@ -47,17 +49,18 @@ unset GCP_CREDS
 TG_JID=$(ssm_get "telegram-chat-jid")
 if [[ "${TG_JID}" != "CHANGE_ME" && -n "${TG_JID}" ]]; then
   sudo -u nanoclaw node -e "
-    const Database = require('${APP_DIR}/node_modules/better-sqlite3');
-    const db = new Database('${APP_DIR}/store/messages.db');
+    const [,, jid, appDir] = process.argv;
+    const Database = require(appDir + '/node_modules/better-sqlite3');
+    const db = new Database(appDir + '/store/messages.db');
     db.exec(\`CREATE TABLE IF NOT EXISTS registered_groups (
       jid TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL UNIQUE,
       trigger_pattern TEXT NOT NULL, added_at TEXT NOT NULL,
       container_config TEXT, requires_trigger INTEGER DEFAULT 1
     )\`);
     db.prepare('INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger) VALUES (?, ?, ?, ?, ?, ?)')
-      .run('${TG_JID}', 'CEO', 'ceo', '', new Date().toISOString(), 0);
-    console.log('  Registered group: ${TG_JID}');
-  "
+      .run(jid, 'CEO', 'ceo', '', new Date().toISOString(), 0);
+    console.log('  Registered group: ' + jid);
+  " -- "${TG_JID}" "${APP_DIR}"
 else
   echo "  WARN: telegram-chat-jid not set in SSM, skipping group registration"
 fi
