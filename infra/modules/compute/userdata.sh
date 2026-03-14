@@ -117,7 +117,12 @@ echo '/swapfile none swap sw 0 0' >> /etc/fstab
 echo "--- Building application ---"
 sudo -u nanoclaw bash -c "cd $${APP_DIR} && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build"
 
-# --- 11. Write systemd service ---
+# --- 11. Provision instance (MCP credentials + Telegram group) ---
+echo "--- Provisioning instance ---"
+ENVIRONMENT="$${ENVIRONMENT}" AWS_REGION="$${AWS_REGION}" APP_DIR="$${APP_DIR}" \
+  bash "$${APP_DIR}/infra/scripts/setup-instance.sh"
+
+# --- 12. Write systemd service ---
 echo "--- Creating systemd service ---"
 cat > /etc/systemd/system/nanoclaw.service <<SERVICE
 [Unit]
