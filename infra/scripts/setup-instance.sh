@@ -65,17 +65,17 @@ unset GCP_CREDS
 TG_JID=$(ssm_get "telegram-chat-jid")
 if [[ "${TG_JID}" != "CHANGE_ME" && -n "${TG_JID}" ]]; then
   sudo -u nanoclaw mkdir -p "${APP_DIR}/store"
-  sudo -u nanoclaw node -e "
-    const [,, jid, appDir] = process.argv;
+  sudo -u nanoclaw node --input-type=module -e "
+    const [, jid, appDir] = process.argv;
     process.chdir(appDir);
-    const { initDatabase, setRegisteredGroup } = require(appDir + '/dist/db');
+    const { initDatabase, setRegisteredGroup } = await import('./dist/db.js');
     initDatabase();
     setRegisteredGroup(jid, {
       name: 'CEO', folder: 'ceo', trigger: '',
       added_at: new Date().toISOString(), requiresTrigger: false
     });
     console.log('  Registered group: ' + jid);
-  " -- "${TG_JID}" "${APP_DIR}"
+  " "${TG_JID}" "${APP_DIR}"
 else
   echo "  WARN: telegram-chat-jid not set in SSM, skipping group registration"
 fi
