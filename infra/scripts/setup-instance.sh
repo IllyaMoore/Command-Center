@@ -101,6 +101,19 @@ else
 fi
 unset TG_JID
 
+# --- 3. Set DASHBOARD_URL from Tailscale hostname ---
+if command -v tailscale &>/dev/null; then
+  TS_HOSTNAME=$(tailscale status --self --json 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['Self']['DNSName'].rstrip('.'))" 2>/dev/null) || TS_HOSTNAME=""
+  if [[ -n "${TS_HOSTNAME}" ]]; then
+    sed -i "s|DASHBOARD_URL=.*|DASHBOARD_URL=http://${TS_HOSTNAME}:3000|" "${APP_DIR}/.env"
+    echo "  DASHBOARD_URL set to http://${TS_HOSTNAME}:3000"
+  else
+    echo "  WARN: Could not determine Tailscale hostname, DASHBOARD_URL unchanged"
+  fi
+else
+  echo "  WARN: Tailscale not installed, DASHBOARD_URL unchanged"
+fi
+
 if [[ ${ERRORS} -gt 0 ]]; then
   echo "=== Provisioning completed with ${ERRORS} error(s) ==="
 else
