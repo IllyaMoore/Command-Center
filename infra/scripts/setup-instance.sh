@@ -13,12 +13,27 @@ set -euo pipefail
 : "${APP_DIR:=/opt/nanoclaw/app}"
 
 ssm_get() {
-  aws ssm get-parameter \
+  local stderr value exit_code
+  stderr=$(mktemp)
+  value=$(aws ssm get-parameter \
     --name "/nanoclaw/${ENVIRONMENT}/$1" \
     --with-decryption \
     --query "Parameter.Value" \
     --output text \
-    --region "${AWS_REGION}" 2>/dev/null || echo ""
+    --region "${AWS_REGION}" 2>"${stderr}") && exit_code=0 || exit_code=$?
+  if [[ ${exit_code} -ne 0 ]]; then
+    if grep -q "ParameterNotFound" "${stderr}"; then
+      rm -f "${stderr}"
+      echo ""
+      return 0
+    fi
+    echo "ERROR: Failed to read SSM parameter /nanoclaw/${ENVIRONMENT}/$1:" >&2
+    cat "${stderr}" >&2
+    rm -f "${stderr}"
+    return 1
+  fi
+  rm -f "${stderr}"
+  echo "${value}"
 }
 
 echo "=== Provisioning instance (env=${ENVIRONMENT}) ==="
@@ -46,19 +61,19 @@ fi
 unset GCP_CREDS
 
 # --- 2. Register Telegram group from SSM ---
+# Uses initDatabase() from built app to avoid schema duplication with src/db.ts
 TG_JID=$(ssm_get "telegram-chat-jid")
 if [[ "${TG_JID}" != "CHANGE_ME" && -n "${TG_JID}" ]]; then
+  sudo -u nanoclaw mkdir -p "${APP_DIR}/store"
   sudo -u nanoclaw node -e "
     const [,, jid, appDir] = process.argv;
-    const Database = require(appDir + '/node_modules/better-sqlite3');
-    const db = new Database(appDir + '/store/messages.db');
-    db.exec(\`CREATE TABLE IF NOT EXISTS registered_groups (
-      jid TEXT PRIMARY KEY, name TEXT NOT NULL, folder TEXT NOT NULL UNIQUE,
-      trigger_pattern TEXT NOT NULL, added_at TEXT NOT NULL,
-      container_config TEXT, requires_trigger INTEGER DEFAULT 1
-    )\`);
-    db.prepare('INSERT OR REPLACE INTO registered_groups (jid, name, folder, trigger_pattern, added_at, requires_trigger) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(jid, 'CEO', 'ceo', '', new Date().toISOString(), 0);
+    process.chdir(appDir);
+    const { initDatabase, setRegisteredGroup } = require(appDir + '/dist/db');
+    initDatabase();
+    setRegisteredGroup(jid, {
+      name: 'CEO', folder: 'ceo', trigger: '',
+      added_at: new Date().toISOString(), requiresTrigger: false
+    });
     console.log('  Registered group: ' + jid);
   " -- "${TG_JID}" "${APP_DIR}"
 else

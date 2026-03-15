@@ -9,11 +9,12 @@ The `userdata.sh` bootstrap script runs on first boot and handles:
 - Clone repo, `npm ci`, build
 - Write `.env` from SSM parameters
 - Create swap (1GB), systemd service with `MemoryMax=1536M`
+- **Provision from SSM** (`setup-instance.sh`): register Telegram group, deploy MCP credentials to 4 paths
 - Start NanoClaw
 
-**After bootstrap completes, NanoClaw is running but has no registered groups or Google MCP credentials.**
+**Steps 2-3 below are automated** by `setup-instance.sh` if SSM parameters are set. The manual commands are provided as fallback or for debugging.
 
-## What You Must Do Manually
+## What You Must Do Manually (or verify)
 
 ### 1. Find Instance ID and Tailscale Hostname
 
