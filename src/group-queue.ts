@@ -258,12 +258,18 @@ export class GroupQueue {
     }
   }
 
-  private async runTask(groupJid: string, task: QueuedTask): Promise<void> {
+  private async runTask(
+    groupJid: string,
+    task: QueuedTask,
+    fromDrain = false,
+  ): Promise<void> {
     const state = this.getGroup(groupJid);
     state.active = true;
     state.currentTaskId = task.id;
     this.activeCount++;
-    this.recordInvocation();
+    if (!fromDrain) {
+      this.recordInvocation();
+    }
 
     logger.debug(
       { groupJid, taskId: task.id, activeCount: this.activeCount },
@@ -317,7 +323,7 @@ export class GroupQueue {
     // check at enqueue time). Tasks especially cannot be re-discovered from SQLite.
     if (state.pendingTasks.length > 0) {
       const task = state.pendingTasks.shift()!;
-      this.runTask(groupJid, task);
+      this.runTask(groupJid, task, true);
       return;
     }
 
@@ -344,7 +350,7 @@ export class GroupQueue {
       // Prioritize tasks over messages
       if (state.pendingTasks.length > 0) {
         const task = state.pendingTasks.shift()!;
-        this.runTask(nextJid, task);
+        this.runTask(nextJid, task, true);
       } else if (state.pendingMessages) {
         this.runForGroup(nextJid, 'drain');
       }

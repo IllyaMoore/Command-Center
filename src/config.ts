@@ -71,9 +71,10 @@ export const IDLE_TIMEOUT = parseInt(
   process.env.IDLE_TIMEOUT || '30000',
   10,
 ); // 30sec default — how long to keep agent process alive after last result
+const _parsedMaxContainers = parseInt(process.env.MAX_CONCURRENT_CONTAINERS ?? '3', 10);
 export const MAX_CONCURRENT_CONTAINERS = Math.max(
   1,
-  parseInt(process.env.MAX_CONCURRENT_CONTAINERS || '3', 10) || 3,
+  Number.isNaN(_parsedMaxContainers) ? 3 : _parsedMaxContainers,
 );
 
 const _parsedDailyLimit = parseInt(process.env.DAILY_API_LIMIT ?? '40', 10);
