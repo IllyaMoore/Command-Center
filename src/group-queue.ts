@@ -226,7 +226,9 @@ export class GroupQueue {
     state.pendingMessages = false;
     state.currentTaskId = '_messages';
     this.activeCount++;
-    this.recordInvocation();
+    if (reason !== 'drain') {
+      this.recordInvocation();
+    }
 
     logger.debug(
       { groupJid, reason, activeCount: this.activeCount },
