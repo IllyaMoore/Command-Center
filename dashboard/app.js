@@ -5,25 +5,20 @@ const API_BASE = '';  // Same origin
 
 // === Theme (runs immediately to prevent flash) ===
 function applyTheme(mode) {
-  let effective = mode;
-  if (mode === 'auto') {
-    effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  document.documentElement.setAttribute('data-theme', effective);
+  document.documentElement.setAttribute('data-theme', mode === 'dark' ? 'dark' : 'light');
 }
 
 function setTheme(mode) {
-  localStorage.setItem('theme', mode);
-  applyTheme(mode);
-  updateThemeToggle(mode);
-  updateThemeIcon(mode);
+  const resolved = mode === 'dark' ? 'dark' : 'light';
+  localStorage.setItem('theme', resolved);
+  applyTheme(resolved);
+  updateThemeToggle(resolved);
+  updateThemeIcon(resolved);
 }
 
 function cycleTheme() {
-  const order = ['light', 'dark', 'auto'];
-  const current = localStorage.getItem('theme') || 'auto';
-  const next = order[(order.indexOf(current) + 1) % order.length];
-  setTheme(next);
+  const current = localStorage.getItem('theme') || 'dark';
+  setTheme(current === 'dark' ? 'light' : 'dark');
 }
 
 function updateThemeToggle(mode) {
@@ -43,17 +38,11 @@ function updateThemeIcon(mode) {
 
 // Apply saved theme immediately
 (function() {
-  const saved = localStorage.getItem('theme') || 'auto';
+  let saved = localStorage.getItem('theme') || 'dark';
+  if (saved === 'auto') saved = 'dark';
   applyTheme(saved);
   updateThemeIcon(saved);
 })();
-
-// Live-update when system preference changes (auto mode)
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-  if ((localStorage.getItem('theme') || 'auto') === 'auto') {
-    applyTheme('auto');
-  }
-});
 
 // === State ===
 let chatMessages = [];
@@ -153,7 +142,8 @@ function renderCalendarEvents(events, view) {
 function renderWeekView(events) {
   const HOUR_START = 7;   // 7 AM
   const HOUR_END = 21;    // 9 PM
-  const HOUR_HEIGHT = 52; // px per hour row
+  const isMobile = window.matchMedia('(max-width:767px)').matches;
+  const HOUR_HEIGHT = isMobile ? 32 : 52; // compact on mobile
   const totalHours = HOUR_END - HOUR_START;
 
   // Build week starting from Monday of current week
@@ -558,6 +548,8 @@ function mobileNav(view, btn) {
 function openMobileChat() {
   document.getElementById('mobileChatOverlay').classList.add('open');
   document.getElementById('mobileChatPanel').classList.add('open');
+  const msgs = document.getElementById('mobileMsgs');
+  msgs.scrollTop = msgs.scrollHeight;
   document.getElementById('mobileChatInput').focus();
 }
 
@@ -570,7 +562,7 @@ function openSettings() {
   document.getElementById('settingsOverlay').classList.add('open');
   checkGoogleCalendarStatus();
   loadTimezone();
-  updateThemeToggle(localStorage.getItem('theme') || 'auto');
+  updateThemeToggle(localStorage.getItem('theme') || 'dark');
 }
 
 async function loadTimezone() {
@@ -729,6 +721,16 @@ document.getElementById('mobileChatInput').addEventListener('keydown', (e) => {
 });
 
 // === Initialize ===
+// Set today's date on calendar pane header (used by mobile.css)
+(function setMobileDate() {
+  const head = document.querySelector('.cal-pane .pane-head');
+  if (head) {
+    const d = new Date();
+    const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+    head.setAttribute('data-mobile-date', d.toLocaleDateString('en-US', opts));
+  }
+})();
+
 async function init() {
   // Check API health
   try {

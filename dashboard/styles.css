@@ -121,23 +121,13 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
    =================================================== */
 @media(min-width:768px) and (max-width:1023px) {
   .workspace { grid-template-columns:1fr 300px; }
-  .act-pane { display:none; }
-  .act-pane.tablet-show { display:flex; }
-  .cal-pane.tablet-hide { display:none; }
+  .pane.act-pane { display:none; }
+  .pane.act-pane.tablet-show { display:flex; }
+  .pane.cal-pane.tablet-hide { display:none; }
   .mobile-nav { display:none !important; }
 }
 
-/* ===================================================
-   MOBILE LAYOUT (<768px)
-   Full-screen views + bottom nav + chat popup
-   =================================================== */
-@media(max-width:767px) {
-  .workspace { grid-template-columns:1fr; }
-  .act-pane { display:none; }
-  .act-pane.mobile-show { display:flex; }
-  .cal-pane.mobile-hide { display:none; }
-  .chat-pane { display:none !important; }
-}
+/* Mobile layout (<768px) — see mobile.css */
 
 /* === PANE SHARED === */
 .pane { display:flex; flex-direction:column; overflow:hidden; }
@@ -162,7 +152,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
 .cal-pane { border-right:1px solid var(--b); }
 .cal-pane .pane-scroll { display:flex; flex-direction:column; }
 .cal-pane .pane-scroll:has(.wk-view.vis) { padding:0; overflow:hidden; }
-@media(max-width:767px) { .cal-pane { border-right:none; } }
+/* mobile: border-right:none — see mobile.css */
 
 /* CEO Brief */
 .brief {
@@ -284,16 +274,11 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
   width:8px; height:8px; border-radius:50%; background:var(--r);
 }
 
-/* Responsive: mobile show scroll hint */
-@media(max-width:767px) {
-  .wk-header, .wk-allday-row, .wk-body-inner { min-width:600px; }
-  .wk-body-scroll { overflow-x:auto; }
-  .wk-view.vis { overflow-x:auto; }
-}
+/* Weekly view: mobile overrides in mobile.css */
 
 /* === ACTIVITY PANE === */
 .act-pane { border-right:1px solid var(--b); }
-@media(max-width:767px) { .act-pane { border-right:none; } }
+/* mobile: border-right:none — see mobile.css */
 
 /* Agent pills */
 .pills { display:flex; gap:3px; flex-wrap:wrap; margin-bottom:10px; }
@@ -395,7 +380,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
   transition:.15s;
 }
 .mobile-chat-trigger:hover { transform:scale(1.08); }
-@media(max-width:767px) { .mobile-chat-trigger { display:flex; align-items:center; justify-content:center; } }
+/* mobile: FAB visible — see mobile.css */
 .mobile-chat-trigger .mc-badge {
   position:absolute; top:-2px; right:-2px; width:14px; height:14px;
   background:var(--r); border-radius:50%; font-size:8px; font-weight:700;
@@ -424,7 +409,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
   padding:4px 0 env(safe-area-inset-bottom, 4px);
   z-index:200; box-shadow:0 -2px 8px rgba(0,0,0,.04);
 }
-@media(max-width:767px) { .mobile-nav { display:flex; justify-content:space-around; } }
+/* mobile: nav visible — see mobile.css */
 .mn-btn {
   display:flex; flex-direction:column; align-items:center; gap:1px;
   padding:4px 14px; border:none; background:none; color:var(--t3);
@@ -447,7 +432,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
   transform:translateX(100%); transition:transform .3s cubic-bezier(.4,0,.2,1);
 }
 .settings-overlay.open .settings-panel { transform:translateX(0); }
-@media(max-width:500px) { .settings-panel { width:100%; } }
+/* mobile: settings full-width — see mobile.css */
 .settings-panel h2 { font-family:var(--display); font-size:18px; margin-bottom:16px; }
 .setting-group { margin-bottom:16px; }
 .setting-group h4 { font-size:9px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--t3); margin-bottom:6px; }
@@ -522,5 +507,4 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
 ::-webkit-scrollbar { width:3px; }
 ::-webkit-scrollbar-thumb { background:var(--b); border-radius:2px; }
 
-/* Utility */
-@media(max-width:767px) { .pane-scroll { padding-bottom:72px; } }
+/* Mobile styles in mobile.css, loaded via media query */
