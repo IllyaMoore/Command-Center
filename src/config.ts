@@ -77,10 +77,10 @@ export const MAX_CONCURRENT_CONTAINERS = Math.max(
   Number.isNaN(_parsedMaxContainers) ? 3 : _parsedMaxContainers,
 );
 
-const _parsedDailyLimit = parseInt(process.env.DAILY_API_LIMIT ?? '40', 10);
+const _parsedDailyLimit = parseInt(process.env.DAILY_API_LIMIT ?? '80', 10);
 export const DAILY_API_LIMIT = Math.max(
   0,
-  Number.isNaN(_parsedDailyLimit) ? 40 : _parsedDailyLimit,
+  Number.isNaN(_parsedDailyLimit) ? 80 : _parsedDailyLimit,
 ); // 0 = unlimited
 
 export const WARNING_MESSAGE =
