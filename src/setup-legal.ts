@@ -87,6 +87,7 @@ function main() {
       schedule_type: 'cron',
       schedule_value: def.cron,
       context_mode: 'group',
+      model: null,
       next_run: nextRun,
       status: 'active',
       created_at: new Date().toISOString(),

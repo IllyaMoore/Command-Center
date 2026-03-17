@@ -6,6 +6,7 @@ import { CronExpressionParser } from 'cron-parser';
 import {
   DATA_DIR,
   IPC_POLL_INTERVAL,
+  isValidModel,
   MAIN_GROUP_FOLDER,
 } from './config.js';
 import { AvailableGroup } from './container-runner.js';
@@ -204,6 +205,7 @@ export async function processTaskIpc(
     schedule_type?: string;
     schedule_value?: string;
     context_mode?: string;
+    model?: string;
     groupFolder?: string;
     chatJid?: string;
     targetJid?: string;
@@ -298,6 +300,7 @@ export async function processTaskIpc(
           data.context_mode === 'group' || data.context_mode === 'isolated'
             ? data.context_mode
             : 'isolated';
+        const validatedModel = data.model && isValidModel(data.model) ? data.model : null;
         createTask({
           id: taskId,
           group_folder: targetFolder,
@@ -306,6 +309,7 @@ export async function processTaskIpc(
           schedule_type: scheduleType,
           schedule_value: data.schedule_value,
           context_mode: contextMode,
+          model: validatedModel,
           next_run: nextRun,
           status: 'active',
           created_at: new Date().toISOString(),

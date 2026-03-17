@@ -42,6 +42,7 @@ interface ContainerInput {
   isMain: boolean;
   isScheduledTask?: boolean;
   assistantName?: string;
+  model?: string;
   secrets?: Record<string, string>;
 }
 
@@ -570,10 +571,12 @@ async function runQuery(
   if (extraDirs.length > 0) {
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
+  log(`Model: ${containerInput.model || 'SDK default'}`);
 
   for await (const message of query({
     prompt: stream,
     options: {
+      model: containerInput.model || undefined,
       cwd: GROUP_DIR,
       additionalDirectories: extraDirs.length > 0 ? extraDirs : undefined,
       resume: sessionId,

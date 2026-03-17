@@ -25,6 +25,15 @@ if (DASHBOARD_URL === 'http://localhost:3000' && !DEV_MODE) {
   );
 }
 
+// Model routing (OPC-79)
+export const DEFAULT_MODEL = 'claude-sonnet-4-6';
+export const ALLOWED_MODELS = ['claude-sonnet-4-6', 'claude-opus-4-6'] as const;
+export type ModelId = (typeof ALLOWED_MODELS)[number];
+
+export function isValidModel(model: string): model is ModelId {
+  return (ALLOWED_MODELS as readonly string[]).includes(model);
+}
+
 export const POLL_INTERVAL = 2000;
 export const SCHEDULER_POLL_INTERVAL = 60000;
 export const REMINDER_POLL_INTERVAL = 300000;
