@@ -571,6 +571,7 @@ async function runQuery(
   if (extraDirs.length > 0) {
     log(`Additional directories: ${extraDirs.join(', ')}`);
   }
+  log(`Model: ${containerInput.model || 'SDK default'}`);
 
   for await (const message of query({
     prompt: stream,

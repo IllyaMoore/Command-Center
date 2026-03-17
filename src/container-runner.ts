@@ -201,6 +201,7 @@ export async function runContainerAgent(
       group: group.name,
       processName,
       isMain: input.isMain,
+      model: input.model || 'default',
     },
     'Spawning agent process',
   );
