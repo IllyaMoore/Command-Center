@@ -238,6 +238,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
   display:flex; align-items:flex-start; justify-content:flex-end;
   padding:0 6px; font-family:var(--mono); font-size:9px; font-weight:500;
   color:var(--t3); transform:translateY(-6px);
+  height:var(--hour-h, 52px);
 }
 
 /* Day columns */
@@ -245,7 +246,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
   position:relative; border-right:1px solid var(--b);
 }
 .wk-day-col:last-child { border-right:none; }
-.wk-hour-cell { border-bottom:1px solid var(--s3); }
+.wk-hour-cell { border-bottom:1px solid var(--s3); height:var(--hour-h, 52px); }
 .wk-today-bg { background:rgba(22,163,74,.02); }
 
 /* Event blocks */

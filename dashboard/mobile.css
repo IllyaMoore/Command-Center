@@ -15,9 +15,11 @@
 /* --- Topbar: frosted glass --- */
 .topbar {
   padding:0 12px; height:52px;
+  background:var(--s);
   background:color-mix(in srgb, var(--s) 82%, transparent);
   -webkit-backdrop-filter:saturate(180%) blur(20px);
   backdrop-filter:saturate(180%) blur(20px);
+  border-bottom:1px solid var(--b);
   border-bottom:1px solid color-mix(in srgb, var(--b) 60%, transparent);
 }
 .tb-left { gap:8px; }
@@ -73,9 +75,10 @@
   flex:1; display:flex; flex-direction:column;
   overflow-x:auto; -webkit-overflow-scrolling:touch;
 }
-.wk-body-scroll { flex:1; overflow-x:auto; overflow-y:auto; }
+.wk-body-scroll { flex:1; overflow-x:auto; overflow-y:auto; --hour-h:32px; }
 .wk-header, .wk-allday-row, .wk-body-inner { min-width:600px; }
-.wk-hour-label { font-size:8px; }
+.wk-hour-label { font-size:8px; height:var(--hour-h, 32px); }
+.wk-hour-cell { height:var(--hour-h, 32px); }
 .wk-ev-title, .wk-hour-label { line-height:1.2; }
 .wk-day-head { padding:4px 0; }
 .wk-day-label { font-size:8px; }
@@ -152,9 +155,11 @@
 .mobile-nav {
   display:flex; justify-content:space-around;
   padding:2px 0 env(safe-area-inset-bottom, 6px);
+  background:var(--s);
   background:color-mix(in srgb, var(--s) 82%, transparent);
   -webkit-backdrop-filter:saturate(180%) blur(20px);
   backdrop-filter:saturate(180%) blur(20px);
+  border-top:1px solid var(--b);
   border-top:1px solid color-mix(in srgb, var(--b) 60%, transparent);
   box-shadow:0 -1px 12px rgba(0,0,0,.04);
 }

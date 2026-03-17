@@ -39,7 +39,10 @@ function updateThemeIcon(mode) {
 // Apply saved theme immediately
 (function() {
   let saved = localStorage.getItem('theme') || 'dark';
-  if (saved === 'auto') saved = 'dark';
+  if (saved === 'auto') {
+    saved = 'dark';
+    localStorage.setItem('theme', saved);
+  }
   applyTheme(saved);
   updateThemeIcon(saved);
 })();
@@ -216,7 +219,7 @@ function renderWeekView(events) {
   // Hour gutter
   html += '<div class="wk-gutter">';
   for (let h = HOUR_START; h < HOUR_END; h++) {
-    html += `<div class="wk-hour-label" style="height:${HOUR_HEIGHT}px">${formatHour(h)}</div>`;
+    html += `<div class="wk-hour-label">${formatHour(h)}</div>`;
   }
   html += '</div>';
 
@@ -227,7 +230,7 @@ function renderWeekView(events) {
 
     // Hour grid lines
     for (let h = HOUR_START; h < HOUR_END; h++) {
-      html += `<div class="wk-hour-cell" style="height:${HOUR_HEIGHT}px"></div>`;
+      html += `<div class="wk-hour-cell"></div>`;
     }
 
     // Events as positioned blocks
