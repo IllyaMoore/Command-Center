@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 import {
+  DEFAULT_MODEL,
   GROUPS_DIR,
   IDLE_TIMEOUT,
   MAIN_GROUP_FOLDER,
@@ -144,7 +145,7 @@ async function runTask(
         chatJid: task.chat_jid,
         isMain,
         isScheduledTask: true,
-        model: task.model ?? undefined,
+        model: task.model ?? DEFAULT_MODEL,
       },
       (proc, containerName) => deps.onProcess(task.chat_jid, proc, containerName, task.group_folder),
       async (streamedOutput: ContainerOutput) => {
