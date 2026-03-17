@@ -17,6 +17,7 @@ interface TaskDef {
   id: string;
   cron: string;
   prompt: string;
+  model?: string;
 }
 
 interface GroupConfig {
@@ -28,6 +29,7 @@ const CEO_TASKS: TaskDef[] = [
   {
     id: 'ceo-briefing',
     cron: '0 13 * * *', // 13:00 UTC
+    model: 'claude-opus-4-6',
     prompt: `Daily briefing. Synthesize:
 1. Check today's calendar events using calendar tools
 2. Search for important unread emails from the last 12 hours
@@ -38,6 +40,7 @@ Deliver a concise morning briefing following the Daily Briefing Format in your i
   {
     id: 'ceo-email-digest',
     cron: '0 9,14,18 * * *', // 9am, 2pm, 6pm UTC
+    model: 'claude-sonnet-4-6',
     prompt: `Email digest. Search Gmail for important unread emails since your last digest.
 Categorize into:
 - Action Required (needs a response or decision)
@@ -48,6 +51,7 @@ Deliver using the Email Digest Format in your instructions. Skip if no notable e
   {
     id: 'ceo-meeting-prep',
     cron: '0 20 * * *', // 20:00 UTC
+    model: 'claude-opus-4-6',
     prompt: `Meeting prep for tomorrow. Using calendar tools:
 1. List all events for tomorrow
 2. For each meeting, search emails for recent correspondence with attendees
@@ -58,6 +62,7 @@ Deliver using the Meeting Prep Format in your instructions. Skip if no meetings 
   {
     id: 'ceo-weekly-review',
     cron: '0 8 * * 1', // Monday 8am UTC
+    model: 'claude-opus-4-6',
     prompt: `Weekly review. Prepare a week-ahead overview:
 1. List all calendar events for the upcoming week
 2. Highlight days with heavy meeting loads
@@ -72,6 +77,7 @@ const FINANCE_TASKS: TaskDef[] = [
   {
     id: 'finance-expense-scan',
     cron: '0 21 * * *', // 21:00 UTC daily
+    model: 'claude-sonnet-4-6',
     prompt: `Daily expense scan. Using Google Sheets tools:
 1. Open the finance spreadsheets for Digital Purse and Borderlands
 2. Scan for new/uncategorized transactions added today
@@ -84,6 +90,7 @@ Deliver using the Daily Expense Summary format in your instructions. Skip if no 
   {
     id: 'finance-weekly-report',
     cron: '0 8 * * 1', // Monday 8am UTC
+    model: 'claude-opus-4-6',
     prompt: `Weekly finance report. Using Google Sheets tools:
 1. Pull revenue and expense data for the past week from Digital Purse and Borderlands spreadsheets
 2. Calculate P&L per organization and combined
@@ -148,6 +155,7 @@ function main(): void {
       schedule_type: 'cron',
       schedule_value: def.cron,
       context_mode: 'group',
+      model: def.model ?? null,
       next_run: nextRun,
       status: 'active',
       created_at: new Date().toISOString(),
