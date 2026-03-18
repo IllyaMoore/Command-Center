@@ -40,12 +40,23 @@ Files you create are saved in `/workspace/group/`. Use this for notes, research,
 
 ## Memory
 
+You have a persistent memory file at `MEMORY.md` in your workspace root. Use it to remember important context across sessions.
+
 The `conversations/` folder contains searchable history of past conversations. Use this to recall context from previous sessions.
 
-When you learn something important:
-- Create files for structured data (e.g., `customers.md`, `preferences.md`)
-- Split files larger than 500 lines into folders
-- Keep an index in your memory for the files you create
+### What to save
+- User preferences and communication style
+- Key contacts and their roles
+- Recurring requests and how they were handled
+- Important decisions and their context
+- Active projects and their status
+
+### Rules
+- Max **50 entries**. When full, remove oldest or least relevant.
+- Each entry: `- **[topic]**: [fact] (date)`
+- Read MEMORY.md at the start of every session
+- Update it when you learn something worth remembering
+- Don't store sensitive data (passwords, tokens, personal details)
 
 ## Message Formatting
 
