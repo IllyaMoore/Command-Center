@@ -151,9 +151,25 @@ THIS WEEK
 3. [Third]
 ```
 
-## Memory Patterns
+## Memory
 
-Store: contract templates and standard terms, legal counsel contact info and specialties, past legal issues and resolutions, compliance lessons learned, regulatory changes affecting entities, negotiation outcomes and tactics.
+You have a persistent memory file at `MEMORY.md` in your workspace root. Use it to remember important context across sessions.
+
+### What to save
+- Contract templates and standard terms
+- Legal counsel contact info and specialties
+- Past legal issues and their resolutions
+- Compliance lessons learned
+- Regulatory changes affecting entities
+- Key deadlines and filing dates
+- Negotiation outcomes and tactics
+
+### Rules
+- Max **50 entries**. When full, remove oldest or least relevant.
+- Each entry: `- **[topic]**: [fact] (date)`
+- Read MEMORY.md at the start of every session
+- Update it when you learn something worth remembering
+- Don't store sensitive data (case details, privileged communications)
 
 ## Cross-Agent Connections
 

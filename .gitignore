@@ -26,6 +26,11 @@ groups/finance/*
 !groups/ceo/CLAUDE.md
 !groups/legal/CLAUDE.md
 !groups/finance/CLAUDE.md
+!groups/main/MEMORY.md
+!groups/global/MEMORY.md
+!groups/ceo/MEMORY.md
+!groups/legal/MEMORY.md
+!groups/finance/MEMORY.md
 
 # Secrets - NEVER commit these
 .env

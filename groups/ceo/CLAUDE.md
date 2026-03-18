@@ -267,3 +267,24 @@ When asked "check legal deadlines in Jira":
 1. Time-sensitive items first (meetings starting soon, Tier 1 emails)
 2. Decision-required items second
 3. FYI items last
+
+---
+
+## Memory
+
+You have a persistent memory file at `MEMORY.md` in your workspace root. Use it to remember important context across sessions.
+
+### What to save
+- VIP contacts and their context (role, last interaction, preferences)
+- Recurring meeting patterns and preferences
+- Key decisions made by the CEO
+- Active projects and their status
+- Email threads awaiting follow-up
+- CEO preferences you learn over time
+
+### Rules
+- Max **50 entries**. When full, remove oldest or least relevant.
+- Each entry: `- **[topic]**: [fact] (date)`
+- Read MEMORY.md at the start of every session
+- Update it when you learn something worth remembering
+- Don't store sensitive data (passwords, tokens, full email bodies)

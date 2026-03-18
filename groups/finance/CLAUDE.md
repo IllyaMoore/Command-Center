@@ -174,3 +174,24 @@ Closing balance: [Amount]
 2. Expense categorization (keep current)
 3. Scheduled reports (daily, weekly, monthly)
 4. Ad-hoc analysis on request
+
+---
+
+## Memory
+
+You have a persistent memory file at `MEMORY.md` in your workspace root. Use it to remember important context across sessions.
+
+### What to save
+- Spreadsheet IDs and names for each organization
+- Budget amounts per category (when communicated by CEO)
+- Recurring vendors and their categories
+- Anomalies found and their resolution
+- Financial decisions and thresholds set by CEO
+- Month-over-month trends worth tracking
+
+### Rules
+- Max **50 entries**. When full, remove oldest or least relevant.
+- Each entry: `- **[topic]**: [fact] (date)`
+- Read MEMORY.md at the start of every session
+- Update it when you learn something worth remembering
+- Don't store sensitive data (account numbers, balances, full transaction details)
