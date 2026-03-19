@@ -426,14 +426,35 @@ function sendMobileMessage() {
   });
 }
 
+function renderMarkdown(text) {
+  if (!text) return '';
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    return escapeHtml(text);
+  }
+  try {
+    const renderer = new marked.Renderer();
+    const origLink = renderer.link.bind(renderer);
+    renderer.link = function(token) {
+      const html = origLink(token);
+      return html.replace('<a ', '<a target="_blank" rel="noopener noreferrer" ');
+    };
+    const raw = marked.parse(text, { breaks: true, gfm: true, renderer });
+    return DOMPurify.sanitize(raw, { ADD_ATTR: ['target', 'rel'] });
+  } catch (err) {
+    console.error('Markdown rendering failed:', err);
+    return escapeHtml(text);
+  }
+}
+
 function addChatMessage(msg, mobileOnly = false) {
   const isUser = msg.sender === 'user';
   const VALID_SOURCES = ['whatsapp', 'telegram', 'dashboard'];
   const source = VALID_SOURCES.includes(msg.source) ? msg.source : null;
   const sourceLabel = source ? `<span class="source-badge source-${source}">${escapeHtml(source)}</span>` : '';
+  const content = isUser ? escapeHtml(msg.text) : `<div class="md-content">${renderMarkdown(msg.text)}</div>`;
   const html = isUser
-    ? `<div class="msg msg-u">${sourceLabel}${escapeHtml(msg.text)}</div>`
-    : `<div class="msg msg-a"><div class="agent-label">${escapeHtml(msg.agentName || 'CEO Agent')}</div>${escapeHtml(msg.text)}</div>`;
+    ? `<div class="msg msg-u">${sourceLabel}${content}</div>`
+    : `<div class="msg msg-a"><div class="agent-label">${escapeHtml(msg.agentName || 'CEO Agent')}</div>${content}</div>`;
 
   if (!mobileOnly) {
     const container = document.getElementById('chatMsgs');
@@ -735,6 +756,11 @@ document.getElementById('mobileChatInput').addEventListener('keydown', (e) => {
 })();
 
 async function init() {
+  // Check markdown library availability
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    console.warn('Markdown libraries not loaded — rendering as plain text');
+  }
+
   // Check API health
   try {
     const res = await fetch(`${API_BASE}/api/health`);
