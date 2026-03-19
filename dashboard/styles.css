@@ -341,7 +341,6 @@ body { font-family:var(--font); background:var(--bg); color:var(--t); font-size:
 .msg-a .agent-label { font-size:8px; font-weight:700; color:var(--g); margin-bottom:3px; }
 
 /* === MARKDOWN CONTENT IN CHAT === */
-.md-content { overflow-wrap:break-word; word-break:break-word; }
 .md-content p { margin:0 0 8px; }
 .md-content p:last-child { margin-bottom:0; }
 .md-content h1, .md-content h2, .md-content h3, .md-content h4, .md-content h5, .md-content h6 {

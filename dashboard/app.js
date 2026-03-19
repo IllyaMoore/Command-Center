@@ -428,10 +428,20 @@ function sendMobileMessage() {
 
 function renderMarkdown(text) {
   if (!text) return '';
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    return escapeHtml(text);
+  }
   try {
-    const raw = marked.parse(text, { breaks: true, gfm: true });
-    return DOMPurify.sanitize(raw);
-  } catch {
+    const renderer = new marked.Renderer();
+    const origLink = renderer.link.bind(renderer);
+    renderer.link = function(token) {
+      const html = origLink(token);
+      return html.replace('<a ', '<a target="_blank" rel="noopener noreferrer" ');
+    };
+    const raw = marked.parse(text, { breaks: true, gfm: true, renderer });
+    return DOMPurify.sanitize(raw, { ADD_ATTR: ['target', 'rel'] });
+  } catch (err) {
+    console.error('Markdown rendering failed:', err);
     return escapeHtml(text);
   }
 }
@@ -746,6 +756,11 @@ document.getElementById('mobileChatInput').addEventListener('keydown', (e) => {
 })();
 
 async function init() {
+  // Check markdown library availability
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    console.warn('Markdown libraries not loaded — rendering as plain text');
+  }
+
   // Check API health
   try {
     const res = await fetch(`${API_BASE}/api/health`);
