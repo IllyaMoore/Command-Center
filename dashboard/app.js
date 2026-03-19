@@ -426,14 +426,25 @@ function sendMobileMessage() {
   });
 }
 
+function renderMarkdown(text) {
+  if (!text) return '';
+  try {
+    const raw = marked.parse(text, { breaks: true, gfm: true });
+    return DOMPurify.sanitize(raw);
+  } catch {
+    return escapeHtml(text);
+  }
+}
+
 function addChatMessage(msg, mobileOnly = false) {
   const isUser = msg.sender === 'user';
   const VALID_SOURCES = ['whatsapp', 'telegram', 'dashboard'];
   const source = VALID_SOURCES.includes(msg.source) ? msg.source : null;
   const sourceLabel = source ? `<span class="source-badge source-${source}">${escapeHtml(source)}</span>` : '';
+  const content = isUser ? escapeHtml(msg.text) : `<div class="md-content">${renderMarkdown(msg.text)}</div>`;
   const html = isUser
-    ? `<div class="msg msg-u">${sourceLabel}${escapeHtml(msg.text)}</div>`
-    : `<div class="msg msg-a"><div class="agent-label">${escapeHtml(msg.agentName || 'CEO Agent')}</div>${escapeHtml(msg.text)}</div>`;
+    ? `<div class="msg msg-u">${sourceLabel}${content}</div>`
+    : `<div class="msg msg-a"><div class="agent-label">${escapeHtml(msg.agentName || 'CEO Agent')}</div>${content}</div>`;
 
   if (!mobileOnly) {
     const container = document.getElementById('chatMsgs');
