@@ -351,6 +351,8 @@ async function runAgent(
   } catch (err) {
     logger.error({ group: group.name, err }, 'Agent error');
     return 'error';
+  } finally {
+    queue.markIdle(chatJid, group.folder);
   }
 }
 

@@ -178,7 +178,8 @@ export class GroupQueue {
     state.active = true;
     if (groupFolder) state.groupFolder = groupFolder;
 
-    proc.on('exit', () => {
+    proc.on('exit', (code) => {
+      logger.info({ groupJid, code, groupFolder }, 'Agent process exited, marking idle');
       state.active = false;
       state.process = null;
       state.containerName = null;
@@ -379,11 +380,9 @@ export class GroupQueue {
   getStatus(): AgentStatus[] {
     const result: AgentStatus[] = [];
     for (const [jid, state] of this.groups) {
-      // Derive active from whether the process is still alive
-      const processAlive = state.process !== null && state.process.exitCode === null;
       result.push({
         jid,
-        active: state.active || processAlive,
+        active: state.active,
         containerName: state.containerName,
         groupFolder: state.groupFolder,
         currentTaskId: state.currentTaskId,
