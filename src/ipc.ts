@@ -104,7 +104,11 @@ export function startIpcWatcher(deps: IpcDeps): void {
                     { sourceGroup, text: data.text.slice(0, 50) },
                     'Processing dashboard input',
                   );
-                  await deps.onDashboardInput(sourceGroup, data.chatJid, data.text);
+                  // Don't await — enqueue and let the handler manage concurrency.
+                  // File is deleted immediately so IPC loop is never blocked.
+                  deps.onDashboardInput(sourceGroup, data.chatJid, data.text).catch((err) => {
+                    logger.error({ sourceGroup, err }, 'Dashboard input handler failed');
+                  });
                 }
                 fs.unlinkSync(filePath);
               } catch (err) {
