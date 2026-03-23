@@ -7,6 +7,8 @@ name: Deploy
     paths:
       - "src/**"
       - "container/**"
+      - "dashboard/**"
+      - "groups/**"
       - "package.json"
       - "package-lock.json"
       - "tsconfig.json"
