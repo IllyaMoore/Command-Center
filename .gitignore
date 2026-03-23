@@ -3,6 +3,14 @@ node_modules/
 
 # Build output
 dist/
+dashboard-next/out/
+dashboard-next/.next/
+dashboard/_next/
+dashboard/404/
+dashboard/404.html
+dashboard/_not-found/
+dashboard/*.txt
+dashboard/favicon.ico
 
 # Local data & auth
 store/

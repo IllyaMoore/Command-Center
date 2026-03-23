@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+/* ── Design System Tokens ── */
+
+@theme inline {
+  /* Fonts */
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Fraunces", Georgia, serif;
+
+  /* Surface colors */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-border: var(--surface-border);
+
+  /* Text colors */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+
+  /* Signal colors */
+  --color-signal-success: var(--signal-success);
+  --color-signal-warning: var(--signal-warning);
+  --color-signal-error: var(--signal-error);
+  --color-signal-info: var(--signal-info);
+
+  /* Primary */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-muted: var(--primary-muted);
+
+  /* Sidebar */
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-text: var(--sidebar-text);
+
+  /* Chat */
+  --color-chat-user: var(--chat-user);
+  --color-chat-agent: var(--chat-agent);
+
+  /* Badge */
+  --color-badge-running: var(--badge-running);
+  --color-badge-idle: var(--badge-idle);
+  --color-badge-error: var(--badge-error);
+  --color-badge-attention: var(--badge-attention);
+}
+
+/* ── Light Theme (default) ── */
+:root {
+  --surface-0: #faf9f7;
+  --surface-1: #ffffff;
+  --surface-2: #f5f3f0;
+  --surface-3: #ebe8e4;
+  --surface-border: #e0ddd8;
+
+  --text-primary: #1a1816;
+  --text-secondary: #5c5650;
+  --text-muted: #9c958d;
+  --text-inverse: #faf9f7;
+
+  --signal-success: #22c55e;
+  --signal-warning: #f59e0b;
+  --signal-error: #ef4444;
+  --signal-info: #3b82f6;
+
+  --primary: #22c55e;
+  --primary-hover: #16a34a;
+  --primary-muted: #dcfce7;
+
+  --sidebar-bg: #f5f3f0;
+  --sidebar-hover: #ebe8e4;
+  --sidebar-active: #e0ddd8;
+  --sidebar-text: #1a1816;
+
+  --chat-user: #ebe8e4;
+  --chat-agent: #ffffff;
+
+  --badge-running: #22c55e;
+  --badge-idle: #9c958d;
+  --badge-error: #ef4444;
+  --badge-attention: #f59e0b;
+}
+
+/* ── Dark Theme ── */
+[data-theme="dark"] {
+  --surface-0: #131210;
+  --surface-1: #1c1b18;
+  --surface-2: #252320;
+  --surface-3: #2e2c28;
+  --surface-border: #3a3834;
+
+  --text-primary: #eae8e4;
+  --text-secondary: #a8a29e;
+  --text-muted: #706c66;
+  --text-inverse: #131210;
+
+  --signal-success: #4ade80;
+  --signal-warning: #fbbf24;
+  --signal-error: #f87171;
+  --signal-info: #60a5fa;
+
+  --primary: #4ade80;
+  --primary-hover: #22c55e;
+  --primary-muted: #14532d;
+
+  --sidebar-bg: #1c1b18;
+  --sidebar-hover: #252320;
+  --sidebar-active: #2e2c28;
+  --sidebar-text: #eae8e4;
+
+  --chat-user: #252320;
+  --chat-agent: #1c1b18;
+
+  --badge-running: #4ade80;
+  --badge-idle: #706c66;
+  --badge-error: #f87171;
+  --badge-attention: #fbbf24;
+}
+
+/* ── Base Styles ── */
+body {
+  background: var(--surface-0);
+  color: var(--text-primary);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface-3);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
