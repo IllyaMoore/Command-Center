@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAgentStore } from "@/lib/agent-store";
 import { Message, sendMessage } from "@/lib/api";
 import { useMessages } from "@/lib/use-messages";
+import { agentColor } from "@/lib/agent-colors";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
@@ -22,6 +23,8 @@ export function ChatPanel() {
 
   const agentName = selectedAgent?.name ?? "No Agent";
   const agentInitial = agentName.charAt(0).toUpperCase();
+  const agentFolder = selectedAgent?.folder ?? "";
+  const color = agentColor(agentFolder);
   const isOnline = selectedAgent?.online ?? false;
 
   // Auto-scroll to bottom on new messages (unless user scrolled up)
@@ -89,7 +92,7 @@ export function ChatPanel() {
       {/* Chat header */}
       <div className="flex items-center gap-4 px-4 py-3 border-b border-surface-border">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center text-sm font-semibold text-text-secondary shrink-0">
+          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${color.bg} ${color.text}`}>
             {agentInitial}
           </div>
           <div className="flex items-center gap-2 min-w-0">
@@ -131,7 +134,7 @@ export function ChatPanel() {
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
-            <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center text-2xl font-semibold text-text-muted">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-semibold ${color.bg} ${color.text}`}>
               {agentInitial}
             </div>
             <p className="text-sm text-text-muted">
@@ -146,6 +149,7 @@ export function ChatPanel() {
                 message={msg}
                 agentName={agentName}
                 agentInitial={agentInitial}
+                agentColor={color}
               />
             ))}
             <div ref={messagesEndRef} />
@@ -206,17 +210,19 @@ function ChatBubble({
   message,
   agentName,
   agentInitial,
+  agentColor: color,
 }: {
   message: Message;
   agentName: string;
   agentInitial: string;
+  agentColor: { bg: string; text: string };
 }) {
   const isUser = !message.is_bot_message;
   const initial = isUser ? "Y" : agentInitial;
   const bgClass = isUser ? "bg-chat-user" : "bg-chat-agent border border-surface-border";
   const avatarBg = isUser
     ? "bg-surface-3 text-text-muted"
-    : "bg-primary-muted text-primary";
+    : `${color.bg} ${color.text}`;
 
   // Detect source label
   let sourceLabel: string | null = null;

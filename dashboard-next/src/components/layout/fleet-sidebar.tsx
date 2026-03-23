@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Agent, createAgent, deleteAgent } from "@/lib/api";
 import { useAgentStore } from "@/lib/agent-store";
 import { useAgents } from "@/lib/use-agents";
+import { agentColor } from "@/lib/agent-colors";
 
 type FilterTab = "all" | "running" | "idle";
 
@@ -136,7 +137,7 @@ export function FleetSidebar() {
               }`}
             >
               {/* Avatar */}
-              <div className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center text-sm font-semibold text-text-secondary shrink-0">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${agentColor(agent.folder).bg} ${agentColor(agent.folder).text}`}>
                 {agent.name.charAt(0).toUpperCase()}
               </div>
 
