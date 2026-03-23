@@ -13,7 +13,10 @@ export default function Home() {
   return (
     <AgentStoreProvider>
       <div className="h-full flex flex-col">
-        <Header />
+        <Header
+          onBrainToggle={() => setSettingsOpen(!settingsOpen)}
+          brainOpen={settingsOpen}
+        />
 
         {/* Main workspace: 3-column layout */}
         <div className="flex-1 flex overflow-hidden">
@@ -23,15 +26,13 @@ export default function Home() {
           </div>
 
           {/* Chat panel - always visible */}
-          <ChatPanel onSettingsToggle={() => setSettingsOpen(!settingsOpen)} />
+          <ChatPanel />
 
-          {/* Settings sidebar - conditional */}
-          <div className="hidden lg:flex">
-            <SettingsSidebar
-              open={settingsOpen}
-              onClose={() => setSettingsOpen(false)}
-            />
-          </div>
+          {/* Brain panel */}
+          <SettingsSidebar
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+          />
         </div>
 
         {/* Mobile bottom nav */}
