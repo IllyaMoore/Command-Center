@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useTheme } from "@/lib/theme";
 import { useIntegrations } from "@/lib/use-integrations";
+import { CalendarPanel } from "@/components/calendar/calendar-panel";
 
 export function Header({
   onBrainToggle,
@@ -14,7 +15,9 @@ export function Header({
 }) {
   const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const calendarRef = useRef<HTMLDivElement | null>(null);
   const { integrations, loading: integrationsLoading, connect } = useIntegrations();
 
   useEffect(() => {
@@ -72,6 +75,31 @@ export function Header({
           )}
         </button>
 
+        {/* Calendar toggle */}
+        <div className="relative" ref={calendarRef}>
+          <button
+            onClick={() => setCalendarOpen((prev) => !prev)}
+            className={`p-2 rounded-lg transition-colors cursor-pointer ${
+              calendarOpen
+                ? "bg-primary/10 text-primary"
+                : "text-text-secondary hover:bg-surface-2"
+            }`}
+            aria-label="Calendar"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          </button>
+          <CalendarPanel
+            open={calendarOpen}
+            onClose={() => setCalendarOpen(false)}
+            containerRef={calendarRef}
+          />
+        </div>
+
         {/* Brain toggle */}
         {onBrainToggle && (
           <button
@@ -105,12 +133,12 @@ export function Header({
             </svg>
             {/* Status dot */}
             {!integrationsLoading && connectedCount > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-green-500 rounded-full" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-signal-success rounded-full" />
             )}
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-11 z-50 w-72 bg-surface-1 border border-surface-border rounded-xl shadow-lg overflow-hidden">
+            <div className="absolute right-0 top-11 z-20 w-72 bg-surface-1 border border-surface-border rounded-xl shadow-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-surface-border">
                 <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
                   Integrations
@@ -136,10 +164,10 @@ export function Header({
                           <span
                             className={`w-2 h-2 rounded-full shrink-0 ${
                               isConnected
-                                ? "bg-green-500"
+                                ? "bg-signal-success"
                                 : integration.status === "expired" ||
                                     integration.status === "check_failed"
-                                  ? "bg-yellow-500"
+                                  ? "bg-signal-warning"
                                   : "bg-surface-border"
                             }`}
                           />
@@ -148,7 +176,7 @@ export function Header({
                           </span>
                         </div>
                         {isConnected ? (
-                          <span className="text-[10px] font-mono text-green-500">
+                          <span className="text-[10px] font-mono text-signal-success">
                             Connected
                           </span>
                         ) : isNotConfigured ? (
@@ -169,7 +197,7 @@ export function Header({
                               : "Connect"}
                           </button>
                         ) : (
-                          <span className="text-[10px] font-mono text-red-400">Error</span>
+                          <span className="text-[10px] font-mono text-signal-error">Error</span>
                         )}
                       </div>
                     );

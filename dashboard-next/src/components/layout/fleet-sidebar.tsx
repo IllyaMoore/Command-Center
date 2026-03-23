@@ -15,7 +15,7 @@ export function FleetSidebar() {
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
 
-  const { agents, refresh } = useAgents();
+  const { agents, loading: agentsLoading, refresh } = useAgents();
   const { selectedAgent, selectAgent } = useAgentStore();
 
   // Auto-select first agent
@@ -117,7 +117,20 @@ export function FleetSidebar() {
 
         {/* Agent list */}
         <div className="flex-1 overflow-y-auto px-2">
-          {filtered.length === 0 && (
+          {agentsLoading && agents.length === 0 && (
+            <div className="space-y-1 animate-pulse">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-3 py-3 rounded-xl">
+                  <div className="w-10 h-10 rounded-full bg-surface-2 shrink-0" />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3 bg-surface-2 rounded w-24" />
+                    <div className="h-2.5 bg-surface-2 rounded w-16" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {!agentsLoading && filtered.length === 0 && (
             <p className="px-3 py-4 text-xs text-text-muted text-center">
               No agents found
             </p>
@@ -130,10 +143,10 @@ export function FleetSidebar() {
                 e.preventDefault();
                 setDeleteTarget(agent);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors cursor-pointer group ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 cursor-pointer group ${
                 selectedAgent?.jid === agent.jid
                   ? "bg-sidebar-active"
-                  : "hover:bg-sidebar-hover"
+                  : "hover:bg-sidebar-hover active:scale-[0.98]"
               }`}
             >
               {/* Avatar */}

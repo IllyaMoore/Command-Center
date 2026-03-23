@@ -24,10 +24,14 @@ export function SettingsSidebar({
   const { selectedAgent } = useAgentStore();
   const [activeTab, setActiveTab] = useState<Tab>("capabilities");
 
-  if (!open || !selectedAgent) return null;
+  if (!selectedAgent) return null;
 
   return (
-    <aside className="w-[420px] bg-surface-1 border-l border-surface-border shrink-0 h-full flex flex-col overflow-hidden">
+    <aside
+      className={`bg-surface-1 border-l border-surface-border shrink-0 h-full flex flex-col overflow-hidden transition-all duration-200 ease-out ${
+        open ? "w-[420px] opacity-100" : "w-0 opacity-0 pointer-events-none"
+      }`}
+    >
       {/* Header */}
       <div className="px-4 py-4 border-b border-surface-border">
         <div className="flex items-center justify-between mb-3">
@@ -93,9 +97,39 @@ function BehaviorTab() {
   );
 }
 
+/* ── Toggle Switch ── */
+function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={disabled ? undefined : onToggle}
+      className={`w-9 h-5 rounded-full relative transition-colors ${
+        disabled ? "bg-surface-border cursor-not-allowed" : on ? "bg-primary cursor-pointer" : "bg-surface-border cursor-pointer"
+      }`}
+    >
+      <span
+        className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${
+          on ? "right-0.5" : "left-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
 /* ── Capabilities tab (implemented) ── */
 function CapabilitiesTab() {
   const { integrations, loading, connect } = useIntegrations();
+  const [execMode, setExecMode] = useState<"off" | "ask" | "auto">("ask");
+  const [webAccess, setWebAccess] = useState(true);
+  const [fileTools, setFileTools] = useState(true);
+
+  const execDescriptions = {
+    off: "Agent cannot execute commands",
+    ask: "Requires approval for each command",
+    auto: "Commands execute automatically",
+  };
 
   return (
     <div>
@@ -105,7 +139,11 @@ function CapabilitiesTab() {
           MCP Integrations
         </h3>
         {loading ? (
-          <p className="text-xs text-text-muted">Loading…</p>
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-12 bg-surface-2 rounded-lg animate-pulse" />
+            ))}
+          </div>
         ) : (
           <div className="space-y-2">
             {integrations.map((integration) => {
@@ -124,10 +162,10 @@ function CapabilitiesTab() {
                     <span
                       className={`w-2 h-2 rounded-full shrink-0 ${
                         isConnected
-                          ? "bg-green-500"
+                          ? "bg-signal-success"
                           : integration.status === "expired" ||
                               integration.status === "check_failed"
-                            ? "bg-yellow-500"
+                            ? "bg-signal-warning"
                             : "bg-surface-border"
                       }`}
                     />
@@ -183,14 +221,19 @@ function CapabilitiesTab() {
               {(["off", "ask", "auto"] as const).map((mode) => (
                 <button
                   key={mode}
-                  className="flex-1 px-2 py-1.5 text-[10px] font-mono font-semibold uppercase rounded-md transition-colors cursor-pointer bg-surface-1 text-text-primary shadow-sm first:bg-transparent first:text-text-muted first:shadow-none last:bg-transparent last:text-text-muted last:shadow-none [&:nth-child(2)]:bg-surface-1 [&:nth-child(2)]:text-text-primary [&:nth-child(2)]:shadow-sm [&:nth-child(1)]:bg-transparent [&:nth-child(1)]:text-text-muted [&:nth-child(1)]:shadow-none [&:nth-child(3)]:bg-transparent [&:nth-child(3)]:text-text-muted [&:nth-child(3)]:shadow-none"
+                  onClick={() => setExecMode(mode)}
+                  className={`flex-1 px-2 py-1.5 text-[10px] font-mono font-semibold uppercase rounded-md transition-colors cursor-pointer ${
+                    execMode === mode
+                      ? "bg-surface-1 text-text-primary shadow-sm"
+                      : "text-text-muted hover:text-text-secondary"
+                  }`}
                 >
                   {mode}
                 </button>
               ))}
             </div>
             <p className="text-[10px] text-text-muted mt-1">
-              Requires approval for each command
+              {execDescriptions[execMode]}
             </p>
           </div>
 
@@ -202,9 +245,7 @@ function CapabilitiesTab() {
                 Fetch live web results
               </span>
             </div>
-            <div className="w-9 h-5 rounded-full bg-primary relative cursor-pointer">
-              <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all" />
-            </div>
+            <Toggle on={webAccess} onToggle={() => setWebAccess(!webAccess)} />
           </div>
 
           {/* File tools */}
@@ -215,9 +256,7 @@ function CapabilitiesTab() {
                 Read and edit workspace files
               </span>
             </div>
-            <div className="w-9 h-5 rounded-full bg-primary relative cursor-pointer">
-              <span className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all" />
-            </div>
+            <Toggle on={fileTools} onToggle={() => setFileTools(!fileTools)} />
           </div>
 
           {/* Browser automation */}
@@ -228,9 +267,7 @@ function CapabilitiesTab() {
                 Coming soon
               </span>
             </div>
-            <div className="w-9 h-5 rounded-full bg-surface-border relative cursor-not-allowed">
-              <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow-sm" />
-            </div>
+            <Toggle on={false} onToggle={() => {}} disabled />
           </div>
         </div>
       </section>

@@ -145,10 +145,17 @@ export function ChatPanel() {
             </p>
           </div>
         ) : loading ? (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-text-muted font-mono">
-              Loading messages...
-            </p>
+          <div className="space-y-4 animate-pulse">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className={`flex gap-3 ${i % 2 === 0 ? "" : "justify-end"}`}>
+                {i % 2 === 0 && <div className="w-8 h-8 rounded-full bg-surface-2 shrink-0" />}
+                <div className={`space-y-1.5 ${i % 2 === 0 ? "max-w-[60%]" : "max-w-[50%]"}`}>
+                  <div className="h-3 bg-surface-2 rounded w-20" />
+                  <div className={`rounded-2xl bg-surface-2 ${i % 2 === 0 ? "h-16" : "h-10"} w-full min-w-[120px]`} />
+                </div>
+                {i % 2 !== 0 && <div className="w-8 h-8 rounded-full bg-surface-2 shrink-0" />}
+              </div>
+            ))}
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-2">
@@ -230,7 +237,7 @@ export function ChatPanel() {
           />
           <button
             onClick={handleSend}
-            className="px-4 py-1.5 bg-primary text-text-inverse rounded-lg text-xs font-mono font-semibold uppercase hover:bg-primary-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className="px-4 py-1.5 bg-primary text-text-inverse rounded-lg text-xs font-mono font-semibold uppercase hover:bg-primary-hover active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
             disabled={!selectedAgent || !input.trim() || sending || waitingForReply}
           >
             Send
@@ -254,7 +261,7 @@ function ChatBubble({
 }) {
   const isUser = !message.is_bot_message;
   const initial = isUser ? "Y" : agentInitial;
-  const bgClass = isUser ? "bg-chat-user" : "bg-chat-agent border border-surface-border";
+  const bgClass = isUser ? "bg-chat-user shadow-sm" : "bg-chat-agent border border-surface-border shadow-sm";
   const avatarBg = isUser
     ? "bg-surface-3 text-text-muted"
     : `${color.bg} ${color.text}`;

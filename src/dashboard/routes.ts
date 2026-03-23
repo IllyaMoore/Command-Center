@@ -22,6 +22,7 @@ import {
   getCalendarAuthStatus,
   getCalendarAuthUrl,
   getCalendarEvents,
+  createCalendarEvent,
   handleCalendarOAuthCallback,
 } from './api/calendar.js';
 import { sendChatMessage, sendGroupMessage, streamChatMessages } from './api/chat.js';
@@ -425,6 +426,23 @@ export async function handleApiRoute(
     const view = (url.searchParams.get('view') || 'day') as 'day' | 'week';
     const result = await getCalendarEvents(view);
     json(result);
+    return;
+  }
+
+  if ((pathname === '/api/calendar' || pathname === '/api/calendar/events') && method === 'POST') {
+    const body = await parseBody();
+    if (!body.title || !body.start || !body.end) {
+      json({ error: 'Missing required fields: title, start, end' }, 400);
+      return;
+    }
+    const result = await createCalendarEvent({
+      title: body.title as string,
+      start: body.start as string,
+      end: body.end as string,
+      description: body.description as string | undefined,
+      location: body.location as string | undefined,
+    });
+    json(result, result.error ? 500 : 201);
     return;
   }
 
