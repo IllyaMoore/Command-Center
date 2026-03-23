@@ -26,6 +26,22 @@ export function ChatPanel() {
   const agentFolder = selectedAgent?.folder ?? "";
   const color = agentColor(agentFolder);
   const isOnline = selectedAgent?.online ?? false;
+  const [sentAt, setSentAt] = useState<string | null>(null);
+  const waitingForReply = sentAt !== null;
+
+  // Clear lock when a bot message arrives AFTER we sent ours
+  useEffect(() => {
+    if (!sentAt) return;
+    const hasReply = messages.some(
+      (m) => m.is_bot_message && m.timestamp >= sentAt,
+    );
+    if (hasReply) setSentAt(null);
+  }, [messages, sentAt]);
+
+  // Reset when agent changes
+  useEffect(() => {
+    setSentAt(null);
+  }, [selectedAgent?.jid]);
 
   // Auto-scroll to bottom on new messages (unless user scrolled up)
   useEffect(() => {
@@ -70,8 +86,10 @@ export function ChatPanel() {
 
     try {
       await sendMessage(selectedAgent.folder, text);
+      setSentAt(new Date().toISOString());
     } catch {
       // Message was already written to IPC, so even on error the agent may process it
+      setSentAt(new Date().toISOString());
     } finally {
       setSending(false);
     }
@@ -152,6 +170,23 @@ export function ChatPanel() {
                 agentColor={color}
               />
             ))}
+            {waitingForReply && (
+              <div className="flex gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-1 ${color.bg} ${color.text}`}>
+                  {agentInitial}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[10px] font-mono text-text-muted">{agentName}</span>
+                  </div>
+                  <div className="rounded-2xl rounded-tl-md px-4 py-3 bg-chat-agent border border-surface-border inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-text-muted/50 animate-bounce [animation-delay:0ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-text-muted/50 animate-bounce [animation-delay:150ms]" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-text-muted/50 animate-bounce [animation-delay:300ms]" />
+                  </div>
+                </div>
+              </div>
+            )}
             <div ref={messagesEndRef} />
           </div>
         )}
@@ -179,10 +214,10 @@ export function ChatPanel() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="type a message"
+            placeholder={waitingForReply ? "waiting for response…" : "type a message"}
             rows={1}
             className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none font-mono resize-none max-h-32"
-            disabled={!selectedAgent}
+            disabled={!selectedAgent || waitingForReply}
             style={{
               height: "auto",
               minHeight: "24px",
@@ -196,7 +231,7 @@ export function ChatPanel() {
           <button
             onClick={handleSend}
             className="px-4 py-1.5 bg-primary text-text-inverse rounded-lg text-xs font-mono font-semibold uppercase hover:bg-primary-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-            disabled={!selectedAgent || !input.trim() || sending}
+            disabled={!selectedAgent || !input.trim() || sending || waitingForReply}
           >
             Send
           </button>
