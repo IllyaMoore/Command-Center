@@ -1,0 +1,299 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { Badge } from "@/components/ui/badge";
+import { useAgentStore } from "@/lib/agent-store";
+import { Message, sendMessage } from "@/lib/api";
+import { useMessages } from "@/lib/use-messages";
+
+interface ChatPanelProps {
+  onSettingsToggle?: () => void;
+}
+
+export function ChatPanel({ onSettingsToggle }: ChatPanelProps) {
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+
+  const { selectedAgent } = useAgentStore();
+  const { messages, loading, addOptimistic } = useMessages(
+    selectedAgent?.folder ?? null,
+  );
+
+  const agentName = selectedAgent?.name ?? "No Agent";
+  const agentInitial = agentName.charAt(0).toUpperCase();
+  const isOnline = selectedAgent?.online ?? false;
+
+  // Auto-scroll to bottom on new messages (unless user scrolled up)
+  useEffect(() => {
+    if (!userScrolledRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages]);
+
+  // Detect user scroll
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    userScrolledRef.current = !atBottom;
+  }, []);
+
+  // Reset scroll tracking when agent changes
+  useEffect(() => {
+    userScrolledRef.current = false;
+  }, [selectedAgent?.jid]);
+
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || !selectedAgent || sending) return;
+
+    const text = input.trim();
+    setInput("");
+    setSending(true);
+
+    // Optimistic UI
+    const optimisticMsg: Message = {
+      id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      chat_jid: selectedAgent.jid,
+      sender: "dashboard",
+      sender_name: "You (Dashboard)",
+      content: text,
+      timestamp: new Date().toISOString(),
+      is_from_me: true,
+      is_bot_message: false,
+    };
+    addOptimistic(optimisticMsg);
+    userScrolledRef.current = false;
+
+    try {
+      await sendMessage(selectedAgent.folder, text);
+    } catch {
+      // Message was already written to IPC, so even on error the agent may process it
+    } finally {
+      setSending(false);
+    }
+  }, [input, selectedAgent, sending, addOptimistic]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
+
+  return (
+    <div className="flex flex-col flex-1 min-w-0 bg-surface-1">
+      {/* Chat header */}
+      <div className="flex items-center gap-4 px-4 py-3 border-b border-surface-border">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="w-10 h-10 rounded-full bg-surface-3 flex items-center justify-center text-sm font-semibold text-text-secondary shrink-0">
+            {agentInitial}
+          </div>
+          <div className="flex items-center gap-2 min-w-0">
+            <h3 className="font-mono text-sm font-semibold text-text-primary uppercase truncate">
+              {agentName}
+            </h3>
+            <Badge variant={isOnline ? "running" : "idle"}>
+              {isOnline ? "Running" : "Idle"}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="hidden md:flex items-center gap-3">
+          <select className="bg-surface-2 text-text-secondary text-xs font-mono px-3 py-1.5 rounded-lg border border-surface-border appearance-none cursor-pointer">
+            <option>Claude Sonnet 4</option>
+            <option>Claude Opus 4</option>
+          </select>
+        </div>
+
+        {/* Settings gear */}
+        <button
+          onClick={onSettingsToggle}
+          className="p-2 rounded-lg text-text-muted hover:bg-surface-2 hover:text-text-secondary transition-colors cursor-pointer"
+        >
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Messages area */}
+      <div
+        ref={scrollContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-4 py-4"
+      >
+        {!selectedAgent ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm text-text-muted">
+              Select an agent to start chatting
+            </p>
+          </div>
+        ) : loading ? (
+          <div className="flex items-center justify-center h-full">
+            <p className="text-sm text-text-muted font-mono">
+              Loading messages...
+            </p>
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-2">
+            <div className="w-16 h-16 rounded-full bg-surface-2 flex items-center justify-center text-2xl font-semibold text-text-muted">
+              {agentInitial}
+            </div>
+            <p className="text-sm text-text-muted">
+              Start a conversation with {agentName}
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {messages.map((msg) => (
+              <ChatBubble
+                key={msg.id}
+                message={msg}
+                agentName={agentName}
+                agentInitial={agentInitial}
+              />
+            ))}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      {/* Scroll to bottom button */}
+      {userScrolledRef.current && messages.length > 0 && (
+        <div className="flex justify-center -mt-10 mb-2 relative z-10">
+          <button
+            onClick={() => {
+              userScrolledRef.current = false;
+              messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }}
+            className="px-3 py-1 bg-surface-2 border border-surface-border rounded-full text-xs font-mono text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer shadow-sm"
+          >
+            Jump to latest
+          </button>
+        </div>
+      )}
+
+      {/* Input area */}
+      <div className="px-4 pb-4 pt-2 border-t border-surface-border">
+        <div className="flex items-end gap-2 bg-surface-2 rounded-xl px-4 py-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="type a message"
+            rows={1}
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none font-mono resize-none max-h-32"
+            disabled={!selectedAgent}
+            style={{
+              height: "auto",
+              minHeight: "24px",
+            }}
+            onInput={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              target.style.height = "auto";
+              target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
+            }}
+          />
+          <button
+            onClick={handleSend}
+            className="px-4 py-1.5 bg-primary text-text-inverse rounded-lg text-xs font-mono font-semibold uppercase hover:bg-primary-hover transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            disabled={!selectedAgent || !input.trim() || sending}
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ChatBubble({
+  message,
+  agentName,
+  agentInitial,
+}: {
+  message: Message;
+  agentName: string;
+  agentInitial: string;
+}) {
+  const isUser = !message.is_bot_message;
+  const initial = isUser ? "Y" : agentInitial;
+  const bgClass = isUser ? "bg-chat-user" : "bg-chat-agent border border-surface-border";
+  const avatarBg = isUser
+    ? "bg-surface-3 text-text-muted"
+    : "bg-primary-muted text-primary";
+
+  // Detect source label
+  let sourceLabel: string | null = null;
+  if (message.sender === "dashboard") {
+    sourceLabel = "Dashboard";
+  } else if (message.chat_jid?.startsWith("tg:")) {
+    sourceLabel = "Telegram";
+  } else if (
+    message.chat_jid &&
+    !message.chat_jid.startsWith("dashboard-")
+  ) {
+    sourceLabel = "WhatsApp";
+  }
+
+  return (
+    <div className="flex gap-3">
+      <div
+        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-1 ${avatarBg}`}
+      >
+        {initial}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-[10px] font-mono text-text-muted">
+            {isUser ? "You" : agentName}
+          </span>
+          {sourceLabel && (
+            <span className="text-[10px] font-mono text-text-muted/60">
+              via {sourceLabel}
+            </span>
+          )}
+          <span className="text-[10px] text-text-muted/40">
+            {formatTime(message.timestamp)}
+          </span>
+        </div>
+        <div
+          className={`rounded-2xl rounded-tl-md px-4 py-2.5 max-w-[85%] inline-block ${bgClass}`}
+        >
+          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-p:my-1 prose-pre:bg-surface-3 prose-pre:rounded-lg prose-code:text-xs prose-code:font-mono">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatTime(timestamp: string): string {
+  try {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}

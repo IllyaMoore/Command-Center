@@ -118,6 +118,11 @@ export function startIpcWatcher(deps: IpcDeps): void {
             try {
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
               if (data.type === 'message' && data.chatJid && data.text) {
+                // Skip dashboard-only JIDs — they don't route through WA/TG
+                if (data.chatJid.startsWith('dashboard-')) {
+                  fs.unlinkSync(filePath);
+                  continue;
+                }
                 // Authorization: verify this group can send to this chatJid
                 const targetGroup = registeredGroups[data.chatJid];
                 if (

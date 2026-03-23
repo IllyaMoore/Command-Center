@@ -35,6 +35,7 @@ import {
   setSession,
   storeChatMetadata,
   storeMessage,
+  storeMessageDirect,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
@@ -593,6 +594,7 @@ async function main(): Promise<void> {
 
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const prompt = `[Via Dashboard] ${text}`;
+      const isDashboardOnly = chatJid.startsWith('dashboard-');
       const safeText = text.replace(/[_*~`]/g, '');
       const result = await runAgent(
         group,
@@ -600,28 +602,47 @@ async function main(): Promise<void> {
         chatJid,
         async (output) => {
           if (output.result) {
-            const formatted = formatOutbound(output.result);
-            if (formatted) {
-              const wrapped = `📱 _Dashboard_ › ${safeText}\n\n${formatted}`;
-              const delivered = await sendToChannel(chatJid, wrapped);
-              if (!delivered) {
-                logger.error({ groupFolder, chatJid }, 'Dashboard agent response could not be delivered');
-              }
+            if (isDashboardOnly) {
+              // Dashboard-only agents: store response in DB, no channel delivery
+              storeMessageDirect({
+                id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                chat_jid: chatJid,
+                sender: groupFolder,
+                sender_name: group.name,
+                content: output.result,
+                timestamp: new Date().toISOString(),
+                is_from_me: false,
+                is_bot_message: true,
+              });
             } else {
-              logger.warn({ groupFolder, resultLength: output.result.length }, 'Agent output stripped by formatOutbound');
+              // WA/TG groups: deliver via channel as before
+              const formatted = formatOutbound(output.result);
+              if (formatted) {
+                const wrapped = `📱 _Dashboard_ › ${safeText}\n\n${formatted}`;
+                const delivered = await sendToChannel(chatJid, wrapped);
+                if (!delivered) {
+                  logger.error({ groupFolder, chatJid }, 'Dashboard agent response could not be delivered');
+                }
+              } else {
+                logger.warn({ groupFolder, resultLength: output.result.length }, 'Agent output stripped by formatOutbound');
+              }
             }
           }
         },
         () => {
-          sendToChannel(chatJid, WARNING_MESSAGE).catch((err) => {
-            logger.warn({ chatJid, err }, 'Failed to send dashboard warning notification');
-          });
+          if (!isDashboardOnly) {
+            sendToChannel(chatJid, WARNING_MESSAGE).catch((err) => {
+              logger.warn({ chatJid, err }, 'Failed to send dashboard warning notification');
+            });
+          }
         },
         (hadOutput: boolean) => {
           if (hadOutput) return;
-          sendToChannel(chatJid, TIMEOUT_MESSAGE).catch((err) => {
-            logger.warn({ chatJid, err }, 'Failed to send dashboard timeout notification');
-          });
+          if (!isDashboardOnly) {
+            sendToChannel(chatJid, TIMEOUT_MESSAGE).catch((err) => {
+              logger.warn({ chatJid, err }, 'Failed to send dashboard timeout notification');
+            });
+          }
         },
       );
       if (result === 'error') {

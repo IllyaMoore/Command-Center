@@ -3,7 +3,7 @@ import path from 'path';
 import { IncomingMessage, ServerResponse } from 'http';
 
 import { DATA_DIR } from '../../config.js';
-import { getAllRegisteredGroups, getRecentMessages, storeMessageDirect } from '../../db.js';
+import { getAllRegisteredGroups, getRecentMessages, storeChatMetadata, storeMessageDirect } from '../../db.js';
 import { logger } from '../../logger.js';
 
 const CEO_GROUP_FOLDER = 'ceo';
@@ -57,6 +57,11 @@ export async function sendGroupMessage(
     fs.writeFileSync(tempPath, JSON.stringify(message, null, 2));
     fs.renameSync(tempPath, filePath);
     logger.info({ groupFolder, text: text.slice(0, 50) }, 'Dashboard message written to IPC');
+
+    // Ensure chat record exists for dashboard JIDs (FK constraint)
+    if (chatJid.startsWith('dashboard-')) {
+      storeChatMetadata(chatJid, new Date().toISOString(), `Dashboard: ${groupFolder}`);
+    }
 
     storeMessageDirect({
       id: msgId,
