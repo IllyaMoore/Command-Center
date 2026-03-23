@@ -1,7 +1,11 @@
+import fs from 'fs';
 import { IncomingMessage, ServerResponse } from 'http';
+import path from 'path';
 
+import { GROUPS_DIR } from '../config.js';
 import { logger } from '../logger.js';
 import {
+  deleteRegisteredGroup,
   getAllRegisteredGroups,
   getAllTasks,
   getMessagesPaginated,
@@ -9,6 +13,7 @@ import {
   getRecentMessages,
   getRecentTaskRuns,
   getTimezone,
+  setRegisteredGroup,
   setTimezone,
 } from '../db.js';
 import { TaskRunLog } from '../types.js';
@@ -173,13 +178,25 @@ export async function handleApiRoute(
     const queue = getDashboardQueue();
     const groups = getAllRegisteredGroups();
     const queueStatus = queue?.getStatus() ?? [];
+    const source = url.searchParams.get('source');
 
-    const agents = Object.entries(groups).map(([jid, group]) => {
+    // Build agent list from both DB registrations and groups/ directories
+    const seenFolders = new Set<string>();
+    const agents: Array<Record<string, unknown>> = [];
+
+    // 1. Add registered groups that have CLAUDE.md
+    for (const [jid, group] of Object.entries(groups)) {
+      const claudeMd = path.join(GROUPS_DIR, group.folder, 'CLAUDE.md');
+      if (!fs.existsSync(claudeMd)) continue;
+      if (source === 'dashboard' && !jid.startsWith('dashboard-')) continue;
+      if (source === 'channel' && jid.startsWith('dashboard-')) continue;
+
+      seenFolders.add(group.folder);
       const qs = queueStatus.find((s) => s.jid === jid);
       const lastMessages = getRecentMessages(1, jid);
       const lastActivity = lastMessages.length > 0 ? lastMessages[0].timestamp : null;
 
-      return {
+      agents.push({
         jid,
         name: group.name,
         folder: group.folder,
@@ -189,10 +206,122 @@ export async function handleApiRoute(
         containerName: qs?.containerName ?? null,
         pendingMessages: qs?.pendingMessages ?? false,
         pendingTaskCount: qs?.pendingTaskCount ?? 0,
-      };
-    });
+      });
+    }
+
+    // 2. Add unregistered groups/ directories that have CLAUDE.md
+    if (source !== 'channel') {
+      try {
+        const groupDirs = fs.readdirSync(GROUPS_DIR, { withFileTypes: true });
+        for (const dir of groupDirs) {
+          if (!dir.isDirectory() || seenFolders.has(dir.name)) continue;
+          const claudeMd = path.join(GROUPS_DIR, dir.name, 'CLAUDE.md');
+          if (!fs.existsSync(claudeMd)) continue;
+
+          const displayName = dir.name.charAt(0).toUpperCase() + dir.name.slice(1);
+          agents.push({
+            jid: `local-${dir.name}`,
+            name: displayName,
+            folder: dir.name,
+            online: false,
+            lastActivity: null,
+            currentTask: null,
+            containerName: null,
+            pendingMessages: false,
+            pendingTaskCount: 0,
+          });
+        }
+      } catch {
+        // groups/ dir may not exist
+      }
+    }
 
     json(agents);
+    return;
+  }
+
+  // ─── OPC-126: POST /api/agents ───
+  if (pathname === '/api/agents' && method === 'POST') {
+    const body = await parseBody();
+    const { name, folder } = body as { name?: string; folder?: string };
+
+    if (!name || !folder) {
+      json({ error: 'name and folder are required' }, 400);
+      return;
+    }
+
+    // Validate folder name (alphanumeric, hyphens, underscores)
+    if (!/^[a-z0-9_-]+$/.test(folder)) {
+      json({ error: 'folder must be lowercase alphanumeric with hyphens/underscores only' }, 400);
+      return;
+    }
+
+    // Check folder uniqueness
+    const existing = getAllRegisteredGroups();
+    const folderTaken = Object.values(existing).some((g) => g.folder === folder);
+    if (folderTaken) {
+      json({ error: `folder '${folder}' already exists` }, 409);
+      return;
+    }
+
+    // Generate a dashboard JID for non-messaging agents
+    const jid = `dashboard-${folder}-${Date.now()}`;
+
+    // Create group directory with default CLAUDE.md
+    const groupDir = path.join(GROUPS_DIR, folder);
+    if (!fs.existsSync(groupDir)) {
+      fs.mkdirSync(groupDir, { recursive: true });
+    }
+    const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+    if (!fs.existsSync(claudeMdPath)) {
+      fs.writeFileSync(
+        claudeMdPath,
+        `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
+        'utf-8',
+      );
+    }
+
+    // Register in database
+    setRegisteredGroup(jid, {
+      name,
+      folder,
+      trigger: `(?i)@${folder}`,
+      added_at: new Date().toISOString(),
+      requiresTrigger: false,
+    });
+
+    logger.info({ jid, name, folder }, 'Agent created via dashboard');
+    json({ jid, name, folder }, 201);
+    return;
+  }
+
+  // ─── OPC-126: DELETE /api/agents/:folder ───
+  if (pathname.startsWith('/api/agents/') && method === 'DELETE') {
+    const folder = pathname.split('/api/agents/')[1];
+    if (!folder) {
+      json({ error: 'folder is required' }, 400);
+      return;
+    }
+
+    const groups = getAllRegisteredGroups();
+    const entry = Object.entries(groups).find(([, g]) => g.folder === folder);
+    if (!entry) {
+      json({ error: `Agent '${folder}' not found` }, 404);
+      return;
+    }
+
+    const [jid] = entry;
+    deleteRegisteredGroup(jid);
+
+    // Archive group directory (rename with .archived suffix)
+    const groupDir = path.join(GROUPS_DIR, folder);
+    const archiveDir = path.join(GROUPS_DIR, `${folder}.archived-${Date.now()}`);
+    if (fs.existsSync(groupDir)) {
+      fs.renameSync(groupDir, archiveDir);
+    }
+
+    logger.info({ jid, folder }, 'Agent deleted via dashboard');
+    json({ deleted: true, folder });
     return;
   }
 
@@ -227,13 +356,8 @@ export async function handleApiRoute(
 
     let chatJid: string | undefined;
     if (group) {
-      const groups = getAllRegisteredGroups();
-      const entry = Object.entries(groups).find(([, g]) => g.folder === group);
-      if (!entry) {
-        json({ error: `Group '${group}' not found` }, 404);
-        return;
-      }
-      chatJid = entry[0];
+      // Use dashboard-specific JID for fetching dashboard chat history
+      chatJid = `dashboard-${group}`;
     }
 
     const result = getMessagesPaginated(limit, offset, chatJid);
@@ -264,9 +388,10 @@ export async function handleApiRoute(
       return;
     }
 
-    const [jid] = entry;
-    const result = await sendGroupMessage(group, jid, text);
-    json({ ...result, group, jid });
+    // Always use dashboard-specific JID so chat history stays separate from WA/TG
+    const dashboardJid = `dashboard-${group}`;
+    const result = await sendGroupMessage(group, dashboardJid, text);
+    json({ ...result, group, jid: dashboardJid });
     return;
   }
 

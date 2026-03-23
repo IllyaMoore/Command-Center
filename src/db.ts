@@ -596,6 +596,13 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   return result;
 }
 
+export function deleteRegisteredGroup(jid: string): boolean {
+  const result = db
+    .prepare('DELETE FROM registered_groups WHERE jid = ?')
+    .run(jid);
+  return result.changes > 0;
+}
+
 // --- JSON migration ---
 
 function migrateJsonState(): void {
