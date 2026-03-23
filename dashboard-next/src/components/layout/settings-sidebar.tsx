@@ -27,7 +27,7 @@ export function SettingsSidebar({
   if (!open || !selectedAgent) return null;
 
   return (
-    <aside className="w-80 bg-surface-1 border-l border-surface-border shrink-0 h-full flex flex-col overflow-hidden">
+    <aside className="w-[420px] bg-surface-1 border-l border-surface-border shrink-0 h-full flex flex-col overflow-hidden">
       {/* Header */}
       <div className="px-4 py-4 border-b border-surface-border">
         <div className="flex items-center justify-between mb-3">
