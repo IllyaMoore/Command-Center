@@ -175,7 +175,25 @@ export class GroupQueue {
     const state = this.getGroup(groupJid);
     state.process = proc;
     state.containerName = containerName;
+    state.active = true;
     if (groupFolder) state.groupFolder = groupFolder;
+
+    proc.on('exit', () => {
+      state.active = false;
+      state.process = null;
+      state.containerName = null;
+      state.currentTaskId = null;
+    });
+  }
+
+  markIdle(groupJid: string, groupFolder?: string): void {
+    // Find state by JID or folder
+    const state = this.groups.get(groupJid)
+      ?? (groupFolder ? [...this.groups.values()].find((s) => s.groupFolder === groupFolder) : undefined);
+    if (state) {
+      state.active = false;
+      state.currentTaskId = null;
+    }
   }
 
   /**
@@ -361,9 +379,11 @@ export class GroupQueue {
   getStatus(): AgentStatus[] {
     const result: AgentStatus[] = [];
     for (const [jid, state] of this.groups) {
+      // Derive active from whether the process is still alive
+      const processAlive = state.process !== null && state.process.exitCode === null;
       result.push({
         jid,
-        active: state.active,
+        active: state.active || processAlive,
         containerName: state.containerName,
         groupFolder: state.groupFolder,
         currentTaskId: state.currentTaskId,

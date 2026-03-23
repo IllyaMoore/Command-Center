@@ -192,7 +192,7 @@ export async function handleApiRoute(
       if (source === 'channel' && jid.startsWith('dashboard-')) continue;
 
       seenFolders.add(group.folder);
-      const qs = queueStatus.find((s) => s.jid === jid);
+      const qs = queueStatus.find((s) => s.jid === jid || s.jid === `dashboard-${group.folder}` || s.groupFolder === group.folder);
       const lastMessages = getRecentMessages(1, jid);
       const lastActivity = lastMessages.length > 0 ? lastMessages[0].timestamp : null;
 
@@ -486,6 +486,13 @@ export async function handleApiRoute(
     return;
   }
 
+  // Debug: raw queue status
+  if (pathname === '/api/debug/queue' && method === 'GET') {
+    const queue = getDashboardQueue();
+    json(queue?.getStatus() ?? []);
+    return;
+  }
+
   // 404 for unknown API routes
   json({ error: 'Not found' }, 404);
 }
@@ -503,9 +510,15 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
   const queue = getDashboardQueue();
   const groups = getAllRegisteredGroups();
 
+  // Helper: find queue status by registered JID or dashboard JID
+  const findStatus = (jid: string, folder: string) => {
+    const statuses = queue?.getStatus() ?? [];
+    return statuses.find((s) => s.jid === jid || s.jid === `dashboard-${folder}` || s.groupFolder === folder);
+  };
+
   // Send initial snapshot
   const agentSnapshot = Object.entries(groups).map(([jid, group]) => {
-    const qs = queue?.getStatus().find((s) => s.jid === jid);
+    const qs = findStatus(jid, group.folder);
     return {
       jid,
       name: group.name,
@@ -557,7 +570,7 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       // Agent status
       const currentGroups = getAllRegisteredGroups();
       const agents = Object.entries(currentGroups).map(([jid, group]) => {
-        const qs = queue?.getStatus().find((s) => s.jid === jid);
+        const qs = findStatus(jid, group.folder);
         return {
           jid,
           name: group.name,

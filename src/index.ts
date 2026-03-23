@@ -601,6 +601,9 @@ async function main(): Promise<void> {
         prompt,
         chatJid,
         async (output) => {
+          // Mark idle after first response (process stays alive for follow-ups)
+          queue.markIdle(chatJid, groupFolder);
+
           if (output.result) {
             if (isDashboardOnly) {
               // Dashboard-only agents: store response in DB, no channel delivery
@@ -645,6 +648,9 @@ async function main(): Promise<void> {
           }
         },
       );
+      // Mark agent as no longer active (process may still be alive for follow-ups)
+      queue.markIdle(chatJid, groupFolder);
+
       if (result === 'error') {
         logger.error({ groupFolder }, 'Dashboard agent run failed');
       } else {
