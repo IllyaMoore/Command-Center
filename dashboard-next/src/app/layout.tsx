@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { DM_Sans, JetBrains_Mono, Fraunces } from "next/font/google";
+import { DM_Sans, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import { ThemeProvider } from "@/lib/theme";
 import "./globals.css";
 
@@ -15,8 +15,8 @@ const jetbrainsMono = JetBrains_Mono({
   display: "swap",
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
   display: "swap",
 });
@@ -40,7 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${dmSans.variable} ${jetbrainsMono.variable} ${fraunces.variable} h-full`}
+      className={`${dmSans.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} h-full`}
       suppressHydrationWarning
     >
       <body className="h-full font-sans antialiased">

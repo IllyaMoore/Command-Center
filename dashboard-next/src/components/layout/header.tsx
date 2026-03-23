@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useTheme } from "@/lib/theme";
 
 export function Header() {
@@ -8,8 +9,9 @@ export function Header() {
   return (
     <header className="h-14 flex items-center justify-between px-4 bg-surface-1 border-b border-surface-border shrink-0">
       {/* Brand */}
-      <div className="flex items-center gap-3">
-        <span className="font-display text-lg font-semibold tracking-tight text-text-primary uppercase">
+      <div className="flex items-center gap-2.5">
+        <Image src="/logo.svg" alt="NanoClaw" width={28} height={28} />
+        <span className="font-display text-[17px] font-bold tracking-tight text-text-primary">
           NanoClaw Studio
         </span>
       </div>

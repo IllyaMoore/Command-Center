@@ -6,7 +6,7 @@
   /* Fonts */
   --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
-  --font-display: "Fraunces", Georgia, serif;
+  --font-display: "Space Grotesk", "DM Sans", ui-sans-serif, system-ui, sans-serif;
 
   /* Surface colors */
   --color-surface-0: var(--surface-0);
