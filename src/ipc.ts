@@ -42,6 +42,28 @@ export function startIpcWatcher(deps: IpcDeps): void {
   const ipcBaseDir = path.join(DATA_DIR, 'ipc');
   fs.mkdirSync(ipcBaseDir, { recursive: true });
 
+  // Clean stale dashboard input files from previous sessions
+  try {
+    const dirs = fs.readdirSync(ipcBaseDir).filter((f) => {
+      try { return fs.statSync(path.join(ipcBaseDir, f)).isDirectory() && f !== 'errors'; } catch { return false; }
+    });
+    let cleaned = 0;
+    for (const dir of dirs) {
+      const inputDir = path.join(ipcBaseDir, dir, 'input');
+      if (!fs.existsSync(inputDir)) continue;
+      const files = fs.readdirSync(inputDir).filter((f) => f.endsWith('-dashboard.json'));
+      for (const file of files) {
+        fs.unlinkSync(path.join(inputDir, file));
+        cleaned++;
+      }
+    }
+    if (cleaned > 0) {
+      logger.info({ cleaned }, 'Cleaned stale dashboard IPC input files from previous session');
+    }
+  } catch (err) {
+    logger.warn({ err }, 'Failed to clean stale IPC files');
+  }
+
   const processIpcFiles = async () => {
     // Scan all group IPC directories (identity determined by directory)
     let groupFolders: string[];
