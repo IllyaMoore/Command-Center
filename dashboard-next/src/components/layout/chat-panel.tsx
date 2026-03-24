@@ -303,7 +303,7 @@ function ChatBubble({
         <div
           className={`rounded-2xl rounded-tl-md px-4 py-2.5 max-w-[85%] inline-block ${bgClass}`}
         >
-          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-p:my-1 prose-pre:bg-surface-3 prose-pre:rounded-lg prose-code:text-xs prose-code:font-mono">
+          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-p:my-1 prose-pre:bg-surface-3 prose-pre:rounded-lg prose-pre:overflow-x-auto prose-code:text-xs prose-code:font-mono break-words overflow-hidden">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>

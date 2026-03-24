@@ -10,7 +10,7 @@ import { agentColor } from "@/lib/agent-colors";
 
 type FilterTab = "all" | "running" | "idle";
 
-export function FleetSidebar() {
+export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } = {}) {
   const [filter, setFilter] = useState<FilterTab>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
@@ -138,7 +138,7 @@ export function FleetSidebar() {
           {filtered.map((agent) => (
             <button
               key={agent.jid}
-              onClick={() => selectAgent(agent)}
+              onClick={() => { selectAgent(agent); onAgentSelect?.(); }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setDeleteTarget(agent);

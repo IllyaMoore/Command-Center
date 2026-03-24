@@ -17,9 +17,11 @@ const TABS: { id: Tab; label: string }[] = [
 export function SettingsSidebar({
   open,
   onClose,
+  style,
 }: {
   open: boolean;
   onClose: () => void;
+  style?: React.CSSProperties;
 }) {
   const { selectedAgent } = useAgentStore();
   const [activeTab, setActiveTab] = useState<Tab>("capabilities");
@@ -31,6 +33,7 @@ export function SettingsSidebar({
       className={`bg-surface-1 border-l border-surface-border shrink-0 h-full flex flex-col overflow-hidden transition-all duration-200 ease-out ${
         open ? "w-[420px] opacity-100" : "w-0 opacity-0 pointer-events-none"
       }`}
+      style={style}
     >
       {/* Header */}
       <div className="px-4 py-4 border-b border-surface-border">

@@ -164,7 +164,7 @@ export function Header({
           </button>
 
           {menuOpen && (
-            <div className="absolute right-0 top-11 z-20 w-72 bg-surface-1 border border-surface-border rounded-xl shadow-lg overflow-hidden">
+            <div className="fixed md:absolute top-14 md:top-11 left-2 right-2 md:left-auto md:right-0 z-20 md:w-72 bg-surface-1 border border-surface-border shadow-lg overflow-hidden">
               <div className="px-4 py-3 border-b border-surface-border">
                 <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
                   Integrations

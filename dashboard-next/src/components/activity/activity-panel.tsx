@@ -56,7 +56,7 @@ export function ActivityPanel({
   return (
     <div
       ref={panelRef}
-      className="absolute top-[calc(100%+4px)] right-0 z-20 w-[380px] max-h-[calc(100vh-80px)] bg-surface-1 border border-surface-border rounded-xl shadow-2xl overflow-hidden flex flex-col animate-slide-down"
+      className="fixed md:absolute top-14 md:top-[calc(100%+4px)] left-2 right-2 md:left-auto md:right-0 z-20 md:w-[380px] max-h-[calc(100vh-80px)] bg-surface-1 border border-surface-border shadow-2xl overflow-hidden flex flex-col animate-slide-down"
     >
       {/* Header */}
       <div className="px-4 pt-4 pb-3 border-b border-surface-border">
