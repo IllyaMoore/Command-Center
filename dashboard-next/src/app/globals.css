@@ -1,12 +1,15 @@
 @import "tailwindcss";
 
-/* ── Design System Tokens ── */
+/* ── Newsprint Design System ── */
+/* "All the News That's Fit to Print." */
+/* Stark geometry · high-contrast typography · visible structure · paper texture */
 
 @theme inline {
-  /* Fonts */
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, monospace;
-  --font-display: "Space Grotesk", "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  /* Fonts — Newsprint stack */
+  --font-sans: var(--font-inter), 'Inter', 'Helvetica Neue', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', 'Courier New', monospace;
+  --font-display: var(--font-playfair), 'Playfair Display', 'Times New Roman', serif;
+  --font-body: var(--font-lora), 'Lora', Georgia, serif;
 
   /* Surface colors */
   --color-surface-0: var(--surface-0);
@@ -27,7 +30,7 @@
   --color-signal-error: var(--signal-error);
   --color-signal-info: var(--signal-info);
 
-  /* Primary */
+  /* Primary — Editorial Red (used sparingly) */
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
   --color-primary-muted: var(--primary-muted);
@@ -49,89 +52,99 @@
   --color-badge-attention: var(--badge-attention);
 }
 
-/* ── Light Theme (default) ── */
-:root {
-  --surface-0: #faf9f7;
-  --surface-1: #ffffff;
-  --surface-2: #f5f3f0;
-  --surface-3: #ebe8e4;
-  --surface-border: #e0ddd8;
+/* ── Newsprint Light — morning edition ── */
+:root,
+[data-theme="light"] {
+  --surface-0: #F9F9F7;
+  --surface-1: #F9F9F7;
+  --surface-2: #F0F0EC;
+  --surface-3: #E5E5E0;
+  --surface-border: #111111;
 
-  --text-primary: #1a1816;
-  --text-secondary: #5c5650;
-  --text-muted: #9c958d;
-  --text-inverse: #faf9f7;
+  --text-primary: #111111;
+  --text-secondary: #404040;
+  --text-muted: #737373;
+  --text-inverse: #F9F9F7;
 
-  --signal-success: #22c55e;
-  --signal-warning: #f59e0b;
-  --signal-error: #ef4444;
-  --signal-info: #3b82f6;
+  --signal-success: #111111;
+  --signal-warning: #CC0000;
+  --signal-error: #CC0000;
+  --signal-info: #525252;
 
-  --primary: #22c55e;
-  --primary-hover: #16a34a;
-  --primary-muted: #dcfce7;
+  --primary: #CC0000;
+  --primary-hover: #990000;
+  --primary-muted: #FEE2E2;
 
-  --sidebar-bg: #f5f3f0;
-  --sidebar-hover: #ebe8e4;
-  --sidebar-active: #e0ddd8;
-  --sidebar-text: #1a1816;
+  --sidebar-bg: #F9F9F7;
+  --sidebar-hover: #F0F0EC;
+  --sidebar-active: #E5E5E0;
+  --sidebar-text: #111111;
 
-  --chat-user: #ebe8e4;
-  --chat-agent: #ffffff;
+  --chat-user: #E5E5E0;
+  --chat-agent: #F9F9F7;
 
-  --badge-running: #22c55e;
-  --badge-idle: #9c958d;
-  --badge-error: #ef4444;
-  --badge-attention: #f59e0b;
+  --badge-running: #111111;
+  --badge-idle: #737373;
+  --badge-error: #CC0000;
+  --badge-attention: #CC0000;
 }
 
-/* ── Dark Theme ── */
+/* ── Newsprint Dark — evening edition ── */
+/* Inverted broadsheet: dark stock paper, pale ink, same editorial red */
 [data-theme="dark"] {
-  --surface-0: #131210;
-  --surface-1: #1c1b18;
-  --surface-2: #252320;
-  --surface-3: #2e2c28;
-  --surface-border: #3a3834;
+  --surface-0: #0E0E0C;
+  --surface-1: #161614;
+  --surface-2: #1E1E1B;
+  --surface-3: #2A2A26;
+  --surface-border: #3A3A34;
 
-  --text-primary: #eae8e4;
-  --text-secondary: #a8a29e;
-  --text-muted: #706c66;
-  --text-inverse: #131210;
+  --text-primary: #E8E6E1;
+  --text-secondary: #A3A09A;
+  --text-muted: #6B6862;
+  --text-inverse: #0E0E0C;
 
-  --signal-success: #4ade80;
-  --signal-warning: #fbbf24;
-  --signal-error: #f87171;
-  --signal-info: #60a5fa;
+  --signal-success: #E8E6E1;
+  --signal-warning: #EF4444;
+  --signal-error: #EF4444;
+  --signal-info: #A3A09A;
 
-  --primary: #4ade80;
-  --primary-hover: #22c55e;
-  --primary-muted: #14532d;
+  --primary: #EF4444;
+  --primary-hover: #DC2626;
+  --primary-muted: #3B1111;
 
-  --sidebar-bg: #1c1b18;
-  --sidebar-hover: #252320;
-  --sidebar-active: #2e2c28;
-  --sidebar-text: #eae8e4;
+  --sidebar-bg: #161614;
+  --sidebar-hover: #1E1E1B;
+  --sidebar-active: #2A2A26;
+  --sidebar-text: #E8E6E1;
 
-  --chat-user: #252320;
-  --chat-agent: #1c1b18;
+  --chat-user: #2A2A26;
+  --chat-agent: #161614;
 
-  --badge-running: #4ade80;
-  --badge-idle: #706c66;
-  --badge-error: #f87171;
-  --badge-attention: #fbbf24;
+  --badge-running: #E8E6E1;
+  --badge-idle: #6B6862;
+  --badge-error: #EF4444;
+  --badge-attention: #EF4444;
 }
 
 /* ── Base Styles ── */
 body {
   background: var(--surface-0);
   color: var(--text-primary);
+  /* Dot grid pattern — subtle newsprint texture (adapts via opacity) */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cpath fill='%23808080' fill-opacity='0.06' d='M1 3h1v1H1V3zm2-2h1v1H3V1z'%3E%3C/path%3E%3C/svg%3E");
 }
 
-/* Focus-visible rings for keyboard navigation */
+/* ── ZERO border radius — the Newsprint commandment ── */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+}
+
+/* ── Focus-visible: high-contrast ring ── */
 :focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--text-primary);
   outline-offset: 2px;
-  border-radius: 4px;
 }
 
 button:focus-visible,
@@ -139,13 +152,13 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 [role="switch"]:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--text-primary);
   outline-offset: 2px;
 }
 
-/* Scrollbar styling */
+/* ── Scrollbar — ink-styled ── */
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -153,36 +166,62 @@ select:focus-visible,
 }
 
 ::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-muted) 50%, transparent);
-  border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 
-/* Micro-animations */
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-primary);
+}
+
+/* ── Animations — fast, snappy, mechanical ── */
 @keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
 
 @keyframes slide-down {
-  from { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 0; transform: translateY(-2px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-fade-in {
-  animation: fade-in 150ms ease-out;
+  animation: fade-in 120ms ease-out;
 }
 
 .animate-slide-down {
-  animation: slide-down 150ms ease-out;
+  animation: slide-down 120ms ease-out;
 }
 
-/* Z-index scale */
-/* z-10: raised surfaces (FABs, sticky headers) */
-/* z-20: dropdowns, popovers, tooltips */
+/* ── Hard shadow hover — newspaper cutout lift ── */
+.hard-shadow-hover {
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+
+.hard-shadow-hover:hover {
+  box-shadow: 3px 3px 0px 0px var(--text-primary);
+  transform: translate(-1px, -1px);
+}
+
+/* ── Newsprint texture overlay ── */
+.newsprint-texture {
+  position: relative;
+}
+
+.newsprint-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(0deg, transparent 98%, rgba(0,0,0,0.03) 100%),
+    linear-gradient(90deg, transparent 98%, rgba(0,0,0,0.03) 100%);
+  background-size: 3px 3px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* ── Z-index scale ── */
+/* z-10: raised surfaces (sticky headers) */
+/* z-20: dropdowns, popovers */
 /* z-30: overlays, sidebars */
 /* z-40: modals backdrop */
 /* z-50: modals content */
