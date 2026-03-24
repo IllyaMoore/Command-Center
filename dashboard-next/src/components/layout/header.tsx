@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useTheme } from "@/lib/theme";
 import { useIntegrations } from "@/lib/use-integrations";
 import { CalendarPanel } from "@/components/calendar/calendar-panel";
+import { ActivityPanel } from "@/components/activity/activity-panel";
 
 export function Header({
   onBrainToggle,
@@ -16,8 +17,10 @@ export function Header({
   const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const calendarRef = useRef<HTMLDivElement | null>(null);
+  const activityRef = useRef<HTMLDivElement | null>(null);
   const { integrations, loading: integrationsLoading, connect } = useIntegrations();
 
   useEffect(() => {
@@ -97,6 +100,28 @@ export function Header({
             open={calendarOpen}
             onClose={() => setCalendarOpen(false)}
             containerRef={calendarRef}
+          />
+        </div>
+
+        {/* Activity feed */}
+        <div className="relative" ref={activityRef}>
+          <button
+            onClick={() => setActivityOpen((prev) => !prev)}
+            className={`p-2 rounded-lg transition-colors cursor-pointer ${
+              activityOpen
+                ? "bg-primary/10 text-primary"
+                : "text-text-secondary hover:bg-surface-2"
+            }`}
+            aria-label="Activity"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            </svg>
+          </button>
+          <ActivityPanel
+            open={activityOpen}
+            onClose={() => setActivityOpen(false)}
+            containerRef={activityRef}
           />
         </div>
 
