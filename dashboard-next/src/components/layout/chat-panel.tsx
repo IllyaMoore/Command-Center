@@ -90,8 +90,8 @@ export function ChatPanel() {
       await sendMessage(selectedAgent.folder, text);
       setSentAt(new Date().toISOString());
     } catch {
-      // Message was already written to IPC, so even on error the agent may process it
-      setSentAt(new Date().toISOString());
+      // Send failed — restore input so user can retry
+      setInput(text);
     } finally {
       setSending(false);
     }
@@ -148,8 +148,12 @@ export function ChatPanel() {
             onConfirm={async () => {
               setClearConfirm(false);
               if (selectedAgent) {
-                await fetch(`/api/messages?group=${selectedAgent.folder}`, { method: "DELETE" });
-                clearMessages();
+                try {
+                  const res = await fetch(`/api/messages?group=${selectedAgent.folder}`, { method: "DELETE" });
+                  if (res.ok) clearMessages();
+                } catch {
+                  // Network error — messages not cleared
+                }
               }
             }}
             onCancel={() => setClearConfirm(false)}
