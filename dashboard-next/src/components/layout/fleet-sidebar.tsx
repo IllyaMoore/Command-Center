@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -15,9 +15,38 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
   const [filter, setFilter] = useState<FilterTab>("all");
   const [showCreate, setShowCreate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Agent | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Animation: folder name that should animate in after next agents update
+  const pendingEnterFolder = useRef<string | null>(null);
+  // Animation: jids being removed (optimistic, hidden immediately)
+  const [hiddenJids, setHiddenJids] = useState<Set<string>>(new Set());
 
   const { agents, loading: agentsLoading, refresh } = useAgents();
   const { selectedAgent, selectAgent } = useAgentStore();
+
+  // Animate new agent AFTER React commits it to DOM
+  useEffect(() => {
+    const folder = pendingEnterFolder.current;
+    if (!folder) return;
+    // Double rAF: guarantees the browser has painted the element before animating
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-agent-folder="${CSS.escape(folder)}"]`);
+        if (el instanceof HTMLElement) {
+          // Start invisible, then animate in
+          el.animate(
+            [
+              { opacity: 0, transform: "translateY(-14px) scale(0.96)" },
+              { opacity: 1, transform: "translateY(0) scale(1)" },
+            ],
+            { duration: 400, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
+          );
+        }
+        pendingEnterFolder.current = null;
+      });
+    });
+  }, [agents]);
 
   // Auto-select first agent
   useEffect(() => {
@@ -42,37 +71,80 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
     { key: "idle", label: "Idle" },
   ];
 
-  const filtered =
+  const filtered = (
     filter === "all"
       ? agents
       : agents.filter((a) =>
           filter === "running" ? a.online : !a.online,
-        );
+        )
+  ).filter((a) => !hiddenJids.has(a.jid));
 
   const handleCreate = useCallback(
-    async (name: string, folder: string) => {
-      await createAgent(name, folder);
+    async (name: string, folder: string, description?: string) => {
+      await createAgent(name, folder, description);
       setShowCreate(false);
-      await refresh();
+      // Tell ref callback to animate this folder when it mounts
+      pendingEnterFolder.current = folder;
+      const updatedAgents = await refresh();
+      const newAgent = (updatedAgents ?? agents).find((a) => a.folder === folder);
+      if (newAgent) {
+        selectAgent(newAgent);
+        onAgentSelect?.();
+      }
     },
-    [refresh],
+    [refresh, agents, selectAgent, onAgentSelect],
   );
-
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleDelete = useCallback(
     async (agent: Agent) => {
-      try {
-        await deleteAgent(agent.folder);
-        setDeleteTarget(null);
-        setDeleteError(null);
-        if (selectedAgent?.jid === agent.jid) {
-          const remaining = agents.filter((a) => a.jid !== agent.jid);
-          if (remaining.length > 0) selectAgent(remaining[0]);
+      setDeleteTarget(null);
+      setDeleteError(null);
+
+      // Select another agent immediately
+      if (selectedAgent?.jid === agent.jid) {
+        const remaining = agents.filter((a) => a.jid !== agent.jid);
+        if (remaining.length > 0) selectAgent(remaining[0]);
+      }
+
+      // Find DOM element and animate out, then hide + API delete
+      const el = document.querySelector(`[data-agent-jid="${CSS.escape(agent.jid)}"]`);
+      if (el instanceof HTMLElement) {
+        const anim = el.animate(
+          [
+            { opacity: 1, transform: "translateX(0)", maxHeight: `${el.offsetHeight}px` },
+            { opacity: 0, transform: "translateX(-24px)", maxHeight: `${el.offsetHeight}px`, offset: 0.5 },
+            { opacity: 0, transform: "translateX(-24px)", maxHeight: "0px", paddingTop: "0px", paddingBottom: "0px" },
+          ],
+          { duration: 350, easing: "ease-in", fill: "forwards" },
+        );
+        anim.onfinish = async () => {
+          setHiddenJids((prev) => new Set(prev).add(agent.jid));
+          try {
+            await deleteAgent(agent.folder);
+            await refresh();
+          } catch (err) {
+            setDeleteError(err instanceof Error ? err.message : "Failed to delete agent");
+          }
+          setHiddenJids((prev) => {
+            const next = new Set(prev);
+            next.delete(agent.jid);
+            return next;
+          });
+        };
+      } else {
+        // Fallback: no animation, just delete
+        setHiddenJids((prev) => new Set(prev).add(agent.jid));
+        try {
+          await deleteAgent(agent.folder);
+          await refresh();
+        } catch (err) {
+          setDeleteError(err instanceof Error ? err.message : "Failed to delete agent");
         }
-        await refresh();
-      } catch (err) {
-        setDeleteError(err instanceof Error ? err.message : "Failed to delete agent");
+        setHiddenJids((prev) => {
+          const next = new Set(prev);
+          next.delete(agent.jid);
+          return next;
+        });
       }
     },
     [agents, selectedAgent, selectAgent, refresh],
@@ -148,12 +220,14 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
             return (
             <button
               key={agent.jid}
+              data-agent-jid={agent.jid}
+              data-agent-folder={agent.folder}
               onClick={() => { selectAgent(agent); onAgentSelect?.(); }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setDeleteTarget(agent);
               }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 cursor-pointer group ${
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all duration-150 cursor-pointer group overflow-hidden ${
                 selectedAgent?.jid === agent.jid
                   ? "bg-sidebar-active"
                   : "hover:bg-sidebar-hover active:scale-[0.98]"
@@ -222,10 +296,11 @@ function CreateAgentModal({
   onCreate,
 }: {
   onClose: () => void;
-  onCreate: (name: string, folder: string) => Promise<void>;
+  onCreate: (name: string, folder: string, description?: string) => Promise<void>;
 }) {
   const [name, setName] = useState("");
   const [folder, setFolder] = useState("");
+  const [description, setDescription] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -245,7 +320,7 @@ function CreateAgentModal({
     setLoading(true);
     setError(null);
     try {
-      await onCreate(name.trim(), folder.trim());
+      await onCreate(name.trim(), folder.trim(), description.trim() || undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create agent");
     } finally {
@@ -254,8 +329,8 @@ function CreateAgentModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-surface-1 rounded-xl border border-surface-border shadow-xl w-96 p-6">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-surface-1 rounded-xl border border-surface-border shadow-xl w-[28rem] p-6" onClick={(e) => e.stopPropagation()}>
         <h3 className="font-mono text-sm font-semibold text-text-primary uppercase mb-4">
           New Agent
         </h3>
@@ -286,8 +361,21 @@ function CreateAgentModal({
               placeholder="e.g. marketing"
               className="w-full px-3 py-2 bg-surface-2 border border-surface-border rounded-lg text-sm font-mono text-text-primary outline-none focus:border-primary/50"
             />
+          </div>
+
+          <div>
+            <label className="text-[10px] font-mono text-text-muted uppercase tracking-wider block mb-1">
+              What should this agent do?
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Describe the agent's role, responsibilities, and tools it should use..."
+              rows={4}
+              className="w-full px-3 py-2 bg-surface-2 border border-surface-border rounded-lg text-sm text-text-primary outline-none focus:border-primary/50 resize-none"
+            />
             <p className="text-[10px] text-text-muted mt-1">
-              Lowercase, hyphens, underscores only
+              AI will generate a full system prompt based on your description
             </p>
           </div>
 
@@ -297,7 +385,7 @@ function CreateAgentModal({
         </div>
 
         <div className="flex justify-end gap-2 mt-5">
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button
@@ -306,11 +394,10 @@ function CreateAgentModal({
             onClick={handleSubmit}
             disabled={loading || !name.trim() || !folder.trim()}
           >
-            {loading ? "Creating..." : "Create"}
+            {loading ? "Generating prompt..." : "Create Agent"}
           </Button>
         </div>
       </div>
     </div>
   );
 }
-
