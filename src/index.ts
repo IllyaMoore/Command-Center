@@ -35,6 +35,7 @@ import {
   setSession,
   storeChatMetadata,
   storeMessage,
+  storeMessageDirect,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
@@ -216,6 +217,9 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
     prompt,
     chatJid,
     async (result) => {
+      // Mark idle after first response (process stays alive for follow-ups)
+      queue.markIdle(chatJid, group.folder);
+
       // Streaming output callback — called for each agent result
       if (result.result) {
         const raw = typeof result.result === 'string' ? result.result : JSON.stringify(result.result);
@@ -350,6 +354,8 @@ async function runAgent(
   } catch (err) {
     logger.error({ group: group.name, err }, 'Agent error');
     return 'error';
+  } finally {
+    queue.markIdle(chatJid, group.folder);
   }
 }
 
@@ -460,21 +466,25 @@ async function startMessageLoop(): Promise<void> {
 }
 
 /**
- * Startup recovery: check for unprocessed messages in registered groups.
- * Handles crash between advancing lastTimestamp and processing messages.
+ * Startup recovery: advance cursors to "now" so stale messages from
+ * before this restart are not re-processed.  A fresh session should
+ * start clean — replaying old messages can confuse the agent and
+ * waste API calls.
  */
 function recoverPendingMessages(): void {
+  const now = new Date().toISOString();
   for (const [chatJid, group] of Object.entries(registeredGroups)) {
     const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
     const pending = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
     if (pending.length > 0) {
       logger.info(
         { group: group.name, pendingCount: pending.length },
-        'Recovery: found unprocessed messages',
+        'Skipping stale unprocessed messages from previous session',
       );
-      queue.enqueueMessageCheck(chatJid);
+      lastAgentTimestamp[chatJid] = now;
     }
   }
+  saveState();
 }
 
 
@@ -591,39 +601,106 @@ async function main(): Promise<void> {
         return;
       }
 
+      // If an agent is already running for this group, pipe as follow-up message
+      if (queue.sendMessage(chatJid, `[Via Dashboard] ${text}`)) {
+        logger.info({ groupFolder, text: text.slice(0, 50) }, 'Piped dashboard message to active agent');
+        // Store user message in DB for chat history
+        storeMessageDirect({
+          id: `dash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          chat_jid: chatJid,
+          sender: 'dashboard',
+          sender_name: 'You (Dashboard)',
+          content: text,
+          timestamp: new Date().toISOString(),
+          is_from_me: true,
+          is_bot_message: false,
+        });
+        return;
+      }
+
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const prompt = `[Via Dashboard] ${text}`;
+      const isDashboardOnly = chatJid.startsWith('dashboard-');
       const safeText = text.replace(/[_*~`]/g, '');
       const result = await runAgent(
         group,
         prompt,
         chatJid,
         async (output) => {
+          // Mark idle after first response (process stays alive for follow-ups)
+          queue.markIdle(chatJid, groupFolder);
+
           if (output.result) {
-            const formatted = formatOutbound(output.result);
-            if (formatted) {
-              const wrapped = `📱 _Dashboard_ › ${safeText}\n\n${formatted}`;
-              const delivered = await sendToChannel(chatJid, wrapped);
-              if (!delivered) {
-                logger.error({ groupFolder, chatJid }, 'Dashboard agent response could not be delivered');
-              }
+            const content = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
+            if (isDashboardOnly) {
+              // Dashboard-only agents: store response in DB, no channel delivery
+              storeMessageDirect({
+                id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                chat_jid: chatJid,
+                sender: groupFolder,
+                sender_name: group.name,
+                content,
+                timestamp: new Date().toISOString(),
+                is_from_me: false,
+                is_bot_message: true,
+              });
             } else {
-              logger.warn({ groupFolder, resultLength: output.result.length }, 'Agent output stripped by formatOutbound');
+              // WA/TG groups: deliver via channel as before
+              const formatted = formatOutbound(output.result);
+              if (formatted) {
+                const wrapped = `📱 _Dashboard_ › ${safeText}\n\n${formatted}`;
+                const delivered = await sendToChannel(chatJid, wrapped);
+                if (!delivered) {
+                  logger.error({ groupFolder, chatJid }, 'Dashboard agent response could not be delivered');
+                }
+              } else {
+                logger.warn({ groupFolder, resultLength: output.result.length }, 'Agent output stripped by formatOutbound');
+              }
             }
           }
         },
         () => {
-          sendToChannel(chatJid, WARNING_MESSAGE).catch((err) => {
-            logger.warn({ chatJid, err }, 'Failed to send dashboard warning notification');
-          });
+          if (isDashboardOnly) {
+            // Store warning as system message for dashboard visibility
+            storeMessageDirect({
+              id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              chat_jid: chatJid,
+              sender: 'system',
+              sender_name: 'System',
+              content: WARNING_MESSAGE,
+              timestamp: new Date().toISOString(),
+              is_from_me: false,
+              is_bot_message: true,
+            });
+          } else {
+            sendToChannel(chatJid, WARNING_MESSAGE).catch((err) => {
+              logger.warn({ chatJid, err }, 'Failed to send dashboard warning notification');
+            });
+          }
         },
         (hadOutput: boolean) => {
           if (hadOutput) return;
-          sendToChannel(chatJid, TIMEOUT_MESSAGE).catch((err) => {
-            logger.warn({ chatJid, err }, 'Failed to send dashboard timeout notification');
-          });
+          if (isDashboardOnly) {
+            storeMessageDirect({
+              id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              chat_jid: chatJid,
+              sender: 'system',
+              sender_name: 'System',
+              content: TIMEOUT_MESSAGE,
+              timestamp: new Date().toISOString(),
+              is_from_me: false,
+              is_bot_message: true,
+            });
+          } else {
+            sendToChannel(chatJid, TIMEOUT_MESSAGE).catch((err) => {
+              logger.warn({ chatJid, err }, 'Failed to send dashboard timeout notification');
+            });
+          }
         },
       );
+      // Mark agent as no longer active (process may still be alive for follow-ups)
+      queue.markIdle(chatJid, groupFolder);
+
       if (result === 'error') {
         logger.error({ groupFolder }, 'Dashboard agent run failed');
       } else {

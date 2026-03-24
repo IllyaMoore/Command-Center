@@ -371,6 +371,35 @@ function waitForIpcMessage(): Promise<string | null> {
   });
 }
 
+const GOOGLE_DRIVE_CREDS_PATH = path.join(HOME_DIR, '.google-drive-mcp', 'gcp-oauth.keys.json');
+const GOOGLE_DRIVE_TOKENS_PATH = path.join(HOME_DIR, '.google-drive-mcp', 'credentials.json');
+
+function readGoogleDriveCredentials(): { clientId: string; clientSecret: string; refreshToken: string } | null {
+  try {
+    const config = JSON.parse(fs.readFileSync(GOOGLE_DRIVE_CREDS_PATH, 'utf-8'));
+    const creds = config.installed ?? config.web;
+    const clientId = creds?.client_id;
+    const clientSecret = creds?.client_secret;
+    if (!clientId || !clientSecret) return null;
+
+    const tokens = JSON.parse(fs.readFileSync(GOOGLE_DRIVE_TOKENS_PATH, 'utf-8'));
+    const refreshToken = tokens?.refresh_token;
+    if (!refreshToken) return null;
+
+    return { clientId, clientSecret, refreshToken };
+  } catch (err: unknown) {
+    if (err instanceof SyntaxError) {
+      console.error('Failed to parse Google Drive credentials (invalid JSON):', err.message);
+    } else {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT') {
+        console.error('Failed to read Google Drive credentials:', err);
+      }
+    }
+  }
+  return null;
+}
+
 const GOOGLE_SHEETS_CREDS_DIR = path.join(HOME_DIR, '.google-sheets-mcp');
 const GOOGLE_SHEETS_CREDS_PATH = path.join(GOOGLE_SHEETS_CREDS_DIR, 'gcp-oauth.keys.json');
 
@@ -402,6 +431,7 @@ function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string
     'mcp__nanoclaw__*',
     'mcp__gmail__*',
     'mcp__calendar__*',
+    'mcp__drive__*',
   ];
 
   if (containerInput.groupFolder === 'finance' || containerInput.isMain) {
@@ -475,6 +505,39 @@ function buildMcpServers(
       },
     },
   };
+
+  // Google Drive — write a temp env file, then spawn mcp-google-drive
+  // SDK may not pass env vars correctly to MCP subprocesses
+  const driveCreds = readGoogleDriveCredentials();
+  if (driveCreds) {
+    log('Drive MCP: credentials found, configuring server');
+    // Write credentials to a randomized temp file with restricted permissions
+    const tmpDir = process.env.TEMP || process.env.TMPDIR || '/tmp';
+    const driveEnvPath = path.join(tmpDir, `.nanoclaw-drive-${process.pid}-${Date.now()}.json`);
+    try {
+      fs.writeFileSync(driveEnvPath, JSON.stringify({
+        GOOGLE_CLIENT_ID: driveCreds.clientId,
+        GOOGLE_CLIENT_SECRET: driveCreds.clientSecret,
+        GOOGLE_REFRESH_TOKEN: driveCreds.refreshToken,
+      }), { mode: 0o600 });
+      // Clean up on process exit
+      process.on('exit', () => { try { fs.unlinkSync(driveEnvPath); } catch { /* ignore */ } });
+    } catch (err) {
+      log(`Drive MCP: failed to write env file: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    // node -e script: read env from file, set on process.env, spawn npx
+    const script = [
+      `Object.assign(process.env,JSON.parse(require('fs').readFileSync(${JSON.stringify(driveEnvPath)},'utf8')))`,
+      `try{require('fs').unlinkSync(${JSON.stringify(driveEnvPath)})}catch{}`,
+      `require('child_process').spawn(process.platform==='win32'?'npx.cmd':'npx',['-y','mcp-google-drive'],{stdio:'inherit'}).on('exit',c=>process.exit(c||0))`,
+    ].join(';');
+    servers.drive = {
+      command: 'node',
+      args: ['-e', script],
+    };
+  } else {
+    log('Drive MCP: no credentials found, skipping');
+  }
 
   const sheetsCreds = readGoogleSheetsCredentials();
   if (sheetsCreds && (containerInput.groupFolder === 'finance' || containerInput.isMain)) {

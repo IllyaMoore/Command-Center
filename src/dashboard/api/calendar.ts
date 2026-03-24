@@ -198,6 +198,39 @@ export async function getCalendarEvents(view: 'day' | 'week' = 'day'): Promise<C
   }
 }
 
+export interface CreateEventInput {
+  title: string;
+  start: string; // ISO 8601
+  end: string;   // ISO 8601
+  description?: string;
+  location?: string;
+}
+
+export async function createCalendarEvent(input: CreateEventInput): Promise<{ event?: CalendarEvent; error?: string }> {
+  const client = await getCalendarClient();
+  if (!client) return { error: 'missing_credentials' };
+
+  try {
+    const res = await client.events.insert({
+      calendarId: 'primary',
+      requestBody: {
+        summary: input.title,
+        start: { dateTime: input.start },
+        end: { dateTime: input.end },
+        description: input.description,
+        location: input.location,
+      },
+    });
+    if (!res.data) return { error: 'no_data' };
+    return { event: mapGoogleEvent(res.data) };
+  } catch (err) {
+    logger.error({ err }, 'Error creating calendar event');
+    const msg = err instanceof Error ? err.message : String(err);
+    const isAuthError = msg.includes('invalid_grant') || msg.includes('Token has been expired') || msg.includes('UNAUTHENTICATED');
+    return { error: isAuthError ? 'auth_failed' : 'create_failed' };
+  }
+}
+
 /**
  * Fetch real calendar events. Throws on API error (no mock fallback).
  * Use this for automated systems (reminders) where mock data would be harmful.
@@ -272,6 +305,14 @@ export async function handleCalendarOAuthCallback(code: string): Promise<void> {
   calendarClient = null;
   authClient = null;
   cachedAuthStatus = null;
+}
+
+export function disconnectCalendar(): void {
+  if (fs.existsSync(TOKENS_PATH)) fs.unlinkSync(TOKENS_PATH);
+  calendarClient = null;
+  authClient = null;
+  cachedAuthStatus = null;
+  logger.info('Google Calendar tokens deleted');
 }
 
 function getColorFromId(colorId: string): string {

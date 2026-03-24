@@ -1,7 +1,12 @@
+import fs from 'fs';
 import { IncomingMessage, ServerResponse } from 'http';
+import path from 'path';
 
+import { GROUPS_DIR } from '../config.js';
 import { logger } from '../logger.js';
 import {
+  deleteMessages,
+  deleteRegisteredGroup,
   getAllRegisteredGroups,
   getAllTasks,
   getMessagesPaginated,
@@ -9,6 +14,7 @@ import {
   getRecentMessages,
   getRecentTaskRuns,
   getTimezone,
+  setRegisteredGroup,
   setTimezone,
 } from '../db.js';
 import { TaskRunLog } from '../types.js';
@@ -17,19 +23,29 @@ import {
   getCalendarAuthStatus,
   getCalendarAuthUrl,
   getCalendarEvents,
+  createCalendarEvent,
   handleCalendarOAuthCallback,
+  disconnectCalendar,
 } from './api/calendar.js';
 import { sendChatMessage, sendGroupMessage, streamChatMessages } from './api/chat.js';
 import {
   getGmailAuthStatus,
   getGmailAuthUrl,
   handleGmailOAuthCallback,
+  disconnectGmail,
 } from './api/gmail.js';
 import {
   getSheetsAuthStatus,
   getSheetsAuthUrl,
   handleSheetsOAuthCallback,
+  disconnectSheets,
 } from './api/sheets.js';
+import {
+  getDriveAuthStatus,
+  getDriveAuthUrl,
+  handleDriveOAuthCallback,
+  disconnectDrive,
+} from './api/drive.js';
 import { getDashboardQueue } from './context.js';
 
 // OAuth provider configurations for the shared callback handler
@@ -41,6 +57,7 @@ interface OAuthProvider {
   getStatus: () => Promise<string>;
   getAuthUrl: () => string | null;
   handleCallback: (code: string) => Promise<void>;
+  disconnect: () => void;
 }
 
 const oauthProviders: OAuthProvider[] = [
@@ -52,6 +69,7 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getCalendarAuthStatus,
     getAuthUrl: getCalendarAuthUrl,
     handleCallback: handleCalendarOAuthCallback,
+    disconnect: disconnectCalendar,
   },
   {
     basePath: '/api/auth/gmail',
@@ -61,6 +79,7 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getGmailAuthStatus,
     getAuthUrl: getGmailAuthUrl,
     handleCallback: handleGmailOAuthCallback,
+    disconnect: disconnectGmail,
   },
   {
     basePath: '/api/auth/google-sheets',
@@ -70,13 +89,24 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getSheetsAuthStatus,
     getAuthUrl: getSheetsAuthUrl,
     handleCallback: handleSheetsOAuthCallback,
+    disconnect: disconnectSheets,
+  },
+  {
+    basePath: '/api/auth/google-drive',
+    displayName: 'Google Drive',
+    postMessageId: 'gdrive-connected',
+    credentialHint: 'gcp-oauth.keys.json',
+    getStatus: getDriveAuthStatus,
+    getAuthUrl: getDriveAuthUrl,
+    handleCallback: handleDriveOAuthCallback,
+    disconnect: disconnectDrive,
   },
 ];
 
 function oauthSuccessHtml(displayName: string, postMessageId: string): string {
   return `<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
-    <div style="text-align:center"><h2>${displayName} connected</h2><p>You can close this tab.</p>
-    <script>window.opener&&window.opener.postMessage('${postMessageId}',window.location.origin);setTimeout(()=>window.close(),2000)</script>
+    <div style="text-align:center"><h2>${escapeHtml(displayName)} connected</h2><p>You can close this tab.</p>
+    <script>window.opener&&window.opener.postMessage(${JSON.stringify(postMessageId)},window.location.origin);setTimeout(()=>window.close(),2000)</script>
     </div></body></html>`;
 }
 
@@ -114,6 +144,17 @@ async function handleOAuthRoutes(
       return true;
     }
 
+    if (pathname === `${provider.basePath}/disconnect` && method === 'POST') {
+      try {
+        provider.disconnect();
+        json({ ok: true });
+      } catch (err) {
+        logger.error({ err, provider: provider.displayName }, 'Disconnect failed');
+        json({ error: 'disconnect_failed' }, 500);
+      }
+      return true;
+    }
+
     if (pathname === `${provider.basePath}/callback` && method === 'GET') {
       const code = url.searchParams.get('code');
       if (!code) {
@@ -145,11 +186,17 @@ export async function handleApiRoute(
   const pathname = url.pathname;
   const method = req.method || 'GET';
 
-  // Parse request body for POST requests
+  // Parse request body for POST requests (1MB limit)
   const parseBody = (): Promise<Record<string, unknown>> => {
     return new Promise((resolve, reject) => {
       let body = '';
-      req.on('data', (chunk) => (body += chunk));
+      req.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 1_000_000) {
+          reject(new Error('Request body too large'));
+          req.destroy();
+        }
+      });
       req.on('end', () => {
         try {
           resolve(body ? JSON.parse(body) : {});
@@ -173,13 +220,25 @@ export async function handleApiRoute(
     const queue = getDashboardQueue();
     const groups = getAllRegisteredGroups();
     const queueStatus = queue?.getStatus() ?? [];
+    const source = url.searchParams.get('source');
 
-    const agents = Object.entries(groups).map(([jid, group]) => {
-      const qs = queueStatus.find((s) => s.jid === jid);
+    // Build agent list from both DB registrations and groups/ directories
+    const seenFolders = new Set<string>();
+    const agents: Array<Record<string, unknown>> = [];
+
+    // 1. Add registered groups that have CLAUDE.md
+    for (const [jid, group] of Object.entries(groups)) {
+      const claudeMd = path.join(GROUPS_DIR, group.folder, 'CLAUDE.md');
+      if (!fs.existsSync(claudeMd)) continue;
+      if (source === 'dashboard' && !jid.startsWith('dashboard-')) continue;
+      if (source === 'channel' && jid.startsWith('dashboard-')) continue;
+
+      seenFolders.add(group.folder);
+      const qs = queueStatus.find((s) => s.jid === jid || s.jid === `dashboard-${group.folder}` || s.groupFolder === group.folder);
       const lastMessages = getRecentMessages(1, jid);
       const lastActivity = lastMessages.length > 0 ? lastMessages[0].timestamp : null;
 
-      return {
+      agents.push({
         jid,
         name: group.name,
         folder: group.folder,
@@ -189,10 +248,136 @@ export async function handleApiRoute(
         containerName: qs?.containerName ?? null,
         pendingMessages: qs?.pendingMessages ?? false,
         pendingTaskCount: qs?.pendingTaskCount ?? 0,
-      };
-    });
+      });
+    }
+
+    // 2. Add unregistered groups/ directories that have CLAUDE.md
+    if (source !== 'channel') {
+      try {
+        const groupDirs = fs.readdirSync(GROUPS_DIR, { withFileTypes: true });
+        for (const dir of groupDirs) {
+          if (!dir.isDirectory() || seenFolders.has(dir.name)) continue;
+          const claudeMd = path.join(GROUPS_DIR, dir.name, 'CLAUDE.md');
+          if (!fs.existsSync(claudeMd)) continue;
+
+          const displayName = dir.name.charAt(0).toUpperCase() + dir.name.slice(1);
+          agents.push({
+            jid: `local-${dir.name}`,
+            name: displayName,
+            folder: dir.name,
+            online: false,
+            lastActivity: null,
+            currentTask: null,
+            containerName: null,
+            pendingMessages: false,
+            pendingTaskCount: 0,
+          });
+        }
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') {
+          logger.error({ err }, 'Failed to read groups directory for unregistered agents');
+        }
+      }
+    }
 
     json(agents);
+    return;
+  }
+
+  // ─── OPC-126: POST /api/agents ───
+  if (pathname === '/api/agents' && method === 'POST') {
+    const body = await parseBody();
+    const { name, folder } = body as { name?: string; folder?: string };
+
+    if (!name || !folder) {
+      json({ error: 'name and folder are required' }, 400);
+      return;
+    }
+
+    // Validate folder name (alphanumeric, hyphens, underscores)
+    if (!/^[a-z0-9_-]+$/.test(folder)) {
+      json({ error: 'folder must be lowercase alphanumeric with hyphens/underscores only' }, 400);
+      return;
+    }
+
+    // Check folder uniqueness
+    const existing = getAllRegisteredGroups();
+    const folderTaken = Object.values(existing).some((g) => g.folder === folder);
+    if (folderTaken) {
+      json({ error: `folder '${folder}' already exists` }, 409);
+      return;
+    }
+
+    // Generate a dashboard JID for non-messaging agents
+    const jid = `dashboard-${folder}-${Date.now()}`;
+
+    // Create group directory with default CLAUDE.md
+    const groupDir = path.join(GROUPS_DIR, folder);
+    try {
+      if (!fs.existsSync(groupDir)) {
+        fs.mkdirSync(groupDir, { recursive: true });
+      }
+      const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+      if (!fs.existsSync(claudeMdPath)) {
+        fs.writeFileSync(
+          claudeMdPath,
+          `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
+          'utf-8',
+        );
+      }
+    } catch (err) {
+      logger.error({ err, folder }, 'Failed to create agent directory');
+      json({ error: 'Failed to create agent directory on disk' }, 500);
+      return;
+    }
+
+    // Register in database
+    setRegisteredGroup(jid, {
+      name,
+      folder,
+      trigger: `(?i)@${folder}`,
+      added_at: new Date().toISOString(),
+      requiresTrigger: false,
+    });
+
+    logger.info({ jid, name, folder }, 'Agent created via dashboard');
+    json({ jid, name, folder }, 201);
+    return;
+  }
+
+  // ─── OPC-126: DELETE /api/agents/:folder ───
+  if (pathname.startsWith('/api/agents/') && method === 'DELETE') {
+    const folder = decodeURIComponent(pathname.split('/api/agents/')[1]);
+    if (!folder || !/^[a-z0-9_-]+$/.test(folder)) {
+      json({ error: 'Invalid folder name' }, 400);
+      return;
+    }
+
+    const groups = getAllRegisteredGroups();
+    const entry = Object.entries(groups).find(([, g]) => g.folder === folder);
+    if (!entry) {
+      json({ error: `Agent '${folder}' not found` }, 404);
+      return;
+    }
+
+    // Archive group directory first (before DB delete, so failure doesn't leave ghost)
+    const groupDir = path.join(GROUPS_DIR, folder);
+    const archiveDir = path.join(GROUPS_DIR, `${folder}.archived-${Date.now()}`);
+    try {
+      if (fs.existsSync(groupDir)) {
+        fs.renameSync(groupDir, archiveDir);
+      }
+    } catch (err) {
+      logger.error({ err, folder }, 'Failed to archive agent directory');
+      // Continue — still delete the DB entry
+    }
+
+    const [jid] = entry;
+    deleteRegisteredGroup(jid);
+
+    logger.info({ jid, folder }, 'Agent deleted via dashboard');
+    json({ deleted: true, folder });
     return;
   }
 
@@ -227,13 +412,8 @@ export async function handleApiRoute(
 
     let chatJid: string | undefined;
     if (group) {
-      const groups = getAllRegisteredGroups();
-      const entry = Object.entries(groups).find(([, g]) => g.folder === group);
-      if (!entry) {
-        json({ error: `Group '${group}' not found` }, 404);
-        return;
-      }
-      chatJid = entry[0];
+      // Use dashboard-specific JID for fetching dashboard chat history
+      chatJid = `dashboard-${group}`;
     }
 
     const result = getMessagesPaginated(limit, offset, chatJid);
@@ -243,6 +423,19 @@ export async function handleApiRoute(
       limit,
       offset,
     });
+    return;
+  }
+
+  // ─── DELETE /api/messages — clear chat history ───
+  if (pathname === '/api/messages' && method === 'DELETE') {
+    const group = url.searchParams.get('group');
+    if (!group) {
+      json({ error: 'Missing group parameter' }, 400);
+      return;
+    }
+    const chatJid = `dashboard-${group}`;
+    const deleted = deleteMessages(chatJid);
+    json({ ok: true, deleted });
     return;
   }
 
@@ -264,9 +457,10 @@ export async function handleApiRoute(
       return;
     }
 
-    const [jid] = entry;
-    const result = await sendGroupMessage(group, jid, text);
-    json({ ...result, group, jid });
+    // Always use dashboard-specific JID so chat history stays separate from WA/TG
+    const dashboardJid = `dashboard-${group}`;
+    const result = await sendGroupMessage(group, dashboardJid, text);
+    json({ ...result, group, jid: dashboardJid });
     return;
   }
 
@@ -289,8 +483,8 @@ export async function handleApiRoute(
     return;
   }
 
-  // ─── Google OAuth (Calendar, Gmail, Sheets) ───
-  if (pathname.startsWith('/api/auth/') && method === 'GET') {
+  // ─── Google OAuth (Calendar, Gmail, Sheets, Drive) ───
+  if (pathname.startsWith('/api/auth/')) {
     const handled = await handleOAuthRoutes(pathname, method, url, res, json);
     if (handled) return;
   }
@@ -300,6 +494,23 @@ export async function handleApiRoute(
     const view = (url.searchParams.get('view') || 'day') as 'day' | 'week';
     const result = await getCalendarEvents(view);
     json(result);
+    return;
+  }
+
+  if ((pathname === '/api/calendar' || pathname === '/api/calendar/events') && method === 'POST') {
+    const body = await parseBody();
+    if (!body.title || !body.start || !body.end) {
+      json({ error: 'Missing required fields: title, start, end' }, 400);
+      return;
+    }
+    const result = await createCalendarEvent({
+      title: body.title as string,
+      start: body.start as string,
+      end: body.end as string,
+      description: body.description as string | undefined,
+      location: body.location as string | undefined,
+    });
+    json(result, result.error ? 500 : 201);
     return;
   }
 
@@ -361,6 +572,13 @@ export async function handleApiRoute(
     return;
   }
 
+  // Debug: raw queue status
+  if (pathname === '/api/debug/queue' && method === 'GET') {
+    const queue = getDashboardQueue();
+    json(queue?.getStatus() ?? []);
+    return;
+  }
+
   // 404 for unknown API routes
   json({ error: 'Not found' }, 404);
 }
@@ -378,9 +596,15 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
   const queue = getDashboardQueue();
   const groups = getAllRegisteredGroups();
 
+  // Helper: find queue status by registered JID or dashboard JID
+  const findStatus = (jid: string, folder: string) => {
+    const statuses = queue?.getStatus() ?? [];
+    return statuses.find((s) => s.jid === jid || s.jid === `dashboard-${folder}` || s.groupFolder === folder);
+  };
+
   // Send initial snapshot
   const agentSnapshot = Object.entries(groups).map(([jid, group]) => {
-    const qs = queue?.getStatus().find((s) => s.jid === jid);
+    const qs = findStatus(jid, group.folder);
     return {
       jid,
       name: group.name,
@@ -432,7 +656,7 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       // Agent status
       const currentGroups = getAllRegisteredGroups();
       const agents = Object.entries(currentGroups).map(([jid, group]) => {
-        const qs = queue?.getStatus().find((s) => s.jid === jid);
+        const qs = findStatus(jid, group.folder);
         return {
           jid,
           name: group.name,

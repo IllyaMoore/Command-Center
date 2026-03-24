@@ -1,0 +1,227 @@
+@import "tailwindcss";
+
+/* ── Newsprint Design System ── */
+/* "All the News That's Fit to Print." */
+/* Stark geometry · high-contrast typography · visible structure · paper texture */
+
+@theme inline {
+  /* Fonts — Newsprint stack */
+  --font-sans: var(--font-inter), 'Inter', 'Helvetica Neue', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', 'Courier New', monospace;
+  --font-display: var(--font-playfair), 'Playfair Display', 'Times New Roman', serif;
+  --font-body: var(--font-lora), 'Lora', Georgia, serif;
+
+  /* Surface colors */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-border: var(--surface-border);
+
+  /* Text colors */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-inverse: var(--text-inverse);
+
+  /* Signal colors */
+  --color-signal-success: var(--signal-success);
+  --color-signal-warning: var(--signal-warning);
+  --color-signal-error: var(--signal-error);
+  --color-signal-info: var(--signal-info);
+
+  /* Primary — Editorial Red (used sparingly) */
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-muted: var(--primary-muted);
+
+  /* Sidebar */
+  --color-sidebar-bg: var(--sidebar-bg);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-text: var(--sidebar-text);
+
+  /* Chat */
+  --color-chat-user: var(--chat-user);
+  --color-chat-agent: var(--chat-agent);
+
+  /* Badge */
+  --color-badge-running: var(--badge-running);
+  --color-badge-idle: var(--badge-idle);
+  --color-badge-error: var(--badge-error);
+  --color-badge-attention: var(--badge-attention);
+}
+
+/* ── Newsprint Light — morning edition ── */
+:root,
+[data-theme="light"] {
+  --surface-0: #F9F9F7;
+  --surface-1: #F9F9F7;
+  --surface-2: #F0F0EC;
+  --surface-3: #E5E5E0;
+  --surface-border: #111111;
+
+  --text-primary: #111111;
+  --text-secondary: #404040;
+  --text-muted: #737373;
+  --text-inverse: #F9F9F7;
+
+  --signal-success: #111111;
+  --signal-warning: #CC0000;
+  --signal-error: #CC0000;
+  --signal-info: #525252;
+
+  --primary: #CC0000;
+  --primary-hover: #990000;
+  --primary-muted: #FEE2E2;
+
+  --sidebar-bg: #F9F9F7;
+  --sidebar-hover: #F0F0EC;
+  --sidebar-active: #E5E5E0;
+  --sidebar-text: #111111;
+
+  --chat-user: #E5E5E0;
+  --chat-agent: #F9F9F7;
+
+  --badge-running: #111111;
+  --badge-idle: #737373;
+  --badge-error: #CC0000;
+  --badge-attention: #CC0000;
+}
+
+/* ── Newsprint Dark — evening edition ── */
+/* Inverted broadsheet: dark stock paper, pale ink, same editorial red */
+[data-theme="dark"] {
+  --surface-0: #0E0E0C;
+  --surface-1: #161614;
+  --surface-2: #1E1E1B;
+  --surface-3: #2A2A26;
+  --surface-border: #3A3A34;
+
+  --text-primary: #E8E6E1;
+  --text-secondary: #A3A09A;
+  --text-muted: #6B6862;
+  --text-inverse: #0E0E0C;
+
+  --signal-success: #E8E6E1;
+  --signal-warning: #EF4444;
+  --signal-error: #EF4444;
+  --signal-info: #A3A09A;
+
+  --primary: #EF4444;
+  --primary-hover: #DC2626;
+  --primary-muted: #3B1111;
+
+  --sidebar-bg: #161614;
+  --sidebar-hover: #1E1E1B;
+  --sidebar-active: #2A2A26;
+  --sidebar-text: #E8E6E1;
+
+  --chat-user: #2A2A26;
+  --chat-agent: #161614;
+
+  --badge-running: #E8E6E1;
+  --badge-idle: #6B6862;
+  --badge-error: #EF4444;
+  --badge-attention: #EF4444;
+}
+
+/* ── Base Styles ── */
+body {
+  background: var(--surface-0);
+  color: var(--text-primary);
+  /* Dot grid pattern — subtle newsprint texture (adapts via opacity) */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4' viewBox='0 0 4 4'%3E%3Cpath fill='%23808080' fill-opacity='0.06' d='M1 3h1v1H1V3zm2-2h1v1H3V1z'%3E%3C/path%3E%3C/svg%3E");
+}
+
+/* ── ZERO border radius — the Newsprint commandment ── */
+*,
+*::before,
+*::after {
+  border-radius: 0 !important;
+}
+
+/* ── Focus-visible: high-contrast ring ── */
+:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="switch"]:focus-visible {
+  outline: 2px solid var(--text-primary);
+  outline-offset: 2px;
+}
+
+/* ── Scrollbar — ink-styled ── */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-primary);
+}
+
+/* ── Animations — fast, snappy, mechanical ── */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-down {
+  from { opacity: 0; transform: translateY(-2px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 120ms ease-out;
+}
+
+.animate-slide-down {
+  animation: slide-down 120ms ease-out;
+}
+
+/* ── Hard shadow hover — newspaper cutout lift ── */
+.hard-shadow-hover {
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+
+.hard-shadow-hover:hover {
+  box-shadow: 3px 3px 0px 0px var(--text-primary);
+  transform: translate(-1px, -1px);
+}
+
+/* ── Newsprint texture overlay ── */
+.newsprint-texture {
+  position: relative;
+}
+
+.newsprint-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(0deg, transparent 98%, rgba(0,0,0,0.03) 100%),
+    linear-gradient(90deg, transparent 98%, rgba(0,0,0,0.03) 100%);
+  background-size: 3px 3px;
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+/* ── Z-index scale ── */
+/* z-10: raised surfaces (sticky headers) */
+/* z-20: dropdowns, popovers */
+/* z-30: overlays, sidebars */
+/* z-40: modals backdrop */
+/* z-50: modals content */

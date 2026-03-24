@@ -596,6 +596,13 @@ export function getAllRegisteredGroups(): Record<string, RegisteredGroup> {
   return result;
 }
 
+export function deleteRegisteredGroup(jid: string): boolean {
+  const result = db
+    .prepare('DELETE FROM registered_groups WHERE jid = ?')
+    .run(jid);
+  return result.changes > 0;
+}
+
 // --- JSON migration ---
 
 function migrateJsonState(): void {
@@ -776,6 +783,11 @@ export function getMessagesPaginated(
   const messages = db.prepare(sql).all(...args) as NewMessage[];
 
   return { messages, total };
+}
+
+export function deleteMessages(chatJid: string): number {
+  const result = db.prepare('DELETE FROM messages WHERE chat_jid = ?').run(chatJid);
+  return result.changes;
 }
 
 export function getRecentActivity(limit: number, groupFolder?: string): ActivityItem[] {

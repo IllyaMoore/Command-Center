@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { DASHBOARD_URL } from '../config.js';
 import { logger } from '../logger.js';
 import { handleApiRoute } from './routes.js';
 
@@ -18,6 +19,9 @@ const MIME_TYPES: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.txt': 'text/plain',
 };
 
 function serveStaticFile(res: ServerResponse, filePath: string): void {
@@ -39,9 +43,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // CORS headers for local development
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  // CORS headers — restrict to dashboard origin
+  const allowedOrigin = new URL(DASHBOARD_URL).origin;
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
@@ -81,15 +86,31 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   // Check if file exists
   fs.stat(filePath, (err, stats) => {
     if (err || !stats.isFile()) {
-      // Try adding .html extension
-      const htmlPath = filePath + '.html';
-      fs.stat(htmlPath, (err2, stats2) => {
-        if (!err2 && stats2.isFile()) {
-          serveStaticFile(res, htmlPath);
-        } else {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
-          res.end('Not Found');
+      // Try directory with index.html (Next.js static export with trailingSlash)
+      const indexPath = path.join(filePath, 'index.html');
+      fs.stat(indexPath, (err1, stats1) => {
+        if (!err1 && stats1.isFile()) {
+          serveStaticFile(res, indexPath);
+          return;
         }
+        // Try adding .html extension
+        const htmlPath = filePath + '.html';
+        fs.stat(htmlPath, (err2, stats2) => {
+          if (!err2 && stats2.isFile()) {
+            serveStaticFile(res, htmlPath);
+          } else {
+            // Fallback to index.html for client-side routing
+            const fallback = path.join(DASHBOARD_DIR, 'index.html');
+            fs.stat(fallback, (err3, stats3) => {
+              if (!err3 && stats3.isFile()) {
+                serveStaticFile(res, fallback);
+              } else {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Not Found');
+              }
+            });
+          }
+        });
       });
       return;
     }
