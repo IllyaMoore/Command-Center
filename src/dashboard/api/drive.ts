@@ -12,8 +12,7 @@ const TOKENS_PATH = path.join(HOME, '.google-drive-mcp', 'credentials.json');
 export type DriveAuthStatus = 'connected' | 'expired' | 'check_failed' | 'missing_tokens' | 'missing_credentials';
 
 const DRIVE_SCOPES = [
-  'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive',
 ];
 const REDIRECT_URI = `${DASHBOARD_URL}/api/auth/google-drive/callback`;
 

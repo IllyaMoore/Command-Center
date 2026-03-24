@@ -463,8 +463,8 @@ export async function handleApiRoute(
     return;
   }
 
-  // ─── Google OAuth (Calendar, Gmail, Sheets) ───
-  if (pathname.startsWith('/api/auth/') && method === 'GET') {
+  // ─── Google OAuth (Calendar, Gmail, Sheets, Drive) ───
+  if (pathname.startsWith('/api/auth/')) {
     const handled = await handleOAuthRoutes(pathname, method, url, res, json);
     if (handled) return;
   }

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAgentStore } from "@/lib/agent-store";
 import { useIntegrations, type Integration } from "@/lib/use-integrations";
 
@@ -315,6 +316,7 @@ function AdvancedTab() {
 
 /* ── Settings Integration Row ── */
 function SettingsIntegrationRow({ integration, onConnect, onDisconnect }: { integration: Integration; onConnect: () => void; onDisconnect: () => void }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const isConnected = integration.status === "connected";
   const canConnect = ["expired", "missing_tokens", "check_failed"].includes(integration.status);
   const isNotConfigured = integration.status === "not_configured";
@@ -332,40 +334,51 @@ function SettingsIntegrationRow({ integration, onConnect, onDisconnect }: { inte
             : "Error";
 
   return (
-    <div className="flex items-center justify-between px-3 py-2.5 bg-surface-2">
-      <div className="flex items-center gap-2.5">
-        <span
-          className={`w-2 h-2 rounded-full shrink-0 ${
-            isConnected
-              ? "bg-signal-success"
-              : canConnect
-                ? "bg-signal-warning"
-                : "bg-surface-border"
-          }`}
-        />
-        <div>
-          <span className="text-xs font-mono text-text-primary block">{integration.displayName}</span>
-          <span className="text-[10px] font-mono text-text-muted">{statusText}</span>
+    <>
+      <div className="flex items-center justify-between px-3 py-2.5 bg-surface-2">
+        <div className="flex items-center gap-2.5">
+          <span
+            className={`w-2 h-2 rounded-full shrink-0 ${
+              isConnected
+                ? "bg-signal-success"
+                : canConnect
+                  ? "bg-signal-warning"
+                  : "bg-surface-border"
+            }`}
+          />
+          <div>
+            <span className="text-xs font-mono text-text-primary block">{integration.displayName}</span>
+            <span className="text-[10px] font-mono text-text-muted">{statusText}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {isConnected && (
+            <button
+              onClick={() => setConfirmOpen(true)}
+              className="px-2 py-1 text-[10px] font-mono font-medium text-text-muted hover:text-signal-error hover:bg-signal-error/10 transition-colors cursor-pointer"
+            >
+              Disconnect
+            </button>
+          )}
+          {canConnect && (
+            <button
+              onClick={onConnect}
+              className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
+            >
+              {integration.status === "expired" || integration.status === "check_failed" ? "Reconnect" : "Connect"}
+            </button>
+          )}
         </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        {isConnected && (
-          <button
-            onClick={onDisconnect}
-            className="px-2 py-1 text-[10px] font-mono font-medium text-text-muted hover:text-signal-error hover:bg-signal-error/10 transition-colors cursor-pointer"
-          >
-            Disconnect
-          </button>
-        )}
-        {canConnect && (
-          <button
-            onClick={onConnect}
-            className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
-          >
-            {integration.status === "expired" || integration.status === "check_failed" ? "Reconnect" : "Connect"}
-          </button>
-        )}
-      </div>
-    </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Disconnect Integration"
+        message={`Remove ${integration.displayName} tokens? You will need to re-authorize to use this integration again.`}
+        confirmLabel="Disconnect"
+        variant="danger"
+        onConfirm={() => { setConfirmOpen(false); onDisconnect(); }}
+        onCancel={() => setConfirmOpen(false)}
+      />
+    </>
   );
 }

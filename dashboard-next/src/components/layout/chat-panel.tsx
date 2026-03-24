@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAgentStore } from "@/lib/agent-store";
 import { Message, sendMessage } from "@/lib/api";
 import { useMessages } from "@/lib/use-messages";
@@ -12,6 +13,7 @@ import { agentColor } from "@/lib/agent-colors";
 export function ChatPanel() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [clearConfirm, setClearConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const userScrolledRef = useRef(false);
@@ -126,21 +128,32 @@ export function ChatPanel() {
         <div className="flex items-center gap-2">
           {selectedAgent && messages.length > 0 && (
             <button
-              onClick={async () => {
-                if (!confirm("Clear chat history?")) return;
-                await fetch(`/api/messages?group=${selectedAgent.folder}`, { method: "DELETE" });
-                clearMessages();
-              }}
-              className="p-1.5 text-text-muted hover:text-signal-error transition-colors cursor-pointer"
-              aria-label="Clear chat"
-              title="Clear chat history"
+              onClick={() => setClearConfirm(true)}
+              className="flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono font-medium uppercase tracking-wider text-text-muted hover:text-signal-error transition-colors cursor-pointer"
+              aria-label="Clear chat history"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
               </svg>
+              Clear
             </button>
           )}
+          <ConfirmDialog
+            open={clearConfirm}
+            title="Clear Chat"
+            message={`Delete all messages with ${agentName}? This cannot be undone.`}
+            confirmLabel="Clear"
+            variant="danger"
+            onConfirm={async () => {
+              setClearConfirm(false);
+              if (selectedAgent) {
+                await fetch(`/api/messages?group=${selectedAgent.folder}`, { method: "DELETE" });
+                clearMessages();
+              }
+            }}
+            onCancel={() => setClearConfirm(false)}
+          />
           <select className="hidden md:block bg-surface-2 text-text-secondary text-xs font-mono px-3 py-1.5 rounded-lg border border-surface-border appearance-none cursor-pointer">
             <option>Claude Sonnet 4</option>
             <option>Claude Opus 4</option>

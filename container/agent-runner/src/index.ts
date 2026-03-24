@@ -372,14 +372,21 @@ function waitForIpcMessage(): Promise<string | null> {
 }
 
 const GOOGLE_DRIVE_CREDS_PATH = path.join(HOME_DIR, '.google-drive-mcp', 'gcp-oauth.keys.json');
+const GOOGLE_DRIVE_TOKENS_PATH = path.join(HOME_DIR, '.google-drive-mcp', 'credentials.json');
 
-function readGoogleDriveCredentials(): { clientId: string; clientSecret: string } | null {
+function readGoogleDriveCredentials(): { clientId: string; clientSecret: string; refreshToken: string } | null {
   try {
     const config = JSON.parse(fs.readFileSync(GOOGLE_DRIVE_CREDS_PATH, 'utf-8'));
     const creds = config.installed ?? config.web;
     const clientId = creds?.client_id;
     const clientSecret = creds?.client_secret;
-    if (clientId && clientSecret) return { clientId, clientSecret };
+    if (!clientId || !clientSecret) return null;
+
+    const tokens = JSON.parse(fs.readFileSync(GOOGLE_DRIVE_TOKENS_PATH, 'utf-8'));
+    const refreshToken = tokens?.refresh_token;
+    if (!refreshToken) return null;
+
+    return { clientId, clientSecret, refreshToken };
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code !== 'ENOENT') {
@@ -495,18 +502,29 @@ function buildMcpServers(
     },
   };
 
-  // Google Drive — available to all agents
+  // Google Drive — write a temp env file, then spawn mcp-google-drive
+  // SDK may not pass env vars correctly to MCP subprocesses
   const driveCreds = readGoogleDriveCredentials();
   if (driveCreds) {
+    log('Drive MCP: credentials found, configuring server');
+    // Write credentials to a temp env script that the wrapper reads
+    const driveEnvPath = path.join(process.env.TEMP || process.env.TMPDIR || '/tmp', '.nanoclaw-drive-env.json');
+    fs.writeFileSync(driveEnvPath, JSON.stringify({
+      GOOGLE_CLIENT_ID: driveCreds.clientId,
+      GOOGLE_CLIENT_SECRET: driveCreds.clientSecret,
+      GOOGLE_REFRESH_TOKEN: driveCreds.refreshToken,
+    }));
+    // node -e script: read env from file, set on process.env, spawn npx
+    const script = [
+      `Object.assign(process.env,JSON.parse(require('fs').readFileSync(${JSON.stringify(driveEnvPath)},'utf8')))`,
+      `require('child_process').spawn(process.platform==='win32'?'npx.cmd':'npx',['-y','mcp-google-drive'],{stdio:'inherit'}).on('exit',c=>process.exit(c||0))`,
+    ].join(';');
     servers.drive = {
-      command: 'npx',
-      args: ['-y', '@anthropic-ai/google-drive-mcp'],
-      env: {
-        GDRIVE_CREDS_DIR: path.join(HOME_DIR, '.google-drive-mcp'),
-        CLIENT_ID: driveCreds.clientId,
-        CLIENT_SECRET: driveCreds.clientSecret,
-      },
+      command: 'node',
+      args: ['-e', script],
     };
+  } else {
+    log('Drive MCP: no credentials found, skipping');
   }
 
   const sheetsCreds = readGoogleSheetsCredentials();
