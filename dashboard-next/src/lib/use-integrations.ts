@@ -29,6 +29,12 @@ const PROVIDERS = [
     authPath: "/api/auth/google-sheets",
     postMessageId: "gsheets-connected",
   },
+  {
+    name: "google-drive",
+    displayName: "Google Drive",
+    authPath: "/api/auth/google-drive",
+    postMessageId: "gdrive-connected",
+  },
 ] as const;
 
 export function useIntegrations() {

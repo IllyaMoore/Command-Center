@@ -190,8 +190,7 @@ export function Header({
                             className={`w-2 h-2 rounded-full shrink-0 ${
                               isConnected
                                 ? "bg-signal-success"
-                                : integration.status === "expired" ||
-                                    integration.status === "check_failed"
+                                : canConnect
                                   ? "bg-signal-warning"
                                   : "bg-surface-border"
                             }`}

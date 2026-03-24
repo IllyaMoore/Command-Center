@@ -371,6 +371,24 @@ function waitForIpcMessage(): Promise<string | null> {
   });
 }
 
+const GOOGLE_DRIVE_CREDS_PATH = path.join(HOME_DIR, '.google-drive-mcp', 'gcp-oauth.keys.json');
+
+function readGoogleDriveCredentials(): { clientId: string; clientSecret: string } | null {
+  try {
+    const config = JSON.parse(fs.readFileSync(GOOGLE_DRIVE_CREDS_PATH, 'utf-8'));
+    const creds = config.installed ?? config.web;
+    const clientId = creds?.client_id;
+    const clientSecret = creds?.client_secret;
+    if (clientId && clientSecret) return { clientId, clientSecret };
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      console.error('Failed to read Google Drive credentials:', err);
+    }
+  }
+  return null;
+}
+
 const GOOGLE_SHEETS_CREDS_DIR = path.join(HOME_DIR, '.google-sheets-mcp');
 const GOOGLE_SHEETS_CREDS_PATH = path.join(GOOGLE_SHEETS_CREDS_DIR, 'gcp-oauth.keys.json');
 
@@ -402,6 +420,7 @@ function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string
     'mcp__nanoclaw__*',
     'mcp__gmail__*',
     'mcp__calendar__*',
+    'mcp__drive__*',
   ];
 
   if (containerInput.groupFolder === 'finance' || containerInput.isMain) {
@@ -475,6 +494,20 @@ function buildMcpServers(
       },
     },
   };
+
+  // Google Drive — available to all agents
+  const driveCreds = readGoogleDriveCredentials();
+  if (driveCreds) {
+    servers.drive = {
+      command: 'npx',
+      args: ['-y', '@anthropic-ai/google-drive-mcp'],
+      env: {
+        GDRIVE_CREDS_DIR: path.join(HOME_DIR, '.google-drive-mcp'),
+        CLIENT_ID: driveCreds.clientId,
+        CLIENT_SECRET: driveCreds.clientSecret,
+      },
+    };
+  }
 
   const sheetsCreds = readGoogleSheetsCredentials();
   if (sheetsCreds && (containerInput.groupFolder === 'finance' || containerInput.isMain)) {

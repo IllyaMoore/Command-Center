@@ -36,6 +36,11 @@ import {
   getSheetsAuthUrl,
   handleSheetsOAuthCallback,
 } from './api/sheets.js';
+import {
+  getDriveAuthStatus,
+  getDriveAuthUrl,
+  handleDriveOAuthCallback,
+} from './api/drive.js';
 import { getDashboardQueue } from './context.js';
 
 // OAuth provider configurations for the shared callback handler
@@ -76,6 +81,15 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getSheetsAuthStatus,
     getAuthUrl: getSheetsAuthUrl,
     handleCallback: handleSheetsOAuthCallback,
+  },
+  {
+    basePath: '/api/auth/google-drive',
+    displayName: 'Google Drive',
+    postMessageId: 'gdrive-connected',
+    credentialHint: 'gcp-oauth.keys.json',
+    getStatus: getDriveAuthStatus,
+    getAuthUrl: getDriveAuthUrl,
+    handleCallback: handleDriveOAuthCallback,
   },
 ];
 
