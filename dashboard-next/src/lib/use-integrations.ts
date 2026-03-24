@@ -7,6 +7,7 @@ export interface Integration {
   displayName: string;
   authPath: string;
   postMessageId: string;
+  featured: boolean;
   status: "connected" | "expired" | "missing_tokens" | "check_failed" | "not_configured" | "error";
 }
 
@@ -16,24 +17,28 @@ const PROVIDERS = [
     displayName: "Google Calendar",
     authPath: "/api/auth/google-calendar",
     postMessageId: "gcal-connected",
+    featured: true,
   },
   {
     name: "gmail",
     displayName: "Gmail",
     authPath: "/api/auth/gmail",
     postMessageId: "gmail-connected",
-  },
-  {
-    name: "google-sheets",
-    displayName: "Google Sheets",
-    authPath: "/api/auth/google-sheets",
-    postMessageId: "gsheets-connected",
+    featured: true,
   },
   {
     name: "google-drive",
     displayName: "Google Drive",
     authPath: "/api/auth/google-drive",
     postMessageId: "gdrive-connected",
+    featured: true,
+  },
+  {
+    name: "google-sheets",
+    displayName: "Google Sheets",
+    authPath: "/api/auth/google-sheets",
+    postMessageId: "gsheets-connected",
+    featured: false,
   },
 ] as const;
 

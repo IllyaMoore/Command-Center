@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useTheme } from "@/lib/theme";
-import { useIntegrations } from "@/lib/use-integrations";
+import { useIntegrations, type Integration } from "@/lib/use-integrations";
 import { CalendarPanel } from "@/components/calendar/calendar-panel";
 import { ActivityPanel } from "@/components/activity/activity-panel";
 
@@ -16,6 +16,7 @@ export function Header({
 }) {
   const { theme, toggle } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuExpanded, setMenuExpanded] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -173,59 +174,47 @@ export function Header({
                 {integrationsLoading ? (
                   <p className="px-3 py-2 text-xs text-text-muted">Loading…</p>
                 ) : (
-                  integrations.map((integration) => {
-                    const isConnected = integration.status === "connected";
-                    const canConnect = ["expired", "missing_tokens", "check_failed"].includes(
-                      integration.status,
-                    );
-                    const isNotConfigured = integration.status === "not_configured";
-
-                    return (
-                      <div
+                  <>
+                    {integrations.filter((i) => i.featured).map((integration) => (
+                      <IntegrationRow
                         key={integration.name}
-                        className="flex items-center justify-between px-3 py-2 rounded-lg hover:bg-surface-2 transition-colors"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span
-                            className={`w-2 h-2 rounded-full shrink-0 ${
-                              isConnected
-                                ? "bg-signal-success"
-                                : canConnect
-                                  ? "bg-signal-warning"
-                                  : "bg-surface-border"
-                            }`}
-                          />
-                          <span className="text-xs font-mono text-text-primary">
-                            {integration.displayName}
+                        integration={integration}
+                        onConnect={() => { connect(integration); setMenuOpen(false); }}
+                      />
+                    ))}
+                    {integrations.some((i) => !i.featured) && (
+                      <>
+                        <button
+                          onClick={() => setMenuExpanded((p) => !p)}
+                          className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-mono text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2">
+                            <span className="flex-1 h-px bg-surface-border w-8" />
+                            {menuExpanded ? "Less" : `+${integrations.filter((i) => !i.featured).length} more`}
+                            <span className="flex-1 h-px bg-surface-border w-8" />
                           </span>
-                        </div>
-                        {isConnected ? (
-                          <span className="text-[10px] font-mono text-signal-success">
-                            Connected
-                          </span>
-                        ) : isNotConfigured ? (
-                          <span className="text-[10px] font-mono text-text-muted">
-                            Not configured
-                          </span>
-                        ) : canConnect ? (
-                          <button
-                            onClick={() => {
-                              connect(integration);
-                              setMenuOpen(false);
-                            }}
-                            className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors cursor-pointer"
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            className={`transition-transform duration-200 ${menuExpanded ? "rotate-180" : ""}`}
                           >
-                            {integration.status === "expired" ||
-                            integration.status === "check_failed"
-                              ? "Reconnect"
-                              : "Connect"}
-                          </button>
-                        ) : (
-                          <span className="text-[10px] font-mono text-signal-error">Error</span>
-                        )}
-                      </div>
-                    );
-                  })
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </button>
+                        {menuExpanded && integrations.filter((i) => !i.featured).map((integration) => (
+                          <IntegrationRow
+                            key={integration.name}
+                            integration={integration}
+                            onConnect={() => { connect(integration); setMenuOpen(false); }}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -233,5 +222,45 @@ export function Header({
         </div>
       </div>
     </header>
+  );
+}
+
+/* ── Integration Row (shared by header menu) ── */
+function IntegrationRow({ integration, onConnect }: { integration: Integration; onConnect: () => void }) {
+  const isConnected = integration.status === "connected";
+  const canConnect = ["expired", "missing_tokens", "check_failed"].includes(integration.status);
+  const isNotConfigured = integration.status === "not_configured";
+
+  return (
+    <div className="flex items-center justify-between px-3 py-2 hover:bg-surface-2 transition-colors">
+      <div className="flex items-center gap-2.5">
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            isConnected
+              ? "bg-signal-success"
+              : canConnect
+                ? "bg-signal-warning"
+                : "bg-surface-border"
+          }`}
+        />
+        <span className="text-xs font-mono text-text-primary">
+          {integration.displayName}
+        </span>
+      </div>
+      {isConnected ? (
+        <span className="text-[10px] font-mono text-signal-success">Connected</span>
+      ) : isNotConfigured ? (
+        <span className="text-[10px] font-mono text-text-muted">Not configured</span>
+      ) : canConnect ? (
+        <button
+          onClick={onConnect}
+          className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
+        >
+          {integration.status === "expired" || integration.status === "check_failed" ? "Reconnect" : "Connect"}
+        </button>
+      ) : (
+        <span className="text-[10px] font-mono text-signal-error">Error</span>
+      )}
+    </div>
   );
 }

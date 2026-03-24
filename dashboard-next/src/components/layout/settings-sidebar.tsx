@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useAgentStore } from "@/lib/agent-store";
-import { useIntegrations } from "@/lib/use-integrations";
+import { useIntegrations, type Integration } from "@/lib/use-integrations";
 
 type Tab = "behavior" | "capabilities" | "automations" | "advanced";
 
@@ -124,6 +124,7 @@ function CapabilitiesTab() {
   const [execMode, setExecMode] = useState<"off" | "ask" | "auto">("ask");
   const [webAccess, setWebAccess] = useState(true);
   const [fileTools, setFileTools] = useState(true);
+  const [mcpExpanded, setMcpExpanded] = useState(false);
 
   const execDescriptions = {
     off: "Agent cannot execute commands",
@@ -146,61 +147,34 @@ function CapabilitiesTab() {
           </div>
         ) : (
           <div className="space-y-2">
-            {integrations.map((integration) => {
-              const isConnected = integration.status === "connected";
-              const canConnect = ["expired", "missing_tokens", "check_failed"].includes(
-                integration.status,
-              );
-              const isNotConfigured = integration.status === "not_configured";
-
-              return (
-                <div
-                  key={integration.name}
-                  className="flex items-center justify-between px-3 py-2.5 bg-surface-2 rounded-lg"
+            {integrations.filter((i) => i.featured).map((integration) => (
+              <SettingsIntegrationRow key={integration.name} integration={integration} onConnect={() => connect(integration)} />
+            ))}
+            {integrations.some((i) => !i.featured) && (
+              <>
+                <button
+                  onClick={() => setMcpExpanded((p) => !p)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors cursor-pointer"
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        isConnected
-                          ? "bg-signal-success"
-                          : canConnect
-                            ? "bg-signal-warning"
-                            : "bg-surface-border"
-                      }`}
-                    />
-                    <div>
-                      <span className="text-xs font-mono text-text-primary block">
-                        {integration.displayName}
-                      </span>
-                      <span className="text-[10px] font-mono text-text-muted">
-                        {isConnected
-                          ? "Connected"
-                          : isNotConfigured
-                            ? "Credentials not configured"
-                            : integration.status === "expired"
-                              ? "Token expired"
-                              : integration.status === "missing_tokens"
-                                ? "Not authorized"
-                                : integration.status === "check_failed"
-                                  ? "Check failed"
-                                  : "Error"}
-                      </span>
-                    </div>
-                  </div>
-                  {canConnect && (
-                    <button
-                      onClick={() => connect(integration)}
-                      className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors cursor-pointer"
-                    >
-                      {integration.status === "expired" ||
-                      integration.status === "check_failed"
-                        ? "Reconnect"
-                        : "Connect"}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
+                  <span className="flex-1 h-px bg-surface-border" />
+                  {mcpExpanded ? "Less" : `+${integrations.filter((i) => !i.featured).length} more`}
+                  <svg
+                    width="10"
+                    height="10"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    className={`transition-transform duration-200 ${mcpExpanded ? "rotate-180" : ""}`}
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+                {mcpExpanded && integrations.filter((i) => !i.featured).map((integration) => (
+                  <SettingsIntegrationRow key={integration.name} integration={integration} onConnect={() => connect(integration)} />
+                ))}
+              </>
+            )}
           </div>
         )}
       </section>
@@ -332,6 +306,53 @@ function AdvancedTab() {
           Removes {selectedAgent?.name} and all its cron jobs.
         </p>
       </section>
+    </div>
+  );
+}
+
+/* ── Settings Integration Row ── */
+function SettingsIntegrationRow({ integration, onConnect }: { integration: Integration; onConnect: () => void }) {
+  const isConnected = integration.status === "connected";
+  const canConnect = ["expired", "missing_tokens", "check_failed"].includes(integration.status);
+  const isNotConfigured = integration.status === "not_configured";
+
+  const statusText = isConnected
+    ? "Connected"
+    : isNotConfigured
+      ? "Credentials not configured"
+      : integration.status === "expired"
+        ? "Token expired"
+        : integration.status === "missing_tokens"
+          ? "Not authorized"
+          : integration.status === "check_failed"
+            ? "Check failed"
+            : "Error";
+
+  return (
+    <div className="flex items-center justify-between px-3 py-2.5 bg-surface-2">
+      <div className="flex items-center gap-2.5">
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            isConnected
+              ? "bg-signal-success"
+              : canConnect
+                ? "bg-signal-warning"
+                : "bg-surface-border"
+          }`}
+        />
+        <div>
+          <span className="text-xs font-mono text-text-primary block">{integration.displayName}</span>
+          <span className="text-[10px] font-mono text-text-muted">{statusText}</span>
+        </div>
+      </div>
+      {canConnect && (
+        <button
+          onClick={onConnect}
+          className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
+        >
+          {integration.status === "expired" || integration.status === "check_failed" ? "Reconnect" : "Connect"}
+        </button>
+      )}
     </div>
   );
 }
