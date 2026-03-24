@@ -388,9 +388,13 @@ function readGoogleDriveCredentials(): { clientId: string; clientSecret: string;
 
     return { clientId, clientSecret, refreshToken };
   } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== 'ENOENT') {
-      console.error('Failed to read Google Drive credentials:', err);
+    if (err instanceof SyntaxError) {
+      console.error('Failed to parse Google Drive credentials (invalid JSON):', err.message);
+    } else {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT') {
+        console.error('Failed to read Google Drive credentials:', err);
+      }
     }
   }
   return null;
@@ -507,16 +511,24 @@ function buildMcpServers(
   const driveCreds = readGoogleDriveCredentials();
   if (driveCreds) {
     log('Drive MCP: credentials found, configuring server');
-    // Write credentials to a temp env script that the wrapper reads
-    const driveEnvPath = path.join(process.env.TEMP || process.env.TMPDIR || '/tmp', '.nanoclaw-drive-env.json');
-    fs.writeFileSync(driveEnvPath, JSON.stringify({
-      GOOGLE_CLIENT_ID: driveCreds.clientId,
-      GOOGLE_CLIENT_SECRET: driveCreds.clientSecret,
-      GOOGLE_REFRESH_TOKEN: driveCreds.refreshToken,
-    }));
+    // Write credentials to a randomized temp file with restricted permissions
+    const tmpDir = process.env.TEMP || process.env.TMPDIR || '/tmp';
+    const driveEnvPath = path.join(tmpDir, `.nanoclaw-drive-${process.pid}-${Date.now()}.json`);
+    try {
+      fs.writeFileSync(driveEnvPath, JSON.stringify({
+        GOOGLE_CLIENT_ID: driveCreds.clientId,
+        GOOGLE_CLIENT_SECRET: driveCreds.clientSecret,
+        GOOGLE_REFRESH_TOKEN: driveCreds.refreshToken,
+      }), { mode: 0o600 });
+      // Clean up on process exit
+      process.on('exit', () => { try { fs.unlinkSync(driveEnvPath); } catch { /* ignore */ } });
+    } catch (err) {
+      log(`Drive MCP: failed to write env file: ${err instanceof Error ? err.message : String(err)}`);
+    }
     // node -e script: read env from file, set on process.env, spawn npx
     const script = [
       `Object.assign(process.env,JSON.parse(require('fs').readFileSync(${JSON.stringify(driveEnvPath)},'utf8')))`,
+      `try{require('fs').unlinkSync(${JSON.stringify(driveEnvPath)})}catch{}`,
       `require('child_process').spawn(process.platform==='win32'?'npx.cmd':'npx',['-y','mcp-google-drive'],{stdio:'inherit'}).on('exit',c=>process.exit(c||0))`,
     ].join(';');
     servers.drive = {

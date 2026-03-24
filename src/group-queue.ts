@@ -179,7 +179,7 @@ export class GroupQueue {
     if (groupFolder) state.groupFolder = groupFolder;
 
     proc.on('exit', (code) => {
-      logger.info({ groupJid, code, groupFolder }, 'Agent process exited, marking idle');
+      logger.info({ groupJid, code, groupFolder }, 'Agent process exited');
       state.active = false;
       state.process = null;
       state.containerName = null;
@@ -187,6 +187,12 @@ export class GroupQueue {
     });
   }
 
+  /**
+   * Mark an agent as idle for UI purposes (after first response, while process
+   * stays alive for follow-ups). Sets active=false so the dashboard shows "Idle".
+   * activeCount is NOT touched here — it is managed exclusively by
+   * runForGroup/runTask finally blocks (increment on start, decrement on end).
+   */
   markIdle(groupJid: string, groupFolder?: string): void {
     // Find state by JID or folder
     const state = this.groups.get(groupJid)

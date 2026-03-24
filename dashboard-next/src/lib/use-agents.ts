@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Agent, fetchAgents } from "./api";
 
 export function useAgents() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -29,9 +28,9 @@ export function useAgents() {
   // SSE for real-time updates
   useEffect(() => {
     const es = new EventSource("/api/events");
-    eventSourceRef.current = es;
 
     es.onmessage = (event) => {
+      if (!event.data || event.data.startsWith(":")) return;
       try {
         const data = JSON.parse(event.data);
         // SSE sends { type: "agents", agents: [...] } every 2s
@@ -53,16 +52,17 @@ export function useAgents() {
             return changed ? updated : prev;
           });
         }
-      } catch {
-        // ignore parse errors
+      } catch (err) {
+        console.error("SSE parse error:", err);
       }
     };
 
-    es.onerror = () => {};
+    es.onerror = () => {
+      setError("Connection lost — retrying...");
+    };
 
     return () => {
       es.close();
-      eventSourceRef.current = null;
     };
   }, []);
 

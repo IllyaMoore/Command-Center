@@ -31,6 +31,7 @@ export function useActivity() {
     esRef.current = es;
 
     es.onmessage = (event) => {
+      if (!event.data || event.data.startsWith(":")) return;
       try {
         const data = JSON.parse(event.data);
         if (data.type === "initial") {
@@ -39,8 +40,8 @@ export function useActivity() {
         } else if (data.type === "update") {
           setItems((prev) => [...(data.items ?? []), ...prev].slice(0, 100));
         }
-      } catch {
-        // heartbeat or parse error
+      } catch (err) {
+        console.error("Activity SSE parse error:", err);
       }
     };
 

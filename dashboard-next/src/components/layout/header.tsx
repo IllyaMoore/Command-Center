@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useTheme } from "@/lib/theme";
-import { useIntegrations, type Integration } from "@/lib/use-integrations";
+import { useIntegrations, STATUS_LABELS, type Integration } from "@/lib/use-integrations";
 import { CalendarPanel } from "@/components/calendar/calendar-panel";
 import { ActivityPanel } from "@/components/activity/activity-panel";
 
@@ -229,7 +229,8 @@ export function Header({
 function IntegrationRow({ integration, onConnect }: { integration: Integration; onConnect: () => void }) {
   const isConnected = integration.status === "connected";
   const canConnect = ["expired", "missing_tokens", "check_failed"].includes(integration.status);
-  const isNotConfigured = integration.status === "not_configured";
+  const isNotConfigured = integration.status === "missing_credentials";
+  const statusText = STATUS_LABELS[integration.status] ?? "Error";
 
   return (
     <div className="flex items-center justify-between px-3 py-2 hover:bg-surface-2 transition-colors">
@@ -248,9 +249,9 @@ function IntegrationRow({ integration, onConnect }: { integration: Integration; 
         </span>
       </div>
       {isConnected ? (
-        <span className="text-[10px] font-mono text-signal-success">Connected</span>
+        <span className="text-[10px] font-mono text-signal-success">{statusText}</span>
       ) : isNotConfigured ? (
-        <span className="text-[10px] font-mono text-text-muted">Not configured</span>
+        <span className="text-[10px] font-mono text-text-muted">{statusText}</span>
       ) : canConnect ? (
         <button
           onClick={onConnect}
@@ -259,7 +260,7 @@ function IntegrationRow({ integration, onConnect }: { integration: Integration; 
           {integration.status === "expired" || integration.status === "check_failed" ? "Reconnect" : "Connect"}
         </button>
       ) : (
-        <span className="text-[10px] font-mono text-signal-error">Error</span>
+        <span className="text-[10px] font-mono text-signal-error">{statusText}</span>
       )}
     </div>
   );

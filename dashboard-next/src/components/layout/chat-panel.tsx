@@ -45,12 +45,12 @@ export function ChatPanel() {
     setSentAt(null);
   }, [selectedAgent?.jid]);
 
-  // Auto-scroll to bottom on new messages (unless user scrolled up)
+  // Auto-scroll to bottom on new messages or typing indicator (unless user scrolled up)
   useEffect(() => {
     if (!userScrolledRef.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages]);
+  }, [messages, waitingForReply]);
 
   // Detect user scroll
   const handleScroll = useCallback(() => {
@@ -333,7 +333,7 @@ function ChatBubble({
         <div
           className={`rounded-2xl rounded-tl-md px-4 py-2.5 max-w-[85%] inline-block ${bgClass}`}
         >
-          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-p:my-1 prose-pre:bg-surface-3 prose-pre:rounded-lg prose-pre:overflow-x-auto prose-code:text-xs prose-code:font-mono break-words overflow-hidden">
+          <div className="text-sm text-text-primary prose prose-sm max-w-none prose-p:my-1.5 prose-headings:mt-3 prose-headings:mb-1.5 prose-headings:text-sm prose-headings:font-semibold prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-pre:bg-surface-3 prose-pre:rounded-lg prose-pre:overflow-x-auto prose-pre:my-2 prose-code:text-xs prose-code:font-mono break-words overflow-hidden">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {message.content}
             </ReactMarkdown>

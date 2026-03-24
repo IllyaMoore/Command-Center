@@ -28,7 +28,7 @@ export async function createAgent(
     body: JSON.stringify({ name, folder }),
   });
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to create agent: ${res.status}`);
   }
   return res.json();
@@ -39,7 +39,7 @@ export async function deleteAgent(folder: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to delete agent: ${res.status}`);
   }
 }
@@ -80,7 +80,7 @@ export async function sendMessage(
     body: JSON.stringify({ text, group }),
   });
   if (!res.ok) {
-    const err = await res.json();
+    const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to send message: ${res.status}`);
   }
 }

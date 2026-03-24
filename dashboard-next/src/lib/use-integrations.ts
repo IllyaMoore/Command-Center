@@ -2,14 +2,25 @@
 
 import { useState, useEffect, useCallback } from "react";
 
+export type IntegrationStatus = "connected" | "expired" | "missing_tokens" | "check_failed" | "missing_credentials" | "error";
+
 export interface Integration {
   name: string;
   displayName: string;
   authPath: string;
   postMessageId: string;
   featured: boolean;
-  status: "connected" | "expired" | "missing_tokens" | "check_failed" | "not_configured" | "error";
+  status: IntegrationStatus;
 }
+
+export const STATUS_LABELS: Record<IntegrationStatus, string> = {
+  connected: "Connected",
+  missing_credentials: "Credentials not configured",
+  expired: "Token expired",
+  missing_tokens: "Not authorized",
+  check_failed: "Check failed",
+  error: "Error",
+};
 
 const PROVIDERS = [
   {
@@ -47,12 +58,14 @@ export function useIntegrations() {
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    const validStatuses = new Set<IntegrationStatus>(["connected", "expired", "missing_tokens", "check_failed", "missing_credentials"]);
     const results = await Promise.all(
       PROVIDERS.map(async (p) => {
         try {
           const res = await fetch(`${p.authPath}/status`);
           const data = await res.json();
-          return { ...p, status: data.status as Integration["status"] };
+          const status = validStatuses.has(data.status) ? data.status as IntegrationStatus : "error" as const;
+          return { ...p, status };
         } catch {
           return { ...p, status: "error" as const };
         }
@@ -82,7 +95,14 @@ export function useIntegrations() {
 
   const disconnect = useCallback(
     async (integration: Integration) => {
-      await fetch(`${integration.authPath}/disconnect`, { method: "POST" });
+      try {
+        const res = await fetch(`${integration.authPath}/disconnect`, { method: "POST" });
+        if (!res.ok) {
+          console.error(`Disconnect failed: ${res.status}`);
+        }
+      } catch (err) {
+        console.error("Disconnect failed:", err);
+      }
       refresh();
     },
     [refresh],

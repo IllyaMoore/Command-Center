@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAgentStore } from "@/lib/agent-store";
-import { useIntegrations, type Integration } from "@/lib/use-integrations";
+import { useIntegrations, STATUS_LABELS, type Integration } from "@/lib/use-integrations";
 
 type Tab = "behavior" | "capabilities" | "automations" | "advanced";
 
@@ -319,19 +319,8 @@ function SettingsIntegrationRow({ integration, onConnect, onDisconnect }: { inte
   const [confirmOpen, setConfirmOpen] = useState(false);
   const isConnected = integration.status === "connected";
   const canConnect = ["expired", "missing_tokens", "check_failed"].includes(integration.status);
-  const isNotConfigured = integration.status === "not_configured";
 
-  const statusText = isConnected
-    ? "Connected"
-    : isNotConfigured
-      ? "Credentials not configured"
-      : integration.status === "expired"
-        ? "Token expired"
-        : integration.status === "missing_tokens"
-          ? "Not authorized"
-          : integration.status === "check_failed"
-            ? "Check failed"
-            : "Error";
+  const statusText = STATUS_LABELS[integration.status] ?? "Error";
 
   return (
     <>

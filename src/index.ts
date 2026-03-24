@@ -631,6 +631,7 @@ async function main(): Promise<void> {
           queue.markIdle(chatJid, groupFolder);
 
           if (output.result) {
+            const content = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
             if (isDashboardOnly) {
               // Dashboard-only agents: store response in DB, no channel delivery
               storeMessageDirect({
@@ -638,7 +639,7 @@ async function main(): Promise<void> {
                 chat_jid: chatJid,
                 sender: groupFolder,
                 sender_name: group.name,
-                content: output.result,
+                content,
                 timestamp: new Date().toISOString(),
                 is_from_me: false,
                 is_bot_message: true,
@@ -659,7 +660,19 @@ async function main(): Promise<void> {
           }
         },
         () => {
-          if (!isDashboardOnly) {
+          if (isDashboardOnly) {
+            // Store warning as system message for dashboard visibility
+            storeMessageDirect({
+              id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              chat_jid: chatJid,
+              sender: 'system',
+              sender_name: 'System',
+              content: WARNING_MESSAGE,
+              timestamp: new Date().toISOString(),
+              is_from_me: false,
+              is_bot_message: true,
+            });
+          } else {
             sendToChannel(chatJid, WARNING_MESSAGE).catch((err) => {
               logger.warn({ chatJid, err }, 'Failed to send dashboard warning notification');
             });
@@ -667,7 +680,18 @@ async function main(): Promise<void> {
         },
         (hadOutput: boolean) => {
           if (hadOutput) return;
-          if (!isDashboardOnly) {
+          if (isDashboardOnly) {
+            storeMessageDirect({
+              id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              chat_jid: chatJid,
+              sender: 'system',
+              sender_name: 'System',
+              content: TIMEOUT_MESSAGE,
+              timestamp: new Date().toISOString(),
+              is_from_me: false,
+              is_bot_message: true,
+            });
+          } else {
             sendToChannel(chatJid, TIMEOUT_MESSAGE).catch((err) => {
               logger.warn({ chatJid, err }, 'Failed to send dashboard timeout notification');
             });

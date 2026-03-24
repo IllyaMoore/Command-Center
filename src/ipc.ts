@@ -51,7 +51,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
     for (const dir of dirs) {
       const inputDir = path.join(ipcBaseDir, dir, 'input');
       if (!fs.existsSync(inputDir)) continue;
-      const files = fs.readdirSync(inputDir).filter((f) => f.endsWith('-dashboard.json'));
+      const files = fs.readdirSync(inputDir).filter((f) => f.endsWith('.json'));
       for (const file of files) {
         fs.unlinkSync(path.join(inputDir, file));
         cleaned++;

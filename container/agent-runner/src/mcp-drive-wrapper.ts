@@ -4,7 +4,6 @@
  * and spawns mcp-google-drive with the correct env vars.
  * This avoids relying on the SDK to pass env vars to MCP servers.
  */
-import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';

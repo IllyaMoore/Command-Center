@@ -105,8 +105,8 @@ const oauthProviders: OAuthProvider[] = [
 
 function oauthSuccessHtml(displayName: string, postMessageId: string): string {
   return `<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
-    <div style="text-align:center"><h2>${displayName} connected</h2><p>You can close this tab.</p>
-    <script>window.opener&&window.opener.postMessage('${postMessageId}',window.location.origin);setTimeout(()=>window.close(),2000)</script>
+    <div style="text-align:center"><h2>${escapeHtml(displayName)} connected</h2><p>You can close this tab.</p>
+    <script>window.opener&&window.opener.postMessage(${JSON.stringify(postMessageId)},window.location.origin);setTimeout(()=>window.close(),2000)</script>
     </div></body></html>`;
 }
 
@@ -186,11 +186,17 @@ export async function handleApiRoute(
   const pathname = url.pathname;
   const method = req.method || 'GET';
 
-  // Parse request body for POST requests
+  // Parse request body for POST requests (1MB limit)
   const parseBody = (): Promise<Record<string, unknown>> => {
     return new Promise((resolve, reject) => {
       let body = '';
-      req.on('data', (chunk) => (body += chunk));
+      req.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 1_000_000) {
+          reject(new Error('Request body too large'));
+          req.destroy();
+        }
+      });
       req.on('end', () => {
         try {
           resolve(body ? JSON.parse(body) : {});
@@ -267,8 +273,11 @@ export async function handleApiRoute(
             pendingTaskCount: 0,
           });
         }
-      } catch {
-        // groups/ dir may not exist
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException).code;
+        if (code !== 'ENOENT') {
+          logger.error({ err }, 'Failed to read groups directory for unregistered agents');
+        }
       }
     }
 
@@ -305,16 +314,22 @@ export async function handleApiRoute(
 
     // Create group directory with default CLAUDE.md
     const groupDir = path.join(GROUPS_DIR, folder);
-    if (!fs.existsSync(groupDir)) {
-      fs.mkdirSync(groupDir, { recursive: true });
-    }
-    const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
-    if (!fs.existsSync(claudeMdPath)) {
-      fs.writeFileSync(
-        claudeMdPath,
-        `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
-        'utf-8',
-      );
+    try {
+      if (!fs.existsSync(groupDir)) {
+        fs.mkdirSync(groupDir, { recursive: true });
+      }
+      const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+      if (!fs.existsSync(claudeMdPath)) {
+        fs.writeFileSync(
+          claudeMdPath,
+          `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
+          'utf-8',
+        );
+      }
+    } catch (err) {
+      logger.error({ err, folder }, 'Failed to create agent directory');
+      json({ error: 'Failed to create agent directory on disk' }, 500);
+      return;
     }
 
     // Register in database
@@ -333,9 +348,9 @@ export async function handleApiRoute(
 
   // ─── OPC-126: DELETE /api/agents/:folder ───
   if (pathname.startsWith('/api/agents/') && method === 'DELETE') {
-    const folder = pathname.split('/api/agents/')[1];
-    if (!folder) {
-      json({ error: 'folder is required' }, 400);
+    const folder = decodeURIComponent(pathname.split('/api/agents/')[1]);
+    if (!folder || !/^[a-z0-9_-]+$/.test(folder)) {
+      json({ error: 'Invalid folder name' }, 400);
       return;
     }
 
@@ -346,15 +361,20 @@ export async function handleApiRoute(
       return;
     }
 
-    const [jid] = entry;
-    deleteRegisteredGroup(jid);
-
-    // Archive group directory (rename with .archived suffix)
+    // Archive group directory first (before DB delete, so failure doesn't leave ghost)
     const groupDir = path.join(GROUPS_DIR, folder);
     const archiveDir = path.join(GROUPS_DIR, `${folder}.archived-${Date.now()}`);
-    if (fs.existsSync(groupDir)) {
-      fs.renameSync(groupDir, archiveDir);
+    try {
+      if (fs.existsSync(groupDir)) {
+        fs.renameSync(groupDir, archiveDir);
+      }
+    } catch (err) {
+      logger.error({ err, folder }, 'Failed to archive agent directory');
+      // Continue — still delete the DB entry
     }
+
+    const [jid] = entry;
+    deleteRegisteredGroup(jid);
 
     logger.info({ jid, folder }, 'Agent deleted via dashboard');
     json({ deleted: true, folder });

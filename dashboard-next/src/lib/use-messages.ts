@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Message, fetchMessages } from "./api";
 
 export function useMessages(groupFolder: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
-  const eventSourceRef = useRef<EventSource | null>(null);
 
   // Fetch initial messages when group changes
   useEffect(() => {
@@ -22,7 +21,10 @@ export function useMessages(groupFolder: string | null) {
         const sorted = [...msgs].reverse();
         setMessages(sorted);
       })
-      .catch(() => setMessages([]))
+      .catch((err) => {
+        console.error("Failed to load messages:", err);
+        // Keep existing messages rather than clearing on transient error
+      })
       .finally(() => setLoading(false));
   }, [groupFolder]);
 
@@ -31,29 +33,33 @@ export function useMessages(groupFolder: string | null) {
     if (!groupFolder) return;
 
     const es = new EventSource("/api/events");
-    eventSourceRef.current = es;
 
-    const handleMessage = (event: MessageEvent) => {
+    es.onmessage = (event) => {
+      if (!event.data || event.data.startsWith(":")) return;
       try {
         const data = JSON.parse(event.data);
         if (data.type === "messages" || data.type === "activity") {
           // Re-fetch messages for this group to get any new ones
-          fetchMessages(groupFolder, 50).then((latest) => {
-            const sorted = [...latest].reverse();
-            setMessages(sorted);
-          });
+          fetchMessages(groupFolder, 50)
+            .then((latest) => {
+              const sorted = [...latest].reverse();
+              setMessages(sorted);
+            })
+            .catch((err) => {
+              console.error("Failed to refresh messages via SSE:", err);
+            });
         }
-      } catch {
-        // ignore parse errors
+      } catch (err) {
+        console.error("SSE parse error:", err);
       }
     };
 
-    es.onmessage = handleMessage;
-    es.onerror = () => {};
+    es.onerror = () => {
+      // EventSource auto-reconnects
+    };
 
     return () => {
       es.close();
-      eventSourceRef.current = null;
     };
   }, [groupFolder]);
 

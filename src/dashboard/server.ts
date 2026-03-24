@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
+import { DASHBOARD_URL } from '../config.js';
 import { logger } from '../logger.js';
 import { handleApiRoute } from './routes.js';
 
@@ -42,9 +43,10 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   const url = new URL(req.url || '/', `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  // CORS headers for local development
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  // CORS headers — restrict to dashboard origin
+  const allowedOrigin = new URL(DASHBOARD_URL).origin;
+  res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Agent, createAgent, deleteAgent } from "@/lib/api";
 import { useAgentStore } from "@/lib/agent-store";
 import { useAgents } from "@/lib/use-agents";
@@ -135,7 +136,9 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
               No agents found
             </p>
           )}
-          {filtered.map((agent) => (
+          {filtered.map((agent) => {
+            const color = agentColor(agent.folder);
+            return (
             <button
               key={agent.jid}
               onClick={() => { selectAgent(agent); onAgentSelect?.(); }}
@@ -150,7 +153,7 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
               }`}
             >
               {/* Avatar */}
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${agentColor(agent.folder).bg} ${agentColor(agent.folder).text}`}>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold shrink-0 ${color.bg} ${color.text}`}>
                 {agent.name.charAt(0).toUpperCase()}
               </div>
 
@@ -178,7 +181,8 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
                 </div>
               </div>
             </button>
-          ))}
+            );
+          })}
         </div>
       </aside>
 
@@ -190,14 +194,16 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
         />
       )}
 
-      {/* Delete Confirmation Modal */}
-      {deleteTarget && (
-        <DeleteAgentModal
-          agent={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onDelete={() => handleDelete(deleteTarget)}
-        />
-      )}
+      {/* Delete Confirmation */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        title="Delete Agent"
+        message={`Are you sure you want to delete ${deleteTarget?.name ?? "this agent"}? The group directory will be archived, not permanently deleted.`}
+        confirmLabel="Delete"
+        variant="danger"
+        onConfirm={() => { if (deleteTarget) handleDelete(deleteTarget); }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </>
   );
 }
@@ -299,54 +305,3 @@ function CreateAgentModal({
   );
 }
 
-function DeleteAgentModal({
-  agent,
-  onClose,
-  onDelete,
-}: {
-  agent: Agent;
-  onClose: () => void;
-  onDelete: () => Promise<void>;
-}) {
-  const [loading, setLoading] = useState(false);
-
-  const handleDelete = async () => {
-    setLoading(true);
-    try {
-      await onDelete();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-surface-1 rounded-xl border border-surface-border shadow-xl w-96 p-6">
-        <h3 className="font-mono text-sm font-semibold text-signal-error uppercase mb-2">
-          Delete Agent
-        </h3>
-        <p className="text-sm text-text-secondary mb-1">
-          Are you sure you want to delete{" "}
-          <strong className="text-text-primary">{agent.name}</strong>?
-        </p>
-        <p className="text-xs text-text-muted mb-5">
-          The group directory will be archived, not permanently deleted.
-        </p>
-
-        <div className="flex justify-end gap-2">
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            onClick={handleDelete}
-            disabled={loading}
-          >
-            {loading ? "Deleting..." : "Delete"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
