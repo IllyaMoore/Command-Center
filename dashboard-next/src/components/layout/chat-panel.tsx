@@ -17,7 +17,7 @@ export function ChatPanel() {
   const userScrolledRef = useRef(false);
 
   const { selectedAgent } = useAgentStore();
-  const { messages, loading, addOptimistic } = useMessages(
+  const { messages, loading, addOptimistic, clearMessages } = useMessages(
     selectedAgent?.folder ?? null,
   );
 
@@ -123,8 +123,25 @@ export function ChatPanel() {
           </div>
         </div>
 
-        <div className="hidden md:flex items-center gap-3">
-          <select className="bg-surface-2 text-text-secondary text-xs font-mono px-3 py-1.5 rounded-lg border border-surface-border appearance-none cursor-pointer">
+        <div className="flex items-center gap-2">
+          {selectedAgent && messages.length > 0 && (
+            <button
+              onClick={async () => {
+                if (!confirm("Clear chat history?")) return;
+                await fetch(`/api/messages?group=${selectedAgent.folder}`, { method: "DELETE" });
+                clearMessages();
+              }}
+              className="p-1.5 text-text-muted hover:text-signal-error transition-colors cursor-pointer"
+              aria-label="Clear chat"
+              title="Clear chat history"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
+            </button>
+          )}
+          <select className="hidden md:block bg-surface-2 text-text-secondary text-xs font-mono px-3 py-1.5 rounded-lg border border-surface-border appearance-none cursor-pointer">
             <option>Claude Sonnet 4</option>
             <option>Claude Opus 4</option>
           </select>

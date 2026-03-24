@@ -102,3 +102,9 @@ export async function handleSheetsOAuthCallback(code: string): Promise<void> {
 
   cachedAuthStatus = null;
 }
+
+export function disconnectSheets(): void {
+  if (fs.existsSync(TOKENS_PATH)) fs.unlinkSync(TOKENS_PATH);
+  cachedAuthStatus = null;
+  logger.info('Google Sheets tokens deleted');
+}

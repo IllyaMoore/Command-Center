@@ -72,5 +72,9 @@ export function useMessages(groupFolder: string | null) {
     [],
   );
 
-  return { messages, loading, addOptimistic };
+  const clearMessages = useCallback(() => {
+    setMessages([]);
+  }, []);
+
+  return { messages, loading, addOptimistic, clearMessages };
 }

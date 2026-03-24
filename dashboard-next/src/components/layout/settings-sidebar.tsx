@@ -123,7 +123,7 @@ function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void;
 
 /* ── Capabilities tab (implemented) ── */
 function CapabilitiesTab() {
-  const { integrations, loading, connect } = useIntegrations();
+  const { integrations, loading, connect, disconnect } = useIntegrations();
   const [execMode, setExecMode] = useState<"off" | "ask" | "auto">("ask");
   const [webAccess, setWebAccess] = useState(true);
   const [fileTools, setFileTools] = useState(true);
@@ -151,7 +151,7 @@ function CapabilitiesTab() {
         ) : (
           <div className="space-y-2">
             {integrations.filter((i) => i.featured).map((integration) => (
-              <SettingsIntegrationRow key={integration.name} integration={integration} onConnect={() => connect(integration)} />
+              <SettingsIntegrationRow key={integration.name} integration={integration} onConnect={() => connect(integration)} onDisconnect={() => disconnect(integration)} />
             ))}
             {integrations.some((i) => !i.featured) && (
               <>
@@ -174,7 +174,7 @@ function CapabilitiesTab() {
                   </svg>
                 </button>
                 {mcpExpanded && integrations.filter((i) => !i.featured).map((integration) => (
-                  <SettingsIntegrationRow key={integration.name} integration={integration} onConnect={() => connect(integration)} />
+                  <SettingsIntegrationRow key={integration.name} integration={integration} onConnect={() => connect(integration)} onDisconnect={() => disconnect(integration)} />
                 ))}
               </>
             )}
@@ -314,7 +314,7 @@ function AdvancedTab() {
 }
 
 /* ── Settings Integration Row ── */
-function SettingsIntegrationRow({ integration, onConnect }: { integration: Integration; onConnect: () => void }) {
+function SettingsIntegrationRow({ integration, onConnect, onDisconnect }: { integration: Integration; onConnect: () => void; onDisconnect: () => void }) {
   const isConnected = integration.status === "connected";
   const canConnect = ["expired", "missing_tokens", "check_failed"].includes(integration.status);
   const isNotConfigured = integration.status === "not_configured";
@@ -348,14 +348,24 @@ function SettingsIntegrationRow({ integration, onConnect }: { integration: Integ
           <span className="text-[10px] font-mono text-text-muted">{statusText}</span>
         </div>
       </div>
-      {canConnect && (
-        <button
-          onClick={onConnect}
-          className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
-        >
-          {integration.status === "expired" || integration.status === "check_failed" ? "Reconnect" : "Connect"}
-        </button>
-      )}
+      <div className="flex items-center gap-1.5">
+        {isConnected && (
+          <button
+            onClick={onDisconnect}
+            className="px-2 py-1 text-[10px] font-mono font-medium text-text-muted hover:text-signal-error hover:bg-signal-error/10 transition-colors cursor-pointer"
+          >
+            Disconnect
+          </button>
+        )}
+        {canConnect && (
+          <button
+            onClick={onConnect}
+            className="px-2.5 py-1 text-[10px] font-mono font-medium text-primary bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
+          >
+            {integration.status === "expired" || integration.status === "check_failed" ? "Reconnect" : "Connect"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

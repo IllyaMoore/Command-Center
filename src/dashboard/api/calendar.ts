@@ -307,6 +307,14 @@ export async function handleCalendarOAuthCallback(code: string): Promise<void> {
   cachedAuthStatus = null;
 }
 
+export function disconnectCalendar(): void {
+  if (fs.existsSync(TOKENS_PATH)) fs.unlinkSync(TOKENS_PATH);
+  calendarClient = null;
+  authClient = null;
+  cachedAuthStatus = null;
+  logger.info('Google Calendar tokens deleted');
+}
+
 function getColorFromId(colorId: string): string {
   // Google Calendar color IDs mapped to CSS colors
   const colors: Record<string, string> = {

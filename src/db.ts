@@ -785,6 +785,11 @@ export function getMessagesPaginated(
   return { messages, total };
 }
 
+export function deleteMessages(chatJid: string): number {
+  const result = db.prepare('DELETE FROM messages WHERE chat_jid = ?').run(chatJid);
+  return result.changes;
+}
+
 export function getRecentActivity(limit: number, groupFolder?: string): ActivityItem[] {
   // Get task runs
   const taskRuns = getRecentTaskRuns(limit, groupFolder);

@@ -80,5 +80,13 @@ export function useIntegrations() {
     [refresh],
   );
 
-  return { integrations, loading, connect, refresh };
+  const disconnect = useCallback(
+    async (integration: Integration) => {
+      await fetch(`${integration.authPath}/disconnect`, { method: "POST" });
+      refresh();
+    },
+    [refresh],
+  );
+
+  return { integrations, loading, connect, disconnect, refresh };
 }

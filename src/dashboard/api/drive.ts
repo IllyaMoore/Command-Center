@@ -94,3 +94,9 @@ export async function handleDriveOAuthCallback(code: string): Promise<void> {
 
   cachedAuthStatus = null;
 }
+
+export function disconnectDrive(): void {
+  if (fs.existsSync(TOKENS_PATH)) fs.unlinkSync(TOKENS_PATH);
+  cachedAuthStatus = null;
+  logger.info('Google Drive tokens deleted');
+}

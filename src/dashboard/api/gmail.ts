@@ -98,3 +98,9 @@ export async function handleGmailOAuthCallback(code: string): Promise<void> {
 
   cachedAuthStatus = null;
 }
+
+export function disconnectGmail(): void {
+  if (fs.existsSync(TOKENS_PATH)) fs.unlinkSync(TOKENS_PATH);
+  cachedAuthStatus = null;
+  logger.info('Gmail tokens deleted');
+}

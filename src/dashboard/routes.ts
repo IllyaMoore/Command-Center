@@ -5,6 +5,7 @@ import path from 'path';
 import { GROUPS_DIR } from '../config.js';
 import { logger } from '../logger.js';
 import {
+  deleteMessages,
   deleteRegisteredGroup,
   getAllRegisteredGroups,
   getAllTasks,
@@ -24,22 +25,26 @@ import {
   getCalendarEvents,
   createCalendarEvent,
   handleCalendarOAuthCallback,
+  disconnectCalendar,
 } from './api/calendar.js';
 import { sendChatMessage, sendGroupMessage, streamChatMessages } from './api/chat.js';
 import {
   getGmailAuthStatus,
   getGmailAuthUrl,
   handleGmailOAuthCallback,
+  disconnectGmail,
 } from './api/gmail.js';
 import {
   getSheetsAuthStatus,
   getSheetsAuthUrl,
   handleSheetsOAuthCallback,
+  disconnectSheets,
 } from './api/sheets.js';
 import {
   getDriveAuthStatus,
   getDriveAuthUrl,
   handleDriveOAuthCallback,
+  disconnectDrive,
 } from './api/drive.js';
 import { getDashboardQueue } from './context.js';
 
@@ -52,6 +57,7 @@ interface OAuthProvider {
   getStatus: () => Promise<string>;
   getAuthUrl: () => string | null;
   handleCallback: (code: string) => Promise<void>;
+  disconnect: () => void;
 }
 
 const oauthProviders: OAuthProvider[] = [
@@ -63,6 +69,7 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getCalendarAuthStatus,
     getAuthUrl: getCalendarAuthUrl,
     handleCallback: handleCalendarOAuthCallback,
+    disconnect: disconnectCalendar,
   },
   {
     basePath: '/api/auth/gmail',
@@ -72,6 +79,7 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getGmailAuthStatus,
     getAuthUrl: getGmailAuthUrl,
     handleCallback: handleGmailOAuthCallback,
+    disconnect: disconnectGmail,
   },
   {
     basePath: '/api/auth/google-sheets',
@@ -81,6 +89,7 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getSheetsAuthStatus,
     getAuthUrl: getSheetsAuthUrl,
     handleCallback: handleSheetsOAuthCallback,
+    disconnect: disconnectSheets,
   },
   {
     basePath: '/api/auth/google-drive',
@@ -90,6 +99,7 @@ const oauthProviders: OAuthProvider[] = [
     getStatus: getDriveAuthStatus,
     getAuthUrl: getDriveAuthUrl,
     handleCallback: handleDriveOAuthCallback,
+    disconnect: disconnectDrive,
   },
 ];
 
@@ -131,6 +141,17 @@ async function handleOAuthRoutes(
       }
       res.writeHead(302, { Location: authUrl });
       res.end();
+      return true;
+    }
+
+    if (pathname === `${provider.basePath}/disconnect` && method === 'POST') {
+      try {
+        provider.disconnect();
+        json({ ok: true });
+      } catch (err) {
+        logger.error({ err, provider: provider.displayName }, 'Disconnect failed');
+        json({ error: 'disconnect_failed' }, 500);
+      }
       return true;
     }
 
@@ -382,6 +403,19 @@ export async function handleApiRoute(
       limit,
       offset,
     });
+    return;
+  }
+
+  // ─── DELETE /api/messages — clear chat history ───
+  if (pathname === '/api/messages' && method === 'DELETE') {
+    const group = url.searchParams.get('group');
+    if (!group) {
+      json({ error: 'Missing group parameter' }, 400);
+      return;
+    }
+    const chatJid = `dashboard-${group}`;
+    const deleted = deleteMessages(chatJid);
+    json({ ok: true, deleted });
     return;
   }
 
