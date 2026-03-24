@@ -58,15 +58,22 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
     [refresh],
   );
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const handleDelete = useCallback(
     async (agent: Agent) => {
-      await deleteAgent(agent.folder);
-      setDeleteTarget(null);
-      if (selectedAgent?.jid === agent.jid) {
-        const remaining = agents.filter((a) => a.jid !== agent.jid);
-        if (remaining.length > 0) selectAgent(remaining[0]);
+      try {
+        await deleteAgent(agent.folder);
+        setDeleteTarget(null);
+        setDeleteError(null);
+        if (selectedAgent?.jid === agent.jid) {
+          const remaining = agents.filter((a) => a.jid !== agent.jid);
+          if (remaining.length > 0) selectAgent(remaining[0]);
+        }
+        await refresh();
+      } catch (err) {
+        setDeleteError(err instanceof Error ? err.message : "Failed to delete agent");
       }
-      await refresh();
     },
     [agents, selectedAgent, selectAgent, refresh],
   );
@@ -198,11 +205,13 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
       <ConfirmDialog
         open={!!deleteTarget}
         title="Delete Agent"
-        message={`Are you sure you want to delete ${deleteTarget?.name ?? "this agent"}? The group directory will be archived, not permanently deleted.`}
+        message={deleteError
+          ? `Failed: ${deleteError}. Try again?`
+          : `Are you sure you want to delete ${deleteTarget?.name ?? "this agent"}? The group directory will be archived, not permanently deleted.`}
         confirmLabel="Delete"
         variant="danger"
         onConfirm={() => { if (deleteTarget) handleDelete(deleteTarget); }}
-        onCancel={() => setDeleteTarget(null)}
+        onCancel={() => { setDeleteTarget(null); setDeleteError(null); }}
       />
     </>
   );

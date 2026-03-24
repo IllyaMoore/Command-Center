@@ -16,7 +16,7 @@ export function ChatPanel() {
   const [clearConfirm, setClearConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const userScrolledRef = useRef(false);
+  const [userScrolled, setUserScrolled] = useState(false);
 
   const { selectedAgent } = useAgentStore();
   const { messages, loading, addOptimistic, clearMessages } = useMessages(
@@ -47,7 +47,7 @@ export function ChatPanel() {
 
   // Auto-scroll to bottom on new messages or typing indicator (unless user scrolled up)
   useEffect(() => {
-    if (!userScrolledRef.current) {
+    if (!userScrolled) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, waitingForReply]);
@@ -57,12 +57,12 @@ export function ChatPanel() {
     const el = scrollContainerRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-    userScrolledRef.current = !atBottom;
+    setUserScrolled(!atBottom);
   }, []);
 
   // Reset scroll tracking when agent changes
   useEffect(() => {
-    userScrolledRef.current = false;
+    setUserScrolled(false);
   }, [selectedAgent?.jid]);
 
   const handleSend = useCallback(async () => {
@@ -84,7 +84,7 @@ export function ChatPanel() {
       is_bot_message: false,
     };
     addOptimistic(optimisticMsg);
-    userScrolledRef.current = false;
+    setUserScrolled(false);
 
     try {
       await sendMessage(selectedAgent.folder, text);
@@ -234,11 +234,11 @@ export function ChatPanel() {
       </div>
 
       {/* Scroll to bottom button */}
-      {userScrolledRef.current && messages.length > 0 && (
+      {userScrolled && messages.length > 0 && (
         <div className="flex justify-center -mt-10 mb-2 relative z-10">
           <button
             onClick={() => {
-              userScrolledRef.current = false;
+              setUserScrolled(false);
               messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
             }}
             className="px-3 py-1 bg-surface-2 border border-surface-border rounded-full text-xs font-mono text-text-secondary hover:bg-surface-3 transition-colors cursor-pointer shadow-sm"

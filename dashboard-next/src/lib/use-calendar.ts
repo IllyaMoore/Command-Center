@@ -24,6 +24,10 @@ export function useCalendar(view: "day" | "week" = "day") {
       // Only show loading spinner on initial load, not on view switches
       if (!hasLoaded.current) setLoading(true);
       const res = await fetch(`/api/calendar/events?view=${view}`);
+      if (!res.ok) {
+        setError(`fetch_failed`);
+        return;
+      }
       const data = await res.json();
       setEvents(data.events ?? []);
       setError(data.error ?? null);
