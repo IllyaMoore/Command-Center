@@ -171,6 +171,15 @@ You have a persistent memory file at `MEMORY.md` in your workspace root. Use it 
 - Update it when you learn something worth remembering
 - Don't store sensitive data (case details, privileged communications)
 
+## Tools Available
+
+All Google tools are under `mcp__google__*`:
+- **Gmail**: `list_emails`, `read_email`, `send_email`, `search_emails`
+- **Google Calendar**: `list_events`, `create_event`, `update_event`, `delete_event`
+- **Google Drive**: `search_files`, `list_files`, `get_file_content`, `create_file`, `create_folder`
+- **Google Sheets**: `list_spreadsheets`, `read_sheet`, `write_sheet`
+- **Atlassian**: `mcp__atlassian__*` — Jira and Confluence
+
 ## Cross-Agent Connections
 
 - **All company agents**: Contract reviews, compliance questions, entity-specific legal

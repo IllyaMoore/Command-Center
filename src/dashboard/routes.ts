@@ -2,22 +2,29 @@ import fs from 'fs';
 import { IncomingMessage, ServerResponse } from 'http';
 import path from 'path';
 
+import { CronExpressionParser } from 'cron-parser';
+
 import { GROUPS_DIR } from '../config.js';
 import { logger } from '../logger.js';
 import {
+  createTask,
   deleteMessages,
   deleteRegisteredGroup,
+  deleteTask,
   getAllRegisteredGroups,
   getAllTasks,
   getMessagesPaginated,
   getRecentActivity,
   getRecentMessages,
   getRecentTaskRuns,
+  getTaskById,
+  getTasksForGroup,
   getTimezone,
   setRegisteredGroup,
   setTimezone,
+  updateTask,
 } from '../db.js';
-import { TaskRunLog } from '../types.js';
+import { ScheduledTask, TaskRunLog } from '../types.js';
 import { getActivity, streamActivity } from './api/activity.js';
 import {
   getCalendarAuthStatus,
@@ -256,7 +263,7 @@ export async function handleApiRoute(
       try {
         const groupDirs = fs.readdirSync(GROUPS_DIR, { withFileTypes: true });
         for (const dir of groupDirs) {
-          if (!dir.isDirectory() || seenFolders.has(dir.name)) continue;
+          if (!dir.isDirectory() || seenFolders.has(dir.name) || dir.name.includes('.archived-')) continue;
           const claudeMd = path.join(GROUPS_DIR, dir.name, 'CLAUDE.md');
           if (!fs.existsSync(claudeMd)) continue;
 
@@ -288,7 +295,11 @@ export async function handleApiRoute(
   // ─── OPC-126: POST /api/agents ───
   if (pathname === '/api/agents' && method === 'POST') {
     const body = await parseBody();
-    const { name, folder } = body as { name?: string; folder?: string };
+    const { name, folder, description } = body as {
+      name?: string;
+      folder?: string;
+      description?: string;
+    };
 
     if (!name || !folder) {
       json({ error: 'name and folder are required' }, 400);
@@ -312,24 +323,39 @@ export async function handleApiRoute(
     // Generate a dashboard JID for non-messaging agents
     const jid = `dashboard-${folder}-${Date.now()}`;
 
-    // Create group directory with default CLAUDE.md
+    // Create group directory
     const groupDir = path.join(GROUPS_DIR, folder);
     try {
       if (!fs.existsSync(groupDir)) {
         fs.mkdirSync(groupDir, { recursive: true });
       }
-      const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
-      if (!fs.existsSync(claudeMdPath)) {
+    } catch (err) {
+      logger.error({ err, folder }, 'Failed to create agent directory');
+      json({ error: 'Failed to create agent directory on disk' }, 500);
+      return;
+    }
+
+    // Generate CLAUDE.md — use AI if description provided, otherwise use default
+    const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+    if (description?.trim()) {
+      // Generate system prompt via Anthropic API (non-blocking for registration)
+      try {
+        const prompt = await generateAgentPrompt(name, description.trim());
+        fs.writeFileSync(claudeMdPath, prompt, 'utf-8');
+      } catch (err) {
+        logger.error({ err, folder }, 'Failed to generate agent prompt, using default');
         fs.writeFileSync(
           claudeMdPath,
           `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
           'utf-8',
         );
       }
-    } catch (err) {
-      logger.error({ err, folder }, 'Failed to create agent directory');
-      json({ error: 'Failed to create agent directory on disk' }, 500);
-      return;
+    } else if (!fs.existsSync(claudeMdPath)) {
+      fs.writeFileSync(
+        claudeMdPath,
+        `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
+        'utf-8',
+      );
     }
 
     // Register in database
@@ -381,13 +407,55 @@ export async function handleApiRoute(
     return;
   }
 
-  // ─── CEO-9: GET /api/tasks ───
+  // ─── GET /api/agents/:folder/prompt ───
+  {
+    const match = pathname.match(/^\/api\/agents\/([^/]+)\/prompt$/);
+    if (match && method === 'GET') {
+      const folder = decodeURIComponent(match[1]);
+      if (!/^[a-z0-9_-]+$/i.test(folder)) { json({ error: 'Invalid folder name' }, 400); return; }
+      const claudeMdPath = path.join(GROUPS_DIR, folder, 'CLAUDE.md');
+      try {
+        const content = fs.readFileSync(claudeMdPath, 'utf-8');
+        json({ folder, content });
+      } catch {
+        json({ error: 'CLAUDE.md not found' }, 404);
+      }
+      return;
+    }
+  }
+
+  // ─── PUT /api/agents/:folder/prompt ───
+  {
+    const match = pathname.match(/^\/api\/agents\/([^/]+)\/prompt$/);
+    if (match && method === 'PUT') {
+      const folder = decodeURIComponent(match[1]);
+      if (!/^[a-z0-9_-]+$/i.test(folder)) { json({ error: 'Invalid folder name' }, 400); return; }
+      const body = await parseBody();
+      const content = body.content as string | undefined;
+      if (content === undefined) {
+        json({ error: 'content is required' }, 400);
+        return;
+      }
+      const claudeMdPath = path.join(GROUPS_DIR, folder, 'CLAUDE.md');
+      try {
+        fs.writeFileSync(claudeMdPath, content, 'utf-8');
+        logger.info({ folder }, 'CLAUDE.md updated via dashboard');
+        json({ folder, saved: true });
+      } catch (err) {
+        logger.error({ err, folder }, 'Failed to write CLAUDE.md');
+        json({ error: 'Failed to save' }, 500);
+      }
+      return;
+    }
+  }
+
+  // ─── GET /api/tasks ───
   if (pathname === '/api/tasks' && method === 'GET') {
-    const tasks = getAllTasks();
+    const group = url.searchParams.get('group');
+    const tasks = group ? getTasksForGroup(group) : getAllTasks();
     const runsLimit = parseInt(url.searchParams.get('runs') || '5', 10);
     const allRuns = getRecentTaskRuns(tasks.length * runsLimit);
 
-    // Group runs by task_id
     const runsByTask = new Map<string, TaskRunLog[]>();
     for (const run of allRuns) {
       const existing = runsByTask.get(run.task_id) || [];
@@ -402,6 +470,133 @@ export async function handleApiRoute(
 
     json(tasksWithRuns);
     return;
+  }
+
+  // ─── POST /api/tasks ───
+  if (pathname === '/api/tasks' && method === 'POST') {
+    const body = await parseBody();
+    const { group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, model } =
+      body as Partial<ScheduledTask>;
+
+    if (!group_folder || !chat_jid || !prompt || !schedule_type || !schedule_value) {
+      json({ error: 'group_folder, chat_jid, prompt, schedule_type, and schedule_value are required' }, 400);
+      return;
+    }
+
+    if (!['cron', 'interval', 'once'].includes(schedule_type)) {
+      json({ error: 'schedule_type must be cron, interval, or once' }, 400);
+      return;
+    }
+
+    // Compute next_run
+    let next_run: string | null = null;
+    try {
+      next_run = computeNextRunFromValues(schedule_type, schedule_value);
+    } catch (err) {
+      json({ error: `Invalid schedule: ${err instanceof Error ? err.message : err}` }, 400);
+      return;
+    }
+
+    const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const task: Omit<ScheduledTask, 'last_run' | 'last_result'> = {
+      id,
+      group_folder,
+      chat_jid,
+      prompt,
+      schedule_type,
+      schedule_value,
+      context_mode: context_mode || 'isolated',
+      model: model ?? null,
+      next_run,
+      status: 'active',
+      created_at: new Date().toISOString(),
+    };
+
+    createTask(task);
+    logger.info({ id, group_folder }, 'Task created via dashboard');
+    json(getTaskById(id), 201);
+    return;
+  }
+
+  // ─── PATCH /api/tasks/:id ───
+  {
+    const match = pathname.match(/^\/api\/tasks\/([^/]+)$/);
+    if (match && method === 'PATCH') {
+      const id = decodeURIComponent(match[1]);
+      const existing = getTaskById(id);
+      if (!existing) {
+        json({ error: 'Task not found' }, 404);
+        return;
+      }
+
+      const body = await parseBody();
+      const updates: Parameters<typeof updateTask>[1] = {};
+
+      if (body.prompt !== undefined) updates.prompt = body.prompt as string;
+      if (body.schedule_type !== undefined) updates.schedule_type = body.schedule_type as ScheduledTask['schedule_type'];
+      if (body.schedule_value !== undefined) updates.schedule_value = body.schedule_value as string;
+      if (body.status !== undefined) updates.status = body.status as ScheduledTask['status'];
+
+      // Recompute next_run when schedule changes or status changes to active
+      const newType = updates.schedule_type || existing.schedule_type;
+      const newValue = updates.schedule_value || existing.schedule_value;
+      if (updates.status === 'paused') {
+        updates.next_run = null;
+      } else if (updates.schedule_type || updates.schedule_value || updates.status === 'active') {
+        try {
+          updates.next_run = computeNextRunFromValues(newType, newValue);
+        } catch (err) {
+          json({ error: `Invalid schedule: ${err instanceof Error ? err.message : err}` }, 400);
+          return;
+        }
+      }
+
+      updateTask(id, updates);
+      logger.info({ id }, 'Task updated via dashboard');
+      json(getTaskById(id));
+      return;
+    }
+  }
+
+  // ─── DELETE /api/tasks/:id ───
+  {
+    const match = pathname.match(/^\/api\/tasks\/([^/]+)$/);
+    if (match && method === 'DELETE') {
+      const id = decodeURIComponent(match[1]);
+      const existing = getTaskById(id);
+      if (!existing) {
+        json({ error: 'Task not found' }, 404);
+        return;
+      }
+      deleteTask(id);
+      logger.info({ id }, 'Task deleted via dashboard');
+      json({ deleted: true });
+      return;
+    }
+  }
+
+  // ─── POST /api/tasks/:id/run ───
+  {
+    const match = pathname.match(/^\/api\/tasks\/([^/]+)\/run$/);
+    if (match && method === 'POST') {
+      const id = decodeURIComponent(match[1]);
+      const existing = getTaskById(id);
+      if (!existing) {
+        json({ error: 'Task not found' }, 404);
+        return;
+      }
+      // Trigger via scheduler's queue — the scheduler picks it up
+      const queue = getDashboardQueue();
+      if (!queue) {
+        json({ error: 'Queue not available' }, 503);
+        return;
+      }
+      // Mark as due now so the scheduler loop picks it up on next poll
+      updateTask(id, { next_run: new Date().toISOString(), status: 'active' });
+      logger.info({ id }, 'Task triggered manually via dashboard');
+      json({ triggered: true, task_id: id });
+      return;
+    }
   }
 
   // ─── CEO-9: GET /api/messages ───
@@ -581,6 +776,110 @@ export async function handleApiRoute(
 
   // 404 for unknown API routes
   json({ error: 'Not found' }, 404);
+}
+
+// ─── Compute next run for a schedule ───
+
+function computeNextRunFromValues(
+  scheduleType: string,
+  scheduleValue: string,
+): string | null {
+  if (scheduleType === 'cron') {
+    const interval = CronExpressionParser.parse(scheduleValue, {
+      tz: getTimezone(),
+    });
+    return interval.next().toISOString();
+  }
+  if (scheduleType === 'interval') {
+    const ms = parseInt(scheduleValue, 10);
+    if (isNaN(ms) || ms < 60000) throw new Error('Interval must be at least 60000ms');
+    return new Date(Date.now() + ms).toISOString();
+  }
+  if (scheduleType === 'once') {
+    const date = new Date(scheduleValue);
+    if (isNaN(date.getTime())) throw new Error('Invalid date for once schedule');
+    return date.toISOString();
+  }
+  return null;
+}
+
+// ─── Generate agent CLAUDE.md via Anthropic API ───
+
+async function generateAgentPrompt(name: string, description: string): Promise<string> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not set');
+  }
+
+  // Read existing agent prompts as style reference
+  const references: string[] = [];
+  for (const folder of ['ceo', 'finance', 'legal']) {
+    const mdPath = path.join(GROUPS_DIR, folder, 'CLAUDE.md');
+    try {
+      if (fs.existsSync(mdPath)) {
+        references.push(fs.readFileSync(mdPath, 'utf-8'));
+      }
+    } catch {
+      // skip missing files
+    }
+  }
+
+  const refBlock = references.length > 0
+    ? `\n\nHere are existing agent prompts for style reference:\n\n${references.map((r, i) => `--- EXAMPLE ${i + 1} ---\n${r}\n--- END ---`).join('\n\n')}`
+    : '';
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      messages: [
+        {
+          role: 'user',
+          content: `Generate a CLAUDE.md system prompt for an AI agent.
+
+Agent name: ${name}
+User's description of what the agent should do:
+${description}
+${refBlock}
+
+Generate a complete CLAUDE.md following the same structure and style as the examples:
+- Start with a # heading and ## Role section
+- Include ## Core Responsibilities with bullet points
+- Include ## Communication Style
+- Add relevant sections specific to this agent's domain
+- Include ## Output Formats with template examples where appropriate
+- Include ## Tools Available (mention Browser as available by default)
+- Include ## Priorities section
+- End with ## Memory section (same pattern as examples — persistent MEMORY.md, max 50 entries, rules)
+
+Important:
+- Write the prompt in the same language as the user's description
+- Be specific and actionable — avoid generic filler
+- Match the depth and quality of the reference examples
+- Output ONLY the markdown content, no wrapping or explanation`,
+        },
+      ],
+    }),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.text();
+    throw new Error(`Anthropic API error ${res.status}: ${errBody}`);
+  }
+
+  const data = (await res.json()) as { content: Array<{ type: string; text: string }> };
+  const text = data.content?.find((c) => c.type === 'text')?.text;
+  if (!text) {
+    throw new Error('No text in Anthropic API response');
+  }
+
+  return text;
 }
 
 // ─── SSE /api/events — unified real-time stream ───

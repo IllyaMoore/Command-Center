@@ -371,54 +371,6 @@ function waitForIpcMessage(): Promise<string | null> {
   });
 }
 
-const GOOGLE_DRIVE_CREDS_PATH = path.join(HOME_DIR, '.google-drive-mcp', 'gcp-oauth.keys.json');
-const GOOGLE_DRIVE_TOKENS_PATH = path.join(HOME_DIR, '.google-drive-mcp', 'credentials.json');
-
-function readGoogleDriveCredentials(): { clientId: string; clientSecret: string; refreshToken: string } | null {
-  try {
-    const config = JSON.parse(fs.readFileSync(GOOGLE_DRIVE_CREDS_PATH, 'utf-8'));
-    const creds = config.installed ?? config.web;
-    const clientId = creds?.client_id;
-    const clientSecret = creds?.client_secret;
-    if (!clientId || !clientSecret) return null;
-
-    const tokens = JSON.parse(fs.readFileSync(GOOGLE_DRIVE_TOKENS_PATH, 'utf-8'));
-    const refreshToken = tokens?.refresh_token;
-    if (!refreshToken) return null;
-
-    return { clientId, clientSecret, refreshToken };
-  } catch (err: unknown) {
-    if (err instanceof SyntaxError) {
-      console.error('Failed to parse Google Drive credentials (invalid JSON):', err.message);
-    } else {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code !== 'ENOENT') {
-        console.error('Failed to read Google Drive credentials:', err);
-      }
-    }
-  }
-  return null;
-}
-
-const GOOGLE_SHEETS_CREDS_DIR = path.join(HOME_DIR, '.google-sheets-mcp');
-const GOOGLE_SHEETS_CREDS_PATH = path.join(GOOGLE_SHEETS_CREDS_DIR, 'gcp-oauth.keys.json');
-
-function readGoogleSheetsCredentials(): { clientId: string; clientSecret: string } | null {
-  try {
-    const config = JSON.parse(fs.readFileSync(GOOGLE_SHEETS_CREDS_PATH, 'utf-8'));
-    const creds = config.installed ?? config.web;
-    const clientId = creds?.client_id;
-    const clientSecret = creds?.client_secret;
-    if (clientId && clientSecret) return { clientId, clientSecret };
-  } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== 'ENOENT') {
-      console.error('Failed to read Google Sheets credentials:', err);
-    }
-  }
-  return null;
-}
-
 function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string, string | undefined>): string[] {
   const tools = [
     'Bash',
@@ -429,14 +381,8 @@ function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string
     'TodoWrite', 'ToolSearch', 'Skill',
     'NotebookEdit',
     'mcp__nanoclaw__*',
-    'mcp__gmail__*',
-    'mcp__calendar__*',
-    'mcp__drive__*',
+    'mcp__google__*',
   ];
-
-  if (containerInput.groupFolder === 'finance' || containerInput.isMain) {
-    tools.push('mcp__sheets__*');
-  }
 
   if (sdkEnv.ATLASSIAN_BASIC_TOKEN && (containerInput.groupFolder === 'legal' || containerInput.isMain)) {
     tools.push('mcp__atlassian__*');
@@ -445,39 +391,13 @@ function buildAllowedTools(containerInput: ContainerInput, sdkEnv: Record<string
   return tools;
 }
 
-/**
- * @cocal/google-calendar-mcp expects credentials in "installed" format.
- * If the credentials file uses "web" format (Web app OAuth client), write a
- * normalized copy with the "installed" key so the MCP server can parse it.
- * Returns the path to use (original if already "installed", normalized if "web").
- */
-function resolveCalendarCredentialsPath(): string {
-  const orig = path.join(HOME_DIR, '.google-calendar-mcp', 'credentials.json');
-  try {
-    const config = JSON.parse(fs.readFileSync(orig, 'utf-8'));
-    if (config.installed) return orig;
-    if (config.web) {
-      const normalized = path.join(HOME_DIR, '.google-calendar-mcp', 'credentials-mcp.json');
-      const tmp = `${normalized}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify({ installed: config.web }, null, 2));
-      fs.renameSync(tmp, normalized);
-      return normalized;
-    }
-    log('Calendar credentials file has neither "installed" nor "web" key');
-  } catch (err: unknown) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== 'ENOENT') {
-      log(`Failed to resolve calendar credentials path: ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-  return orig;
-}
-
 function buildMcpServers(
   containerInput: ContainerInput,
   sdkEnv: Record<string, string | undefined>,
   mcpServerPath: string,
 ): Record<string, McpServerConfig> {
+  // All Google services (Drive, Sheets, Gmail, Calendar) served by dashboard MCP HTTP server
+  const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:3000';
   const servers: Record<string, McpServerConfig> = {
     nanoclaw: {
       command: 'node',
@@ -488,69 +408,11 @@ function buildMcpServers(
         NANOCLAW_IS_MAIN: containerInput.isMain ? '1' : '0',
       },
     },
-    gmail: {
-      command: 'npx',
-      args: ['-y', '@gongrzhe/server-gmail-autoauth-mcp'],
-      env: {
-        GMAIL_OAUTH_PATH: path.join(HOME_DIR, '.gmail-mcp', 'gcp-oauth.keys.json'),
-        GMAIL_CREDENTIALS_PATH: path.join(HOME_DIR, '.gmail-mcp', 'credentials.json'),
-      },
-    },
-    calendar: {
-      command: 'npx',
-      args: ['-y', '@cocal/google-calendar-mcp'],
-      env: {
-        GOOGLE_OAUTH_CREDENTIALS: resolveCalendarCredentialsPath(),
-        GOOGLE_CALENDAR_MCP_TOKEN_PATH: path.join(HOME_DIR, '.config', 'google-calendar-mcp', 'tokens.json'),
-      },
+    google: {
+      type: 'http',
+      url: `${dashboardUrl}/mcp/google`,
     },
   };
-
-  // Google Drive — write a temp env file, then spawn mcp-google-drive
-  // SDK may not pass env vars correctly to MCP subprocesses
-  const driveCreds = readGoogleDriveCredentials();
-  if (driveCreds) {
-    log('Drive MCP: credentials found, configuring server');
-    // Write credentials to a randomized temp file with restricted permissions
-    const tmpDir = process.env.TEMP || process.env.TMPDIR || '/tmp';
-    const driveEnvPath = path.join(tmpDir, `.nanoclaw-drive-${process.pid}-${Date.now()}.json`);
-    try {
-      fs.writeFileSync(driveEnvPath, JSON.stringify({
-        GOOGLE_CLIENT_ID: driveCreds.clientId,
-        GOOGLE_CLIENT_SECRET: driveCreds.clientSecret,
-        GOOGLE_REFRESH_TOKEN: driveCreds.refreshToken,
-      }), { mode: 0o600 });
-      // Clean up on process exit
-      process.on('exit', () => { try { fs.unlinkSync(driveEnvPath); } catch { /* ignore */ } });
-    } catch (err) {
-      log(`Drive MCP: failed to write env file: ${err instanceof Error ? err.message : String(err)}`);
-    }
-    // node -e script: read env from file, set on process.env, spawn npx
-    const script = [
-      `Object.assign(process.env,JSON.parse(require('fs').readFileSync(${JSON.stringify(driveEnvPath)},'utf8')))`,
-      `try{require('fs').unlinkSync(${JSON.stringify(driveEnvPath)})}catch{}`,
-      `require('child_process').spawn(process.platform==='win32'?'npx.cmd':'npx',['-y','mcp-google-drive'],{stdio:'inherit'}).on('exit',c=>process.exit(c||0))`,
-    ].join(';');
-    servers.drive = {
-      command: 'node',
-      args: ['-e', script],
-    };
-  } else {
-    log('Drive MCP: no credentials found, skipping');
-  }
-
-  const sheetsCreds = readGoogleSheetsCredentials();
-  if (sheetsCreds && (containerInput.groupFolder === 'finance' || containerInput.isMain)) {
-    servers.sheets = {
-      command: 'npx',
-      args: ['-y', '@isaacphi/mcp-gdrive'],
-      env: {
-        GDRIVE_CREDS_DIR: GOOGLE_SHEETS_CREDS_DIR,
-        CLIENT_ID: sheetsCreds.clientId,
-        CLIENT_SECRET: sheetsCreds.clientSecret,
-      },
-    };
-  }
 
   const atlassianToken = sdkEnv.ATLASSIAN_BASIC_TOKEN;
   if (atlassianToken && (containerInput.groupFolder === 'legal' || containerInput.isMain)) {

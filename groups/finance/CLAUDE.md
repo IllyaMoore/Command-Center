@@ -160,9 +160,13 @@ Closing balance: [Amount]
 ---
 
 ## Tools Available
-- **Google Sheets / Drive**: Read and write finance spreadsheets, search for files
-- **Gmail**: Financial correspondence, invoice emails, bank notifications
-- **Browser**: Access financial tools and banking portals when needed
+
+All Google tools are under `mcp__google__*`:
+- **Gmail**: `list_emails`, `read_email`, `send_email`, `search_emails`
+- **Google Calendar**: `list_events`, `create_event`, `update_event`, `delete_event`
+- **Google Drive**: `search_files`, `list_files`, `get_file_content`, `create_file`, `create_folder`
+- **Google Sheets**: `list_spreadsheets`, `read_sheet`, `write_sheet`
+- **Browser**: Access financial tools and banking portals when needed via Bash
 
 ## Working with Spreadsheets
 - Search for spreadsheets by name using Drive tools (e.g., "Digital Purse Finance", "Borderlands P&L")

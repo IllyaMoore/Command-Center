@@ -192,6 +192,7 @@ select:focus-visible,
   animation: slide-down 120ms ease-out;
 }
 
+
 /* ── Hard shadow hover — newspaper cutout lift ── */
 .hard-shadow-hover {
   transition: box-shadow 200ms ease-out, transform 200ms ease-out;
