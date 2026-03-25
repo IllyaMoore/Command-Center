@@ -65,8 +65,10 @@ export function ChatPanel() {
     setUserScrolled(false);
   }, [selectedAgent?.jid]);
 
+  const sendingRef = useRef(false);
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !selectedAgent || sending) return;
+    if (!input.trim() || !selectedAgent || sending || sendingRef.current) return;
+    sendingRef.current = true;
 
     const text = input.trim();
     setInput("");
@@ -94,6 +96,7 @@ export function ChatPanel() {
       setInput(text);
     } finally {
       setSending(false);
+      sendingRef.current = false;
     }
   }, [input, selectedAgent, sending, addOptimistic]);
 
