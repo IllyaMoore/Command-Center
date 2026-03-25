@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 
 import { DASHBOARD_URL } from '../config.js';
 import { logger } from '../logger.js';
+import { handleMcpRequest } from '../mcp/google-mcp-server.js';
 import { handleApiRoute } from './routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -52,6 +53,18 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // MCP endpoint for Google Drive + Sheets
+  if (pathname === '/mcp/google') {
+    try {
+      await handleMcpRequest(req, res);
+    } catch (err) {
+      logger.error({ err }, 'MCP error');
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Internal error' } }));
+    }
     return;
   }
 

@@ -258,10 +258,14 @@ When asked "check legal deadlines in Jira":
 ---
 
 ## Tools Available
-- **Gmail**: Search emails, read content, list labels, send
-- **Google Calendar**: View events, check availability, create/modify events
-- **Atlassian**: Jira and Confluence (available for delegation to Legal sub-agent)
-- **Browser**: Research when needed
+
+All Google tools are under `mcp__google__*`:
+- **Gmail**: `list_emails`, `read_email`, `send_email`, `search_emails`
+- **Google Calendar**: `list_events`, `create_event`, `update_event`, `delete_event`
+- **Google Drive**: `search_files`, `list_files`, `get_file_content`, `create_file`, `create_folder`
+- **Google Sheets**: `list_spreadsheets`, `read_sheet`, `write_sheet`
+- **Atlassian**: `mcp__atlassian__*` — Jira and Confluence (available for delegation to Legal sub-agent)
+- **Browser**: Research when needed via Bash
 
 ## Priorities
 1. Time-sensitive items first (meetings starting soon, Tier 1 emails)
