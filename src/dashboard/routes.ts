@@ -4,7 +4,8 @@ import path from 'path';
 
 import { CronExpressionParser } from 'cron-parser';
 
-import { GROUPS_DIR } from '../config.js';
+import { GROUPS_DIR, isValidModel } from '../config.js';
+import { resetGoogleClients } from '../mcp/google-mcp-server.js';
 import { logger } from '../logger.js';
 import {
   createTask,
@@ -154,6 +155,7 @@ async function handleOAuthRoutes(
     if (pathname === `${provider.basePath}/disconnect` && method === 'POST') {
       try {
         provider.disconnect();
+        resetGoogleClients();
         json({ ok: true });
       } catch (err) {
         logger.error({ err, provider: provider.displayName }, 'Disconnect failed');
@@ -197,14 +199,17 @@ export async function handleApiRoute(
   const parseBody = (): Promise<Record<string, unknown>> => {
     return new Promise((resolve, reject) => {
       let body = '';
+      let settled = false;
       req.on('data', (chunk) => {
         body += chunk;
-        if (body.length > 1_000_000) {
+        if (body.length > 1_000_000 && !settled) {
+          settled = true;
           reject(new Error('Request body too large'));
           req.destroy();
         }
       });
       req.on('end', () => {
+        if (settled) return;
         try {
           resolve(body ? JSON.parse(body) : {});
         } catch (err) {
@@ -506,7 +511,7 @@ export async function handleApiRoute(
       schedule_type,
       schedule_value,
       context_mode: context_mode || 'isolated',
-      model: model ?? null,
+      model: model && isValidModel(model) ? model : null,
       next_run,
       status: 'active',
       created_at: new Date().toISOString(),
