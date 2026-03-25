@@ -569,6 +569,8 @@ function TaskCard({
 }
 
 /* ── Task Form (Create / Edit) ── */
+type Channel = "telegram" | "whatsapp";
+
 function TaskForm({
   agent,
   task,
@@ -580,6 +582,12 @@ function TaskForm({
   onSubmit: (payload: CreateTaskPayload) => Promise<void>;
   onCancel: () => void;
 }) {
+  const [channel, setChannel] = useState<Channel>(
+    task?.chat_jid?.startsWith("tg:") ? "telegram" : "telegram",
+  );
+  const [telegramChatId, setTelegramChatId] = useState(
+    task?.chat_jid?.startsWith("tg:") ? task.chat_jid.replace("tg:", "") : "",
+  );
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
   const [scheduleType, setScheduleType] = useState<"cron" | "interval" | "once">(
     task?.schedule_type ?? "cron",
@@ -597,8 +605,14 @@ function TaskForm({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const resolvedJid = channel === "telegram" ? `tg:${telegramChatId}` : agent.jid;
+
   const handleSubmit = async () => {
     if (!prompt.trim()) return;
+    if (channel === "telegram" && !telegramChatId.trim()) {
+      setError("Telegram Chat ID is required");
+      return;
+    }
     let value = scheduleValue;
     if (scheduleType === "interval") {
       const mins = parseInt(intervalMinutes);
@@ -618,7 +632,7 @@ function TaskForm({
     try {
       await onSubmit({
         group_folder: agent.folder,
-        chat_jid: agent.jid,
+        chat_jid: resolvedJid,
         prompt: prompt.trim(),
         schedule_type: scheduleType,
         schedule_value: value.trim(),
@@ -637,6 +651,55 @@ function TaskForm({
       <h3 className="text-[10px] font-mono text-text-muted uppercase tracking-wider mb-4">
         {task ? "Edit Automation" : "New Automation"}
       </h3>
+
+      {/* Channel selector */}
+      <div className="mb-4">
+        <label className="text-[10px] font-mono text-text-muted uppercase tracking-wider block mb-1.5">
+          Deliver via
+        </label>
+        <div className="flex gap-0.5 bg-surface-2 p-0.5">
+          <button
+            onClick={() => setChannel("telegram")}
+            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-[10px] font-mono font-semibold uppercase transition-colors cursor-pointer ${
+              channel === "telegram"
+                ? "bg-surface-1 text-text-primary shadow-sm"
+                : "text-text-muted hover:text-text-secondary"
+            }`}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" />
+            </svg>
+            Telegram
+          </button>
+          <button
+            disabled
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-[10px] font-mono font-semibold uppercase text-text-muted/40 cursor-not-allowed"
+            title="Coming soon"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            </svg>
+            WhatsApp
+          </button>
+        </div>
+      </div>
+
+      {/* Telegram Chat ID */}
+      {channel === "telegram" && (
+        <div className="mb-3">
+          <label className="text-[10px] font-mono text-text-muted uppercase tracking-wider block mb-1">
+            Chat ID
+          </label>
+          <input
+            type="text"
+            value={telegramChatId}
+            onChange={(e) => setTelegramChatId(e.target.value)}
+            placeholder="e.g. 914543095 or -100123456789"
+            className="w-full px-3 py-2 bg-surface-2 border border-surface-border text-xs font-mono text-text-primary outline-none focus:border-primary/50"
+          />
+          <p className="text-[9px] text-text-muted mt-1">Send /chatid to the bot to get your ID</p>
+        </div>
+      )}
 
       <div className="space-y-3">
         {/* Prompt */}
