@@ -412,6 +412,7 @@ export async function handleApiRoute(
     const match = pathname.match(/^\/api\/agents\/([^/]+)\/prompt$/);
     if (match && method === 'GET') {
       const folder = decodeURIComponent(match[1]);
+      if (!/^[a-z0-9_-]+$/i.test(folder)) { json({ error: 'Invalid folder name' }, 400); return; }
       const claudeMdPath = path.join(GROUPS_DIR, folder, 'CLAUDE.md');
       try {
         const content = fs.readFileSync(claudeMdPath, 'utf-8');
@@ -428,6 +429,7 @@ export async function handleApiRoute(
     const match = pathname.match(/^\/api\/agents\/([^/]+)\/prompt$/);
     if (match && method === 'PUT') {
       const folder = decodeURIComponent(match[1]);
+      if (!/^[a-z0-9_-]+$/i.test(folder)) { json({ error: 'Invalid folder name' }, 400); return; }
       const body = await parseBody();
       const content = body.content as string | undefined;
       if (content === undefined) {
