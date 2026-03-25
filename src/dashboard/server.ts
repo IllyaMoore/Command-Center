@@ -47,7 +47,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise
   // CORS headers — restrict to dashboard origin
   const allowedOrigin = new URL(DASHBOARD_URL).origin;
   res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') {
