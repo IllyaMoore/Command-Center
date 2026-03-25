@@ -6,6 +6,7 @@ dist/
 dashboard-next/out/
 dashboard-next/.next/
 dashboard/_next/
+dashboard/index.html
 dashboard/404/
 dashboard/404.html
 dashboard/_not-found/
