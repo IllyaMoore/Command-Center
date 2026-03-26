@@ -615,7 +615,7 @@ function matchPolicy(
 
 function createApprovalHook(
   groupFolder: string,
-  mode: 'on-miss' | 'always',
+  mode: 'on-miss',
 ): HookCallback {
   const approvalsDir = path.join(IPC_BASE_DIR, 'approvals');
   fs.mkdirSync(approvalsDir, { recursive: true });

@@ -54,8 +54,7 @@ export function useApprovals() {
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          console.error("Approval response failed:", res.status, err);
-          return;
+          throw new Error(`Server returned ${res.status}: ${JSON.stringify(err)}`);
         }
         // Only remove from UI after confirmed success
         setApprovals((prev) => prev.filter((a) => a.id !== id));

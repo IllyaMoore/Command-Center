@@ -682,7 +682,7 @@ export async function handleApiRoute(
     return;
   }
 
-  // Test endpoint: create a fake approval request for UI testing
+  // Respond to a pending approval request
   const approvalMatch = pathname.match(/^\/api\/approvals\/([^/]+)$/);
   if (approvalMatch && method === 'POST') {
     const id = decodeURIComponent(approvalMatch[1]);
