@@ -15,6 +15,7 @@ export interface PendingDelegation {
 
 export function useDelegations() {
   const [delegations, setDelegations] = useState<PendingDelegation[]>([]);
+  const [processing, setProcessing] = useState<Set<string>>(new Set());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -25,7 +26,15 @@ export function useDelegations() {
           return r.json();
         })
         .then((data) => {
-          if (Array.isArray(data)) setDelegations(data);
+          if (Array.isArray(data)) {
+            setDelegations(data);
+            // Clean up processing set — remove IDs no longer in pending
+            setProcessing((prev) => {
+              const pendingIds = new Set(data.map((d: PendingDelegation) => d.id));
+              const next = new Set([...prev].filter((id) => pendingIds.has(id)));
+              return next.size === prev.size ? prev : next;
+            });
+          }
         })
         .catch((err) => {
           console.error("Failed to fetch delegations:", err);
@@ -49,13 +58,14 @@ export function useDelegations() {
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
       }
-      // On deny → remove immediately. On allow → keep (host removes when agent finishes)
       if (decision === "deny") {
         setDelegations((prev) => prev.filter((d) => d.id !== id));
+      } else {
+        setProcessing((prev) => new Set([...prev, id]));
       }
     },
     [],
   );
 
-  return { delegations, respond };
+  return { delegations, processing, respond };
 }

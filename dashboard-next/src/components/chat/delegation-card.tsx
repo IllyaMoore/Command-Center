@@ -14,25 +14,27 @@ export interface DelegationCardProps {
 
 export function DelegationCard({
   request,
+  isProcessing,
   onAllow,
   onDeny,
 }: {
   request: DelegationCardProps;
+  isProcessing?: boolean;
   onAllow?: (id: string) => Promise<void> | void;
   onDeny?: (id: string) => Promise<void> | void;
 }) {
-  const [status, setStatus] = useState<"pending" | "delegated" | "declined" | "processing">("pending");
+  const [status, setStatus] = useState<"pending" | "declined">("pending");
   const [loading, setLoading] = useState(false);
+  const effectiveStatus = isProcessing ? "processing" : status;
 
   const targetColor = agentColor(request.targetGroup);
 
   const handleAction = async (action: "allow" | "deny") => {
-    if (status !== "pending" || loading) return;
+    if (effectiveStatus !== "pending" || loading) return;
     setLoading(true);
     try {
       if (action === "allow") {
         await onAllow?.(request.id);
-        setStatus("processing");
       } else {
         await onDeny?.(request.id);
         setStatus("declined");
@@ -48,10 +50,10 @@ export function DelegationCard({
     <div className="max-w-[85%] inline-block animate-slide-down">
       <div
         className={`border border-surface-border ${
-          status === "declined"
+          effectiveStatus === "declined"
             ? "border-t-2 border-t-primary opacity-60"
-            : status === "delegated"
-              ? "border-t-2 border-t-text-primary opacity-60"
+            : effectiveStatus === "processing"
+              ? "border-t-2 border-t-signal-info opacity-80"
               : "border-t-2 border-t-signal-info"
         }`}
       >
@@ -97,7 +99,7 @@ export function DelegationCard({
 
         {/* Actions */}
         <div className="px-4 pb-3">
-          {status === "pending" ? (
+          {effectiveStatus === "pending" ? (
             <div className="flex gap-2">
               <button
                 onClick={() => handleAction("allow")}
@@ -118,16 +120,14 @@ export function DelegationCard({
             <div className="flex items-center gap-2">
               <span
                 className={`text-[10px] font-mono font-semibold uppercase tracking-wider ${
-                  status === "declined" ? "text-primary" :
-                  status === "processing" ? "text-signal-info" :
+                  effectiveStatus === "declined" ? "text-primary" :
+                  effectiveStatus === "processing" ? "text-signal-info" :
                   "text-text-primary"
                 }`}
               >
-                {status === "processing" ? "Processing..." :
-                 status === "delegated" ? "Delegated" :
-                 "Declined"}
+                {effectiveStatus === "processing" ? "Processing..." : "Declined"}
               </span>
-              {status === "processing" && (
+              {effectiveStatus === "processing" && (
                 <span className="inline-flex gap-0.5">
                   <span className="w-1 h-1 bg-signal-info animate-bounce [animation-delay:0ms]" />
                   <span className="w-1 h-1 bg-signal-info animate-bounce [animation-delay:150ms]" />

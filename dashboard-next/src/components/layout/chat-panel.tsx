@@ -27,7 +27,7 @@ export function ChatPanel() {
     selectedAgent?.folder ?? null,
   );
   const { approvals, respond: respondApproval } = useApprovals();
-  const { delegations, respond: respondDelegation } = useDelegations();
+  const { delegations, processing: processingDelegations, respond: respondDelegation } = useDelegations();
 
   const agentName = selectedAgent?.name ?? "No Agent";
   const agentInitial = agentName.charAt(0).toUpperCase();
@@ -270,6 +270,7 @@ export function ChatPanel() {
                         context: d.context,
                         timestamp: d.timestamp,
                       }}
+                      isProcessing={processingDelegations.has(d.id)}
                       onAllow={(id) => respondDelegation(id, "allow")}
                       onDeny={(id) => respondDelegation(id, "deny")}
                     />
