@@ -109,6 +109,7 @@ function buildAgentEnv(
   fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'input'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'approvals'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'delegations'), { recursive: true });
 
   // Build env vars for the agent-runner process
   const env: Record<string, string> = {

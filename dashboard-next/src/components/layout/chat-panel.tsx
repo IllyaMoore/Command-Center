@@ -10,7 +10,9 @@ import { Message, sendMessage } from "@/lib/api";
 import { useMessages } from "@/lib/use-messages";
 import { agentColor } from "@/lib/agent-colors";
 import { ApprovalCard } from "@/components/chat/approval-card";
+import { DelegationCard } from "@/components/chat/delegation-card";
 import { useApprovals } from "@/lib/use-approvals";
+import { useDelegations } from "@/lib/use-delegations";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
@@ -25,6 +27,7 @@ export function ChatPanel() {
     selectedAgent?.folder ?? null,
   );
   const { approvals, respond: respondApproval } = useApprovals();
+  const { delegations, respond: respondDelegation } = useDelegations();
 
   const agentName = selectedAgent?.name ?? "No Agent";
   const agentInitial = agentName.charAt(0).toUpperCase();
@@ -53,7 +56,7 @@ export function ChatPanel() {
     if (!userScrolled) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, waitingForReply, approvals]);
+  }, [messages, waitingForReply, approvals, delegations]);
 
   // Detect user scroll
   const handleScroll = useCallback(() => {
@@ -242,6 +245,33 @@ export function ChatPanel() {
                       onApprove={(id) => respondApproval(id, "allow", false)}
                       onAlwaysAllow={(id) => respondApproval(id, "allow", true)}
                       onDeny={(id) => respondApproval(id, "deny", false)}
+                    />
+                  </div>
+                </div>
+              ))}
+            {/* Pending delegation cards for this agent */}
+            {delegations
+              .filter((d) => d.sourceGroup === selectedAgent?.folder)
+              .map((d) => (
+                <div key={d.id} className="flex gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-1 ${color.bg} ${color.text}`}>
+                    {agentInitial}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[10px] font-mono text-text-muted">{agentName}</span>
+                    </div>
+                    <DelegationCard
+                      request={{
+                        id: d.id,
+                        sourceGroup: d.sourceGroup,
+                        targetGroup: d.targetGroup,
+                        task: d.task,
+                        context: d.context,
+                        timestamp: d.timestamp,
+                      }}
+                      onAllow={(id) => respondDelegation(id, "allow")}
+                      onDeny={(id) => respondDelegation(id, "deny")}
                     />
                   </div>
                 </div>

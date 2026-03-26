@@ -31,6 +31,7 @@ import {
   upsertToolPolicy,
 } from '../db.js';
 import { approvalManager } from '../approval-manager.js';
+import { delegationManager, DelegationResponse } from '../delegation-manager.js';
 import { ScheduledTask, TaskRunLog } from '../types.js';
 import { getActivity, streamActivity } from './api/activity.js';
 import {
@@ -703,6 +704,71 @@ export async function handleApiRoute(
     return;
   }
 
+  // ─── Delegation endpoints ───
+  if (pathname === '/api/delegations' && method === 'GET') {
+    json(delegationManager.getPending());
+    return;
+  }
+
+  const delegationMatch = pathname.match(/^\/api\/delegations\/([^/]+)$/);
+  if (delegationMatch && method === 'POST') {
+    const id = decodeURIComponent(delegationMatch[1]);
+    const body = await parseBody();
+    const decision = body.decision as string;
+
+    if (decision === 'deny') {
+      const ok = delegationManager.respond(id, { id, status: 'denied' });
+      if (!ok) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Delegation request not found' }));
+        return;
+      }
+      json({ ok: true });
+      return;
+    }
+
+    if (decision === 'allow') {
+      const pending = delegationManager.getPending().find((d) => d.id === id);
+      if (!pending) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Delegation request not found' }));
+        return;
+      }
+
+      // Spawn target agent and collect result
+      json({ ok: true, status: 'processing' });
+
+      // Run target agent asynchronously — response written when done
+      const groups = getAllRegisteredGroups();
+      const targetGroup = Object.values(groups).find((g) => g.folder === pending.targetGroup);
+      if (!targetGroup) {
+        delegationManager.respond(id, { id, status: 'error', error: `Agent "${pending.targetGroup}" not found` });
+        return;
+      }
+
+      // Import and run via dynamic reference to avoid circular deps
+      const { runDelegatedAgent } = await import('../index.js');
+      const prompt = pending.context
+        ? `[Delegated from ${pending.sourceGroup}]\n\nContext: ${pending.context}\n\nTask: ${pending.task}`
+        : `[Delegated from ${pending.sourceGroup}]\n\nTask: ${pending.task}`;
+
+      runDelegatedAgent(targetGroup, prompt, pending.chatJid)
+        .then((result) => {
+          delegationManager.respond(id, { id, status: 'success', result });
+        })
+        .catch((err) => {
+          logger.error({ err, id }, 'Delegation agent failed');
+          delegationManager.respond(id, { id, status: 'error', error: err instanceof Error ? err.message : String(err) });
+        });
+
+      return;
+    }
+
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'decision must be allow or deny' }));
+    return;
+  }
+
   // ─── Tool policy endpoints ───
   if (pathname === '/api/tool-policies' && method === 'GET') {
     const group = url.searchParams.get('group');
@@ -1062,6 +1128,14 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
       const pendingApprovals = approvalManager.getPending();
       if (pendingApprovals.length > 0) {
         res.write(`data: ${JSON.stringify({ type: 'approval_requests', items: pendingApprovals })}\n\n`);
+      }
+
+      // Delegation requests
+      delegationManager.scanIpcDirs();
+      delegationManager.cleanExpired();
+      const pendingDelegations = delegationManager.getPending();
+      if (pendingDelegations.length > 0) {
+        res.write(`data: ${JSON.stringify({ type: 'delegation_requests', items: pendingDelegations })}\n\n`);
       }
 
       // Agent status
