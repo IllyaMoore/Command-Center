@@ -49,7 +49,10 @@ export function useDelegations() {
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`);
       }
-      setDelegations((prev) => prev.filter((d) => d.id !== id));
+      // On deny → remove immediately. On allow → keep (host removes when agent finishes)
+      if (decision === "deny") {
+        setDelegations((prev) => prev.filter((d) => d.id !== id));
+      }
     },
     [],
   );
