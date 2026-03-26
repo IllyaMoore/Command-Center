@@ -626,7 +626,7 @@ async function main(): Promise<void> {
 
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const prompt = `[Via Dashboard] ${text}`;
-      const isDashboardOnly = chatJid.startsWith('dashboard-');
+      const isDashboardOnly = chatJid.startsWith('dashboard-') || chatJid.startsWith('xagent-') || !!replyToJid;
       const safeText = text.replace(/[_*~`]/g, '');
       const result = await runAgent(
         group,
@@ -672,7 +672,7 @@ async function main(): Promise<void> {
             // Store warning as system message for dashboard visibility
             storeMessageDirect({
               id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              chat_jid: chatJid,
+              chat_jid: replyToJid || chatJid,
               sender: 'system',
               sender_name: 'System',
               content: WARNING_MESSAGE,
