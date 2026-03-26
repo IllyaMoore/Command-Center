@@ -3,13 +3,9 @@ import { IncomingMessage, ServerResponse } from 'http';
 import { getRecentActivity, ActivityItem } from '../../db.js';
 import { logger } from '../../logger.js';
 
-// Main group folder name - messages/tasks filtered to this
-const CEO_GROUP = 'ceo';
-
 export async function getActivity(limit: number = 50): Promise<ActivityItem[]> {
   try {
-    const activity = getRecentActivity(limit, CEO_GROUP);
-    return activity;
+    return getRecentActivity(limit);
   } catch (err) {
     logger.error({ err }, 'Error fetching activity');
     return [];
@@ -32,7 +28,6 @@ export async function streamActivity(
   const initialActivity = await getActivity(20);
   res.write(`data: ${JSON.stringify({ type: 'initial', items: initialActivity })}\n\n`);
 
-  // Keep track of the last timestamp we've seen
   let lastTimestamp = initialActivity.length > 0 ? initialActivity[0].timestamp : new Date().toISOString();
 
   // Poll for new activity every 2 seconds
@@ -53,7 +48,6 @@ export async function streamActivity(
     }
   }, 2000);
 
-  // Clean up on client disconnect
   req.on('close', () => {
     clearInterval(interval);
     logger.debug('Activity stream closed');

@@ -21,9 +21,8 @@ export function AgentsProvider({ children }: { children: React.ReactNode }) {
 /** Hook — returns the shared agents state */
 export function useAgents(): AgentsContextValue {
   const ctx = useContext(AgentsContext);
-  if (ctx) return ctx;
-  // Fallback for components outside provider (shouldn't happen)
-  return useAgentsInternal();
+  if (!ctx) throw new Error("useAgents must be used within AgentsProvider");
+  return ctx;
 }
 
 function useAgentsInternal() {

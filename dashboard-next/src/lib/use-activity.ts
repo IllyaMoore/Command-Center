@@ -15,6 +15,7 @@ export interface ActivityItem {
   content?: string;
   chat_jid?: string;
   group_folder?: string;
+  group_name?: string;
 }
 
 export type ActivityFilter = "all" | "tasks" | "messages";
