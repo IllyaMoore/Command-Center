@@ -717,22 +717,25 @@ export interface ActivityItem {
   content?: string;
   chat_jid?: string;
   group_folder?: string;
+  group_name?: string;
 }
 
 export function getRecentTaskRuns(limit: number, groupFolder?: string): TaskRunLog[] {
   const sql = groupFolder
     ? `
-      SELECT trl.*, st.prompt as task_prompt, st.group_folder
+      SELECT trl.*, st.prompt as task_prompt, st.group_folder, rg.name as group_name
       FROM task_run_logs trl
       JOIN scheduled_tasks st ON trl.task_id = st.id
+      LEFT JOIN registered_groups rg ON rg.folder = st.group_folder
       WHERE st.group_folder = ?
       ORDER BY trl.run_at DESC
       LIMIT ?
     `
     : `
-      SELECT trl.*, st.prompt as task_prompt, st.group_folder
+      SELECT trl.*, st.prompt as task_prompt, st.group_folder, rg.name as group_name
       FROM task_run_logs trl
       JOIN scheduled_tasks st ON trl.task_id = st.id
+      LEFT JOIN registered_groups rg ON rg.folder = st.group_folder
       ORDER BY trl.run_at DESC
       LIMIT ?
     `;
@@ -794,15 +797,34 @@ export function getRecentActivity(limit: number, groupFolder?: string): Activity
   // Get task runs
   const taskRuns = getRecentTaskRuns(limit, groupFolder);
 
-  // Get messages - if groupFolder is specified, we'd need to join with registered_groups
-  // For now, get all recent messages
-  const messages = getRecentMessages(limit);
+  // Get messages with group_folder via registered_groups JOIN
+  const msgSql = groupFolder
+    ? `
+      SELECT m.id, m.chat_jid, m.sender, m.sender_name, m.content, m.timestamp,
+             m.is_from_me, m.is_bot_message,
+             SUBSTR(m.chat_jid, 11) as group_folder
+      FROM messages m
+      WHERE m.chat_jid = 'dashboard-' || ?
+      ORDER BY m.rowid DESC
+      LIMIT ?
+    `
+    : `
+      SELECT m.id, m.chat_jid, m.sender, m.sender_name, m.content, m.timestamp,
+             m.is_from_me, m.is_bot_message,
+             SUBSTR(m.chat_jid, 11) as group_folder
+      FROM messages m
+      WHERE m.chat_jid LIKE 'dashboard-%'
+      ORDER BY m.rowid DESC
+      LIMIT ?
+    `;
+  const msgArgs = groupFolder ? [groupFolder, limit] : [limit];
+  const messages = db.prepare(msgSql).all(...msgArgs) as (NewMessage & { group_folder: string | null })[];
 
   // Combine and sort
   const activities: ActivityItem[] = [];
 
   for (const run of taskRuns) {
-    const r = run as TaskRunLog & { task_prompt?: string; group_folder?: string };
+    const r = run as TaskRunLog & { task_prompt?: string; group_folder?: string; group_name?: string };
     activities.push({
       type: 'task_run',
       timestamp: r.run_at,
@@ -813,6 +835,7 @@ export function getRecentActivity(limit: number, groupFolder?: string): Activity
       error: r.error,
       duration_ms: r.duration_ms,
       group_folder: r.group_folder,
+      group_name: r.group_name,
     });
   }
 
@@ -823,6 +846,7 @@ export function getRecentActivity(limit: number, groupFolder?: string): Activity
       sender_name: msg.sender_name,
       content: msg.content,
       chat_jid: msg.chat_jid,
+      group_folder: msg.group_folder ?? undefined,
     });
   }
 

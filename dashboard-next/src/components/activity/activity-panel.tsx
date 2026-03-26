@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useActivity, type ActivityFilter, type ActivityItem } from "@/lib/use-activity";
+import { useAgents } from "@/lib/use-agents";
 
 export function ActivityPanel({
   open,
@@ -13,18 +14,18 @@ export function ActivityPanel({
   containerRef?: React.RefObject<HTMLDivElement | null>;
 }) {
   const { items, loading } = useActivity();
+  const { agents } = useAgents();
   const [filter, setFilter] = useState<ActivityFilter>("all");
+  const [agentFilter, setAgentFilter] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [now, setNow] = useState(Date.now());
 
-  // Tick every 30s to update relative times
   useEffect(() => {
     if (!open) return;
     const tick = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(tick);
   }, [open]);
 
-  // Close on outside click / Escape
   useEffect(() => {
     if (!open) return;
     const handleClick = (e: MouseEvent) => {
@@ -47,9 +48,54 @@ export function ActivityPanel({
     };
   }, [open, onClose, containerRef]);
 
+  // Count activity per agent folder
+  const countByFolder = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of items) {
+      if (!item.group_folder) continue;
+      map.set(item.group_folder, (map.get(item.group_folder) ?? 0) + 1);
+    }
+    return map;
+  }, [items]);
+
+  // Agents that have activity — use canonical names from /api/agents
+  const agentNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const a of agents) {
+      map.set(a.folder, a.name);
+    }
+    return map;
+  }, [agents]);
+
+  // Agent pills: all agents from /api/agents, with activity counts
+  const agentPills = useMemo(() => {
+    return agents.map((a) => ({
+      folder: a.folder,
+      name: a.name,
+      count: countByFolder.get(a.folder) ?? 0,
+    }));
+  }, [agents, countByFolder]);
+
+  // Reset agent filter if agent no longer exists
+  useEffect(() => {
+    if (agentFilter && !agentPills.some((p) => p.folder === agentFilter)) {
+      setAgentFilter(null);
+    }
+  }, [agentFilter, agentPills]);
+
   if (!open) return null;
 
-  const filtered = filterItems(items, filter);
+  // Apply filters
+  let filtered = items;
+  if (agentFilter) {
+    filtered = filtered.filter((i) => i.group_folder === agentFilter);
+  }
+  if (filter === "tasks") {
+    filtered = filtered.filter((i) => i.type === "task_run");
+  } else if (filter === "messages") {
+    filtered = filtered.filter((i) => i.type === "message");
+  }
+
   const taskCount = items.filter((i) => i.type === "task_run").length;
   const msgCount = items.filter((i) => i.type === "message").length;
 
@@ -81,8 +127,8 @@ export function ActivityPanel({
           </div>
         </div>
 
-        {/* Filter pills */}
-        <div className="flex gap-1">
+        {/* Type filter pills */}
+        <div className="flex gap-1 mb-2">
           <FilterPill
             label="All"
             count={items.length}
@@ -104,6 +150,40 @@ export function ActivityPanel({
             dotColor="var(--signal-success)"
           />
         </div>
+
+        {/* Agent filter pills — only show when multiple agents have activity */}
+        {agentPills.length > 1 && (
+          <div className="flex gap-1 flex-wrap">
+            <button
+              onClick={() => setAgentFilter(null)}
+              className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider transition-colors cursor-pointer border ${
+                agentFilter === null
+                  ? "bg-text-primary text-text-inverse border-text-primary"
+                  : "text-text-muted border-surface-border hover:text-text-secondary hover:border-text-muted"
+              }`}
+            >
+              All agents
+            </button>
+            {agentPills.map((agent) => (
+              <button
+                key={agent.folder}
+                onClick={() => setAgentFilter(agent.folder)}
+                className={`px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider transition-colors cursor-pointer border ${
+                  agentFilter === agent.folder
+                    ? "bg-text-primary text-text-inverse border-text-primary"
+                    : "text-text-muted border-surface-border hover:text-text-secondary hover:border-text-muted"
+                }`}
+              >
+                {agent.name}
+                <span className={`ml-1 tabular-nums ${
+                  agentFilter === agent.folder ? "text-text-inverse/50" : "text-text-muted/40"
+                }`}>
+                  {agent.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Feed */}
@@ -123,7 +203,7 @@ export function ActivityPanel({
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 gap-1">
-            <span className="text-lg text-text-muted/30">—</span>
+            <span className="text-lg text-text-muted/30">&mdash;</span>
             <span className="text-xs font-mono text-text-muted">
               No activity yet
             </span>
@@ -135,7 +215,8 @@ export function ActivityPanel({
                 key={`${item.type}-${item.timestamp}-${i}`}
                 item={item}
                 now={now}
-                index={i}
+                showAgent={!agentFilter && agentPills.length > 1}
+                agentName={item.group_folder ? agentNameMap.get(item.group_folder) : undefined}
               />
             ))}
           </div>
@@ -200,11 +281,13 @@ function FilterPill({
 function FeedItem({
   item,
   now,
-  index,
+  showAgent,
+  agentName,
 }: {
   item: ActivityItem;
   now: number;
-  index: number;
+  showAgent?: boolean;
+  agentName?: string;
 }) {
   const isTask = item.type === "task_run";
   const isSuccess = item.status === "success";
@@ -214,12 +297,7 @@ function FeedItem({
   const relTime = formatRelativeTime(item.timestamp, now);
 
   return (
-    <div
-      className="group flex gap-3 px-4 py-2.5 hover:bg-surface-2/50 transition-colors"
-      style={{
-        animationDelay: `${Math.min(index * 30, 300)}ms`,
-      }}
-    >
+    <div className="group flex gap-3 px-4 py-2.5 hover:bg-surface-2/50 transition-colors">
       {/* Accent strip */}
       <div className="flex flex-col items-center gap-1 pt-1">
         <div
@@ -233,7 +311,7 @@ function FeedItem({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        {/* Top row: type label + time */}
+        {/* Top row */}
         <div className="flex items-center gap-2 mb-0.5">
           {isTask ? (
             <div className="flex items-center gap-1.5">
@@ -258,6 +336,13 @@ function FeedItem({
             </span>
           )}
 
+          {/* Agent label — uses canonical name from /api/agents */}
+          {showAgent && agentName && (
+            <span className="text-[8px] font-mono uppercase tracking-wider text-text-muted/60">
+              {agentName}
+            </span>
+          )}
+
           <span className="ml-auto text-[9px] font-mono text-text-muted/50 tabular-nums shrink-0">
             {relTime}
           </span>
@@ -267,7 +352,7 @@ function FeedItem({
         <p className="text-[11px] leading-relaxed text-text-secondary truncate">
           {isTask
             ? item.task_prompt || "Scheduled task"
-            : item.content || "—"}
+            : item.content || "\u2014"}
         </p>
 
         {/* Duration badge for tasks */}
@@ -293,12 +378,6 @@ function FeedItem({
 }
 
 /* ── Helpers ── */
-function filterItems(items: ActivityItem[], filter: ActivityFilter): ActivityItem[] {
-  if (filter === "tasks") return items.filter((i) => i.type === "task_run");
-  if (filter === "messages") return items.filter((i) => i.type === "message");
-  return items;
-}
-
 function formatRelativeTime(timestamp: string, now: number): string {
   const diff = now - new Date(timestamp).getTime();
   const seconds = Math.floor(diff / 1000);

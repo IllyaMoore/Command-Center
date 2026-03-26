@@ -4,16 +4,16 @@
  */
 
 const PALETTE = [
-  { bg: "bg-rose-500/15", text: "text-rose-500" },
-  { bg: "bg-orange-500/15", text: "text-orange-500" },
-  { bg: "bg-amber-500/15", text: "text-amber-500" },
-  { bg: "bg-emerald-500/15", text: "text-emerald-500" },
-  { bg: "bg-teal-500/15", text: "text-teal-500" },
-  { bg: "bg-cyan-500/15", text: "text-cyan-500" },
-  { bg: "bg-blue-500/15", text: "text-blue-500" },
-  { bg: "bg-indigo-500/15", text: "text-indigo-500" },
-  { bg: "bg-violet-500/15", text: "text-violet-500" },
-  { bg: "bg-fuchsia-500/15", text: "text-fuchsia-500" },
+  { bg: "bg-rose-500/15", text: "text-rose-500", dot: "bg-rose-500" },
+  { bg: "bg-orange-500/15", text: "text-orange-500", dot: "bg-orange-500" },
+  { bg: "bg-amber-500/15", text: "text-amber-500", dot: "bg-amber-500" },
+  { bg: "bg-emerald-500/15", text: "text-emerald-500", dot: "bg-emerald-500" },
+  { bg: "bg-teal-500/15", text: "text-teal-500", dot: "bg-teal-500" },
+  { bg: "bg-cyan-500/15", text: "text-cyan-500", dot: "bg-cyan-500" },
+  { bg: "bg-blue-500/15", text: "text-blue-500", dot: "bg-blue-500" },
+  { bg: "bg-indigo-500/15", text: "text-indigo-500", dot: "bg-indigo-500" },
+  { bg: "bg-violet-500/15", text: "text-violet-500", dot: "bg-violet-500" },
+  { bg: "bg-fuchsia-500/15", text: "text-fuchsia-500", dot: "bg-fuchsia-500" },
 ];
 
 function hash(str: string): number {
@@ -24,6 +24,6 @@ function hash(str: string): number {
   return h;
 }
 
-export function agentColor(folder: string): { bg: string; text: string } {
+export function agentColor(folder: string): { bg: string; text: string; dot: string } {
   return PALETTE[hash(folder) % PALETTE.length];
 }
