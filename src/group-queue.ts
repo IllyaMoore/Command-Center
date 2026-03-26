@@ -316,6 +316,22 @@ export class GroupQueue {
     }
   }
 
+  /** Kill an idle agent by group folder. Returns 'killed' | 'busy' | 'none'. */
+  killByFolder(groupFolder: string): 'killed' | 'busy' | 'none' {
+    for (const [, state] of this.groups) {
+      if (state.groupFolder === groupFolder && state.process && !state.process.killed) {
+        if (state.active) {
+          logger.info({ groupFolder }, 'Agent is busy, will apply new settings on next spawn');
+          return 'busy';
+        }
+        logger.info({ groupFolder }, 'Killing idle agent process (settings changed)');
+        killProcessGroup(state.process.pid, 'SIGTERM');
+        return 'killed';
+      }
+    }
+    return 'none';
+  }
+
   private scheduleRetry(groupJid: string, state: GroupState): void {
     state.retryCount++;
     if (state.retryCount > MAX_RETRIES) {

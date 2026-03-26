@@ -44,6 +44,7 @@ interface ContainerInput {
   assistantName?: string;
   model?: string;
   secrets?: Record<string, string>;
+  approvalMode?: 'off' | 'on-miss';
 }
 
 interface ContainerOutput {
@@ -441,6 +442,7 @@ async function runQuery(
   containerInput: ContainerInput,
   sdkEnv: Record<string, string | undefined>,
   resumeAt?: string,
+  approvalHook?: HookCallback,
 ): Promise<{ newSessionId?: string; lastAssistantUuid?: string; closedDuringQuery: boolean }> {
   const stream = new MessageStream();
   stream.push(prompt);
@@ -517,7 +519,10 @@ async function runQuery(
       mcpServers: buildMcpServers(containerInput, sdkEnv, mcpServerPath),
       hooks: {
         PreCompact: [{ hooks: [createPreCompactHook(containerInput.assistantName)] }],
-        PreToolUse: [{ matcher: 'Bash', hooks: [createSanitizeBashHook()] }],
+        PreToolUse: [
+          { matcher: 'Bash', hooks: [createSanitizeBashHook()] },
+          ...(approvalHook ? [{ hooks: [approvalHook] }] : []),
+        ],
       },
     }
   })) {
@@ -554,6 +559,170 @@ async function runQuery(
   ipcPolling = false;
   log(`Query done. Messages: ${messageCount}, results: ${resultCount}, lastAssistantUuid: ${lastAssistantUuid || 'none'}, closedDuringQuery: ${closedDuringQuery}`);
   return { newSessionId, lastAssistantUuid, closedDuringQuery };
+}
+
+// ── Approval flow: file-based IPC ──
+
+interface ApprovalRequestFile {
+  id: string;
+  groupFolder: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  toolUseId: string;
+  timestamp: string;
+}
+
+interface ApprovalResponseFile {
+  id: string;
+  decision: 'allow' | 'deny';
+  alwaysAllow: boolean;
+}
+
+type ToolPolicyAction = 'allow' | 'deny' | 'ask';
+
+function loadToolPolicies(): Map<string, ToolPolicyAction> {
+  const policiesFile = path.join(IPC_BASE_DIR, 'tool_policies.json');
+  const map = new Map<string, ToolPolicyAction>();
+  try {
+    if (fs.existsSync(policiesFile)) {
+      const data = JSON.parse(fs.readFileSync(policiesFile, 'utf-8')) as Array<{
+        tool_pattern: string;
+        action: ToolPolicyAction;
+      }>;
+      for (const p of data) map.set(p.tool_pattern, p.action);
+    }
+  } catch (err) {
+    log(`WARNING: Failed to load tool policies: ${err instanceof Error ? err.message : String(err)} — all tools will require approval`);
+  }
+  return map;
+}
+
+function matchPolicy(
+  policies: Map<string, ToolPolicyAction>,
+  toolName: string,
+): ToolPolicyAction | null {
+  // Exact match
+  const exact = policies.get(toolName);
+  if (exact) return exact;
+  // Glob match (prefix*)
+  for (const [pattern, action] of policies) {
+    if (pattern.endsWith('*') && toolName.startsWith(pattern.slice(0, -1))) {
+      return action;
+    }
+  }
+  return null;
+}
+
+function createApprovalHook(
+  groupFolder: string,
+  mode: 'on-miss',
+): HookCallback {
+  const approvalsDir = path.join(IPC_BASE_DIR, 'approvals');
+  fs.mkdirSync(approvalsDir, { recursive: true });
+  const policies = loadToolPolicies();
+
+  return async (input, toolUseID, options) => {
+    const hookInput = input as PreToolUseHookInput;
+    const toolName = hookInput.tool_name;
+    const toolInput = (hookInput.tool_input ?? {}) as Record<string, unknown>;
+
+    // Check cached/loaded policies
+    if (mode === 'on-miss') {
+      const policy = matchPolicy(policies, toolName);
+      if (policy === 'allow') return { continue: true, hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'allow' as const } };
+      if (policy === 'deny') return { continue: true, hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'deny' as const, permissionDecisionReason: 'Blocked by policy' } };
+    }
+
+    // Write approval request
+    const requestId = `approval-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const requestFile = path.join(approvalsDir, `${requestId}.request.json`);
+    const responseFile = path.join(approvalsDir, `${requestId}.response.json`);
+
+    const request: ApprovalRequestFile = {
+      id: requestId,
+      groupFolder,
+      toolName,
+      toolInput: sanitizeToolInput(toolName, toolInput),
+      toolUseId: toolUseID || '',
+      timestamp: new Date().toISOString(),
+    };
+
+    // Atomic write
+    const tmpFile = `${requestFile}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(request));
+    fs.renameSync(tmpFile, requestFile);
+    log(`Approval requested: ${toolName} (${requestId})`);
+
+    // Poll for response (blocks agent)
+    const TIMEOUT_MS = 5 * 60 * 1000;
+    const startTime = Date.now();
+
+    const response = await new Promise<ApprovalResponseFile | null>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let resolved = false;
+      const done = (val: ApprovalResponseFile | null) => {
+        if (resolved) return;
+        resolved = true;
+        if (timer) clearTimeout(timer);
+        resolve(val);
+      };
+
+      const poll = () => {
+        if (resolved) return;
+        if (options.signal?.aborted) { done(null); return; }
+        if (Date.now() - startTime > TIMEOUT_MS) { done(null); return; }
+
+        try {
+          if (fs.existsSync(responseFile)) {
+            const raw = fs.readFileSync(responseFile, 'utf-8');
+            const data = JSON.parse(raw) as ApprovalResponseFile;
+            try { fs.unlinkSync(responseFile); } catch (e) { log(`Warning: failed to clean response file: ${e}`); }
+            try { fs.unlinkSync(requestFile); } catch (e) { log(`Warning: failed to clean request file: ${e}`); }
+            done(data);
+            return;
+          }
+        } catch (err) {
+          // File exists but corrupt/locked — log and retry
+          log(`Warning: error reading approval response: ${err instanceof Error ? err.message : String(err)}`);
+        }
+
+        timer = setTimeout(poll, IPC_POLL_MS);
+      };
+      poll();
+    });
+
+    if (!response) {
+      log(`Approval timed out: ${toolName} (${requestId})`);
+      try { fs.unlinkSync(requestFile); } catch { /* ok */ }
+      return { continue: true, hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'deny' as const, permissionDecisionReason: 'Approval timed out' } };
+    }
+
+    log(`Approval response: ${response.decision} (alwaysAllow=${response.alwaysAllow}) for ${toolName}`);
+
+    if (response.alwaysAllow && response.decision === 'allow') {
+      policies.set(toolName, 'allow');
+    }
+
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse' as const,
+        permissionDecision: (response.decision === 'allow' ? 'allow' : 'deny') as 'allow' | 'deny',
+        permissionDecisionReason: response.decision === 'deny' ? 'Denied by user' : undefined,
+      },
+    };
+  };
+}
+
+function sanitizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
+  // Strip known secret env vars from bash commands
+  const copy = { ...input };
+  if (toolName === 'Bash' && typeof copy.command === 'string') {
+    copy.command = copy.command
+      .replace(/ANTHROPIC_API_KEY=\S+/g, 'ANTHROPIC_API_KEY=***')
+      .replace(/CLAUDE_CODE_OAUTH_TOKEN=\S+/g, 'CLAUDE_CODE_OAUTH_TOKEN=***');
+  }
+  return copy;
 }
 
 async function main(): Promise<void> {
@@ -601,13 +770,22 @@ async function main(): Promise<void> {
     prompt += '\n' + pending.join('\n');
   }
 
+  // Build approval hook if approval mode is enabled
+  const approvalMode = containerInput.approvalMode || 'off';
+  const approvalHook = approvalMode === 'on-miss'
+    ? createApprovalHook(containerInput.groupFolder, approvalMode)
+    : undefined;
+  if (approvalHook) {
+    log(`Approval mode: ${approvalMode}`);
+  }
+
   // Query loop: run query → wait for IPC message → run new query → repeat
   let resumeAt: string | undefined;
   try {
     while (true) {
       log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`);
 
-      const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
+      const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt, approvalHook);
       if (queryResult.newSessionId) {
         sessionId = queryResult.newSessionId;
       }

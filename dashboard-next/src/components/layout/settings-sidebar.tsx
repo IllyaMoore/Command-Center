@@ -211,14 +211,51 @@ function Toggle({ on, onToggle, disabled }: { on: boolean; onToggle: () => void;
 
 /* ── Capabilities tab (implemented) ── */
 function CapabilitiesTab() {
+  const { selectedAgent } = useAgentStore();
   const { integrations, loading, connect, disconnect } = useIntegrations();
-  const [execMode, setExecMode] = useState<"off" | "ask" | "auto">("ask");
+  const [execMode, setExecMode] = useState<"ask" | "auto">("auto");
+  const [execLoading, setExecLoading] = useState(true);
   const [webAccess, setWebAccess] = useState(true);
   const [fileTools, setFileTools] = useState(true);
   const [mcpExpanded, setMcpExpanded] = useState(false);
 
+  // Load saved approval mode
+  useEffect(() => {
+    if (!selectedAgent) return;
+    setExecLoading(true);
+    fetch(`/api/agents/${encodeURIComponent(selectedAgent.folder)}/settings`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (data.approvalMode) setExecMode(data.approvalMode);
+      })
+      .catch((err) => {
+        console.error("Failed to load agent settings:", err);
+      })
+      .finally(() => setExecLoading(false));
+  }, [selectedAgent?.folder]);
+
+  // Persist on change — revert on failure
+  const handleExecMode = async (mode: "ask" | "auto") => {
+    const prev = execMode;
+    setExecMode(mode);
+    if (!selectedAgent) return;
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(selectedAgent.folder)}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalMode: mode }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+    } catch (err) {
+      console.error("Failed to save approval mode:", err);
+      setExecMode(prev); // Revert
+    }
+  };
+
   const execDescriptions = {
-    off: "Agent cannot execute commands",
     ask: "Requires approval for each command",
     auto: "Commands execute automatically",
   };
@@ -282,10 +319,11 @@ function CapabilitiesTab() {
               Run commands
             </label>
             <div className="flex gap-0.5 bg-surface-2 rounded-lg p-0.5">
-              {(["off", "ask", "auto"] as const).map((mode) => (
+              {(["ask", "auto"] as const).map((mode) => (
                 <button
                   key={mode}
-                  onClick={() => setExecMode(mode)}
+                  onClick={() => handleExecMode(mode)}
+                  disabled={execLoading}
                   className={`flex-1 px-2 py-1.5 text-[10px] font-mono font-semibold uppercase rounded-md transition-colors cursor-pointer ${
                     execMode === mode
                       ? "bg-surface-1 text-text-primary shadow-sm"

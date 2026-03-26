@@ -12,6 +12,7 @@ import {
   deleteMessages,
   deleteRegisteredGroup,
   deleteTask,
+  deleteToolPolicy,
   getAllRegisteredGroups,
   getAllTasks,
   getMessagesPaginated,
@@ -21,10 +22,15 @@ import {
   getTaskById,
   getTasksForGroup,
   getTimezone,
+  getRouterState,
+  getToolPolicies,
   setRegisteredGroup,
+  setRouterState,
   setTimezone,
   updateTask,
+  upsertToolPolicy,
 } from '../db.js';
+import { approvalManager } from '../approval-manager.js';
 import { ScheduledTask, TaskRunLog } from '../types.js';
 import { getActivity, streamActivity } from './api/activity.js';
 import {
@@ -670,6 +676,73 @@ export async function handleApiRoute(
     return;
   }
 
+  // ─── Approval endpoints ───
+  if (pathname === '/api/approvals' && method === 'GET') {
+    json(approvalManager.getPending());
+    return;
+  }
+
+  // Respond to a pending approval request
+  const approvalMatch = pathname.match(/^\/api\/approvals\/([^/]+)$/);
+  if (approvalMatch && method === 'POST') {
+    const id = decodeURIComponent(approvalMatch[1]);
+    const body = await parseBody();
+    const { decision, alwaysAllow } = body as { decision: 'allow' | 'deny'; alwaysAllow?: boolean };
+    if (!decision || !['allow', 'deny'].includes(decision)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'decision must be "allow" or "deny"' }));
+      return;
+    }
+    const ok = approvalManager.respond(id, decision, !!alwaysAllow);
+    if (!ok) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Approval request not found' }));
+      return;
+    }
+    json({ ok: true });
+    return;
+  }
+
+  // ─── Tool policy endpoints ───
+  if (pathname === '/api/tool-policies' && method === 'GET') {
+    const group = url.searchParams.get('group');
+    if (!group) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'group query param required' }));
+      return;
+    }
+    json(getToolPolicies(group));
+    return;
+  }
+
+  if (pathname === '/api/tool-policies' && method === 'PUT') {
+    const body = await parseBody();
+    const { group_folder, tool_pattern, action } = body as {
+      group_folder?: string; tool_pattern?: string; action?: string;
+    };
+    if (!group_folder || !tool_pattern || !action || !['allow', 'deny', 'ask'].includes(action)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'group_folder, tool_pattern, and action (allow/deny/ask) required' }));
+      return;
+    }
+    upsertToolPolicy(group_folder, tool_pattern, action as 'allow' | 'deny' | 'ask');
+    json({ ok: true });
+    return;
+  }
+
+  if (pathname === '/api/tool-policies' && method === 'DELETE') {
+    const body = await parseBody();
+    const { group_folder, tool_pattern } = body as { group_folder?: string; tool_pattern?: string };
+    if (!group_folder || !tool_pattern) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'group_folder and tool_pattern required' }));
+      return;
+    }
+    const deleted = deleteToolPolicy(group_folder, tool_pattern);
+    json({ ok: true, deleted });
+    return;
+  }
+
   // Activity endpoints (legacy, kept for backward compat)
   if (pathname === '/api/activity' && method === 'GET') {
     const limit = parseInt(url.searchParams.get('limit') || '50', 10);
@@ -763,6 +836,32 @@ export async function handleApiRoute(
     }
     setTimezone(tz);
     json({ success: true, timezone: tz });
+    return;
+  }
+
+  // ─── Agent settings (per-agent approval mode) ───
+  const agentSettingsMatch = pathname.match(/^\/api\/agents\/([^/]+)\/settings$/);
+  if (agentSettingsMatch && method === 'GET') {
+    const folder = decodeURIComponent(agentSettingsMatch[1]);
+    const approvalMode = getRouterState(`approval_mode:${folder}`) || 'auto';
+    json({ approvalMode });
+    return;
+  }
+
+  if (agentSettingsMatch && method === 'PUT') {
+    const folder = decodeURIComponent(agentSettingsMatch[1]);
+    const body = await parseBody();
+    const approvalMode = body.approvalMode as string | undefined;
+    if (approvalMode && ['ask', 'auto'].includes(approvalMode)) {
+      setRouterState(`approval_mode:${folder}`, approvalMode);
+      // Kill idle agent so next spawn picks up new mode; busy agents apply on next spawn
+      const queue = getDashboardQueue();
+      const result = queue?.killByFolder(folder) ?? 'none';
+      json({ ok: true, approvalMode, agent: result });
+      return;
+    }
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'approvalMode must be ask or auto' }));
     return;
   }
 
@@ -955,6 +1054,14 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
         }
         if (seenMessageIds.size > 500) seenMessageIds = new Set();
         res.write(`data: ${JSON.stringify({ type: 'messages', items: newMessages })}\n\n`);
+      }
+
+      // Approval requests
+      approvalManager.scanIpcDirs();
+      approvalManager.cleanExpired();
+      const pendingApprovals = approvalManager.getPending();
+      if (pendingApprovals.length > 0) {
+        res.write(`data: ${JSON.stringify({ type: 'approval_requests', items: pendingApprovals })}\n\n`);
       }
 
       // Agent status

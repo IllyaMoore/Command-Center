@@ -47,6 +47,7 @@ export interface ContainerInput {
   assistantName?: string;
   model?: string;
   secrets?: Record<string, string>;
+  approvalMode?: 'off' | 'on-miss';
 }
 
 export interface ContainerOutput {
@@ -107,6 +108,7 @@ function buildAgentEnv(
   fs.mkdirSync(path.join(groupIpcDir, 'messages'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
   fs.mkdirSync(path.join(groupIpcDir, 'input'), { recursive: true });
+  fs.mkdirSync(path.join(groupIpcDir, 'approvals'), { recursive: true });
 
   // Build env vars for the agent-runner process
   const env: Record<string, string> = {
@@ -616,6 +618,20 @@ export function writeTasksSnapshot(
 
   const tasksFile = path.join(groupIpcDir, 'current_tasks.json');
   fs.writeFileSync(tasksFile, JSON.stringify(filteredTasks, null, 2));
+}
+
+export function writeToolPoliciesSnapshot(
+  groupFolder: string,
+  policies: Array<{ tool_pattern: string; action: string }>,
+): void {
+  try {
+    const groupIpcDir = path.join(DATA_DIR, 'ipc', groupFolder);
+    fs.mkdirSync(groupIpcDir, { recursive: true });
+    const policiesFile = path.join(groupIpcDir, 'tool_policies.json');
+    fs.writeFileSync(policiesFile, JSON.stringify(policies, null, 2));
+  } catch (err) {
+    logger.error({ err, groupFolder }, 'Failed to write tool policies snapshot — agent will start without pre-loaded policies');
+  }
 }
 
 export interface AvailableGroup {
