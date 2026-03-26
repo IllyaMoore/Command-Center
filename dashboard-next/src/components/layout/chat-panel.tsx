@@ -333,7 +333,7 @@ export function ChatPanel() {
                   : "type a message"
             }
             rows={1}
-            className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none font-mono resize-none max-h-32"
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none font-mono resize-none max-h-32 focus:outline-none focus-visible:outline-none"
             disabled={!selectedAgent || waitingForReply}
             style={{
               height: "auto",

@@ -156,6 +156,11 @@ select:focus-visible,
   outline-offset: 2px;
 }
 
+/* Chat input — no focus ring (container has its own visual boundary) */
+textarea[class*="resize-none"]:focus-visible {
+  outline: none;
+}
+
 /* ── Scrollbar — ink-styled ── */
 ::-webkit-scrollbar {
   width: 4px;
