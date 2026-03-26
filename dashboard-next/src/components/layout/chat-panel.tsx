@@ -292,8 +292,8 @@ export function ChatPanel() {
       <div className="px-4 pb-4 pt-2 border-t border-surface-border">
         {/* Agent toolbar — above input */}
         {agents.length > 1 && (
-          <div className="flex items-center gap-1.5 px-1 pb-1.5">
-            <span className="text-[9px] font-mono text-text-muted/50 uppercase tracking-wider mr-1">
+          <div className="flex items-center gap-2 px-1 pb-2">
+            <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
               Ask
             </span>
             {agents
@@ -306,15 +306,14 @@ export function ChatPanel() {
                     key={a.folder}
                     onClick={() => setAskAgent(isActive ? null : a.folder)}
                     title={`Ask ${a.name}`}
-                    className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono font-semibold transition-all duration-100 cursor-pointer ${
+                    className={`w-8 h-8 flex items-center justify-center text-xs font-bold transition-all duration-100 cursor-pointer ${
                       isActive
-                        ? `${c.bg} ${c.text} border border-current`
-                        : "text-text-muted hover:text-text-secondary border border-transparent hover:border-surface-border"
+                        ? `${c.bg} ${c.text} ring-2 ring-current scale-110`
+                        : `${c.bg} ${c.text} opacity-50 hover:opacity-80`
                     }`}
                     disabled={waitingForReply}
                   >
-                    <span className={`w-1.5 h-1.5 ${c.dot}`} />
-                    {a.name}
+                    {a.name.charAt(0)}
                   </button>
                 );
               })}
