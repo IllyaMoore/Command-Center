@@ -181,7 +181,7 @@ export function ChatPanel() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="flex-1 overflow-y-auto px-4 py-4 chat-bg"
       >
         {!selectedAgent ? (
           <div className="flex items-center justify-center h-full">
