@@ -9,6 +9,8 @@ import { useAgentStore } from "@/lib/agent-store";
 import { Message, sendMessage } from "@/lib/api";
 import { useMessages } from "@/lib/use-messages";
 import { agentColor } from "@/lib/agent-colors";
+import { ApprovalCard } from "@/components/chat/approval-card";
+import { useApprovals } from "@/lib/use-approvals";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
@@ -22,6 +24,7 @@ export function ChatPanel() {
   const { messages, loading, addOptimistic, clearMessages } = useMessages(
     selectedAgent?.folder ?? null,
   );
+  const { approvals, respond: respondApproval } = useApprovals();
 
   const agentName = selectedAgent?.name ?? "No Agent";
   const agentInitial = agentName.charAt(0).toUpperCase();
@@ -45,12 +48,12 @@ export function ChatPanel() {
     setSentAt(null);
   }, [selectedAgent?.jid]);
 
-  // Auto-scroll to bottom on new messages or typing indicator (unless user scrolled up)
+  // Auto-scroll to bottom on new messages, approvals, or typing indicator (unless user scrolled up)
   useEffect(() => {
     if (!userScrolled) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, waitingForReply]);
+  }, [messages, waitingForReply, approvals]);
 
   // Detect user scroll
   const handleScroll = useCallback(() => {
@@ -214,6 +217,35 @@ export function ChatPanel() {
                 agentColor={color}
               />
             ))}
+            {/* Pending approval cards for this agent */}
+            {approvals
+              .filter((a) => a.groupFolder === selectedAgent?.folder)
+              .map((a) => (
+                <div key={a.id} className="flex gap-3">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-1 ${color.bg} ${color.text}`}>
+                    {agentInitial}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[10px] font-mono text-text-muted">{agentName}</span>
+                    </div>
+                    <ApprovalCard
+                      request={{
+                        id: a.id,
+                        tool: a.toolName,
+                        args: typeof a.toolInput === "object" && a.toolInput !== null
+                          ? JSON.stringify(a.toolInput, null, 2)
+                          : String(a.toolInput ?? ""),
+                        timestamp: a.timestamp,
+                      }}
+                      agentName={agentName}
+                      onApprove={(id) => respondApproval(id, "allow", false)}
+                      onAlwaysAllow={(id) => respondApproval(id, "allow", true)}
+                      onDeny={(id) => respondApproval(id, "deny", false)}
+                    />
+                  </div>
+                </div>
+              ))}
             {waitingForReply && (
               <div className="flex gap-3">
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 mt-1 ${color.bg} ${color.text}`}>

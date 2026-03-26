@@ -20,6 +20,7 @@ import {
   runContainerAgent,
   writeGroupsSnapshot,
   writeTasksSnapshot,
+  writeToolPoliciesSnapshot,
 } from './container-runner.js';
 import {
   getAllChats,
@@ -36,6 +37,7 @@ import {
   storeChatMetadata,
   storeMessage,
   storeMessageDirect,
+  getToolPolicies,
 } from './db.js';
 import { GroupQueue } from './group-queue.js';
 import { startIpcWatcher } from './ipc.js';
@@ -299,6 +301,13 @@ async function runAgent(
     })),
   );
 
+  // Write tool policies snapshot for approval flow
+  const policies = getToolPolicies(group.folder);
+  writeToolPoliciesSnapshot(
+    group.folder,
+    policies.map((p) => ({ tool_pattern: p.tool_pattern, action: p.action })),
+  );
+
   // Update available groups snapshot (main group only can see all groups)
   const availableGroups = getAvailableGroups();
   writeGroupsSnapshot(
@@ -330,6 +339,7 @@ async function runAgent(
         isMain,
         assistantName: ASSISTANT_NAME,
         model: DEFAULT_MODEL,
+        approvalMode: 'on-miss',
       },
       (proc, containerName) => queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
@@ -604,17 +614,7 @@ async function main(): Promise<void> {
       // If an agent is already running for this group, pipe as follow-up message
       if (queue.sendMessage(chatJid, `[Via Dashboard] ${text}`)) {
         logger.info({ groupFolder, text: text.slice(0, 50) }, 'Piped dashboard message to active agent');
-        // Store user message in DB for chat history
-        storeMessageDirect({
-          id: `dash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          chat_jid: chatJid,
-          sender: 'dashboard',
-          sender_name: 'You (Dashboard)',
-          content: text,
-          timestamp: new Date().toISOString(),
-          is_from_me: true,
-          is_bot_message: false,
-        });
+        // Message already stored by POST /api/messages handler (chat.ts)
         return;
       }
 

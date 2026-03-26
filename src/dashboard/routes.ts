@@ -12,6 +12,7 @@ import {
   deleteMessages,
   deleteRegisteredGroup,
   deleteTask,
+  deleteToolPolicy,
   getAllRegisteredGroups,
   getAllTasks,
   getMessagesPaginated,
@@ -21,10 +22,13 @@ import {
   getTaskById,
   getTasksForGroup,
   getTimezone,
+  getToolPolicies,
   setRegisteredGroup,
   setTimezone,
   updateTask,
+  upsertToolPolicy,
 } from '../db.js';
+import { approvalManager } from '../approval-manager.js';
 import { ScheduledTask, TaskRunLog } from '../types.js';
 import { getActivity, streamActivity } from './api/activity.js';
 import {
@@ -670,6 +674,91 @@ export async function handleApiRoute(
     return;
   }
 
+  // ─── Approval endpoints ───
+  if (pathname === '/api/approvals' && method === 'GET') {
+    json(approvalManager.getPending());
+    return;
+  }
+
+  // Test endpoint: create a fake approval request for UI testing
+  if (pathname === '/api/approvals/test' && method === 'POST') {
+    const body = await parseBody();
+    const group = (body.group as string) || 'ceo';
+    const tool = (body.tool as string) || 'Bash';
+    const args = (body.args as string) || 'npm run build && npm test';
+    const id = `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    approvalManager.ingest({
+      id,
+      groupFolder: group,
+      toolName: tool,
+      toolInput: { command: args },
+      toolUseId: `toolu_test_${id}`,
+      timestamp: new Date().toISOString(),
+    });
+    json({ ok: true, id });
+    return;
+  }
+
+  const approvalMatch = pathname.match(/^\/api\/approvals\/(.+)$/);
+  if (approvalMatch && method === 'POST') {
+    const id = decodeURIComponent(approvalMatch[1]);
+    const body = await parseBody();
+    const { decision, alwaysAllow } = body as { decision: 'allow' | 'deny'; alwaysAllow?: boolean };
+    if (!decision || !['allow', 'deny'].includes(decision)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'decision must be "allow" or "deny"' }));
+      return;
+    }
+    const ok = approvalManager.respond(id, decision, !!alwaysAllow);
+    if (!ok) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Approval request not found' }));
+      return;
+    }
+    json({ ok: true });
+    return;
+  }
+
+  // ─── Tool policy endpoints ───
+  if (pathname === '/api/tool-policies' && method === 'GET') {
+    const group = url.searchParams.get('group');
+    if (!group) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'group query param required' }));
+      return;
+    }
+    json(getToolPolicies(group));
+    return;
+  }
+
+  if (pathname === '/api/tool-policies' && method === 'PUT') {
+    const body = await parseBody();
+    const { group_folder, tool_pattern, action } = body as {
+      group_folder?: string; tool_pattern?: string; action?: string;
+    };
+    if (!group_folder || !tool_pattern || !action || !['allow', 'deny', 'ask'].includes(action)) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'group_folder, tool_pattern, and action (allow/deny/ask) required' }));
+      return;
+    }
+    upsertToolPolicy(group_folder, tool_pattern, action as 'allow' | 'deny' | 'ask');
+    json({ ok: true });
+    return;
+  }
+
+  if (pathname === '/api/tool-policies' && method === 'DELETE') {
+    const body = await parseBody();
+    const { group_folder, tool_pattern } = body as { group_folder?: string; tool_pattern?: string };
+    if (!group_folder || !tool_pattern) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'group_folder and tool_pattern required' }));
+      return;
+    }
+    const deleted = deleteToolPolicy(group_folder, tool_pattern);
+    json({ ok: true, deleted });
+    return;
+  }
+
   // Activity endpoints (legacy, kept for backward compat)
   if (pathname === '/api/activity' && method === 'GET') {
     const limit = parseInt(url.searchParams.get('limit') || '50', 10);
@@ -955,6 +1044,14 @@ function streamEvents(req: IncomingMessage, res: ServerResponse): void {
         }
         if (seenMessageIds.size > 500) seenMessageIds = new Set();
         res.write(`data: ${JSON.stringify({ type: 'messages', items: newMessages })}\n\n`);
+      }
+
+      // Approval requests
+      approvalManager.scanIpcDirs();
+      approvalManager.cleanExpired();
+      const pendingApprovals = approvalManager.getPending();
+      if (pendingApprovals.length > 0) {
+        res.write(`data: ${JSON.stringify({ type: 'approval_requests', items: pendingApprovals })}\n\n`);
       }
 
       // Agent status

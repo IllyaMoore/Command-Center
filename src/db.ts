@@ -85,6 +85,15 @@ function createSchema(database: Database.Database): void {
       sent_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_reminders_due ON reminders(remind_at, sent_at);
+
+    CREATE TABLE IF NOT EXISTS tool_policies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      group_folder TEXT NOT NULL,
+      tool_pattern TEXT NOT NULL,
+      action TEXT NOT NULL CHECK(action IN ('allow', 'deny', 'ask')),
+      created_at TEXT NOT NULL,
+      UNIQUE(group_folder, tool_pattern)
+    );
   `);
 
   // Add context_mode column if it doesn't exist (migration for existing DBs)
@@ -854,4 +863,61 @@ export function getRecentActivity(limit: number, groupFolder?: string): Activity
   return activities
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
     .slice(0, limit);
+}
+
+// ── Tool Policies ──
+
+export interface ToolPolicy {
+  id: number;
+  group_folder: string;
+  tool_pattern: string;
+  action: 'allow' | 'deny' | 'ask';
+  created_at: string;
+}
+
+export function getToolPolicies(groupFolder: string): ToolPolicy[] {
+  return db
+    .prepare('SELECT * FROM tool_policies WHERE group_folder = ? ORDER BY tool_pattern')
+    .all(groupFolder) as ToolPolicy[];
+}
+
+export function upsertToolPolicy(
+  groupFolder: string,
+  toolPattern: string,
+  action: 'allow' | 'deny' | 'ask',
+): void {
+  db.prepare(
+    `INSERT INTO tool_policies (group_folder, tool_pattern, action, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(group_folder, tool_pattern) DO UPDATE SET action = excluded.action`,
+  ).run(groupFolder, toolPattern, action, new Date().toISOString());
+}
+
+export function deleteToolPolicy(groupFolder: string, toolPattern: string): boolean {
+  const result = db
+    .prepare('DELETE FROM tool_policies WHERE group_folder = ? AND tool_pattern = ?')
+    .run(groupFolder, toolPattern);
+  return result.changes > 0;
+}
+
+export function matchToolPolicy(
+  groupFolder: string,
+  toolName: string,
+): 'allow' | 'deny' | 'ask' | null {
+  // Exact match first
+  const exact = db
+    .prepare('SELECT action FROM tool_policies WHERE group_folder = ? AND tool_pattern = ?')
+    .get(groupFolder, toolName) as { action: string } | undefined;
+  if (exact) return exact.action as 'allow' | 'deny' | 'ask';
+
+  // Glob match (patterns ending with *)
+  const globs = db
+    .prepare("SELECT tool_pattern, action FROM tool_policies WHERE group_folder = ? AND tool_pattern LIKE '%*'")
+    .all(groupFolder) as { tool_pattern: string; action: string }[];
+  for (const g of globs) {
+    const prefix = g.tool_pattern.slice(0, -1); // remove trailing *
+    if (toolName.startsWith(prefix)) return g.action as 'allow' | 'deny' | 'ask';
+  }
+
+  return null;
 }
