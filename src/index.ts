@@ -46,7 +46,7 @@ import { startMeetingReminderLoop } from './meeting-reminders.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
-import { setDashboardQueue } from './dashboard/context.js';
+import { setDashboardQueue, setDelegationRunner } from './dashboard/context.js';
 import { startDashboardServer } from './dashboard/server.js';
 
 let lastTimestamp = '';
@@ -375,6 +375,51 @@ async function runAgent(
   }
 }
 
+/**
+ * Run an agent for a delegated task and return the result text.
+ * Used by the delegation system — spawns a one-shot agent, collects output.
+ */
+/**
+ * Run an agent for a delegated task and return the result text.
+ * Starts a FRESH session (no resumption) to avoid context pollution.
+ */
+export async function runDelegatedAgent(
+  group: RegisteredGroup,
+  prompt: string,
+  chatJid: string,
+): Promise<string> {
+  let result = '';
+
+  // Temporarily clear session so delegation starts fresh
+  const savedSession = sessions[group.folder];
+  delete sessions[group.folder];
+
+  try {
+    const status = await runAgent(
+      group,
+      prompt,
+      chatJid,
+      async (output) => {
+        if (output.result) {
+          result = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
+        }
+      },
+    );
+
+    if (status === 'error' && !result) {
+      throw new Error('Delegated agent failed without producing a result');
+    }
+
+    return result || '(Agent completed without response)';
+  } finally {
+    // Restore original session (delegation session is disposable)
+    if (savedSession) {
+      sessions[group.folder] = savedSession;
+      setSession(group.folder, savedSession);
+    }
+  }
+}
+
 async function startMessageLoop(): Promise<void> {
   if (messageLoopRunning) {
     logger.debug('Message loop already running, skipping duplicate start');
@@ -511,6 +556,7 @@ async function main(): Promise<void> {
 
   // Share queue with dashboard API
   setDashboardQueue(queue);
+  setDelegationRunner(runDelegatedAgent);
 
   // Start dashboard server
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
