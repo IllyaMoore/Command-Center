@@ -290,21 +290,34 @@ export function ChatPanel() {
 
       {/* Input area */}
       <div className="px-4 pb-4 pt-2 border-t border-surface-border">
-        {/* Cross-agent banner */}
-        {askAgent && (
-          <div className="flex items-center gap-2 px-4 py-1.5 mb-1 bg-surface-2 border-l-2 border-l-signal-info animate-slide-down">
-            <span className="text-[10px] font-mono text-signal-info uppercase tracking-wider font-semibold">
-              Asking {agents.find((a) => a.folder === askAgent)?.name ?? askAgent}
+        {/* Agent toolbar — above input */}
+        {agents.length > 1 && (
+          <div className="flex items-center gap-1.5 px-1 pb-1.5">
+            <span className="text-[9px] font-mono text-text-muted/50 uppercase tracking-wider mr-1">
+              Ask
             </span>
-            <span className="text-[10px] font-mono text-text-muted">
-              — response will appear here
-            </span>
-            <button
-              onClick={() => setAskAgent(null)}
-              className="ml-auto text-[10px] font-mono text-text-muted hover:text-text-primary cursor-pointer"
-            >
-              &times;
-            </button>
+            {agents
+              .filter((a) => a.folder !== selectedAgent?.folder)
+              .map((a) => {
+                const c = agentColor(a.folder);
+                const isActive = askAgent === a.folder;
+                return (
+                  <button
+                    key={a.folder}
+                    onClick={() => setAskAgent(isActive ? null : a.folder)}
+                    title={`Ask ${a.name}`}
+                    className={`flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono font-semibold transition-all duration-100 cursor-pointer ${
+                      isActive
+                        ? `${c.bg} ${c.text} border border-current`
+                        : "text-text-muted hover:text-text-secondary border border-transparent hover:border-surface-border"
+                    }`}
+                    disabled={waitingForReply}
+                  >
+                    <span className={`w-1.5 h-1.5 ${c.dot}`} />
+                    {a.name}
+                  </button>
+                );
+              })}
           </div>
         )}
         <div className="flex items-end gap-2 bg-surface-2 rounded-xl px-4 py-2">
@@ -332,27 +345,6 @@ export function ChatPanel() {
               target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
             }}
           />
-          {/* Agent picker — compact pills */}
-          {agents.length > 1 && !askAgent && (
-            <div className="flex gap-1 shrink-0">
-              {agents
-                .filter((a) => a.folder !== selectedAgent?.folder)
-                .map((a) => {
-                  const c = agentColor(a.folder);
-                  return (
-                    <button
-                      key={a.folder}
-                      onClick={() => setAskAgent(a.folder)}
-                      title={`Ask ${a.name}`}
-                      className={`w-7 h-7 flex items-center justify-center text-[10px] font-semibold ${c.bg} ${c.text} hover:opacity-80 transition-opacity cursor-pointer`}
-                      disabled={waitingForReply}
-                    >
-                      {a.name.charAt(0)}
-                    </button>
-                  );
-                })}
-            </div>
-          )}
           <button
             onClick={handleSend}
             className={`px-4 py-1.5 text-text-inverse text-xs font-mono font-semibold uppercase hover:opacity-90 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
@@ -360,7 +352,7 @@ export function ChatPanel() {
             }`}
             disabled={!selectedAgent || !input.trim() || sending || waitingForReply}
           >
-            Send
+            {askAgent ? "Ask" : "Send"}
           </button>
         </div>
       </div>
