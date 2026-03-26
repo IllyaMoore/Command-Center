@@ -46,7 +46,7 @@ import { startMeetingReminderLoop } from './meeting-reminders.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
-import { setDashboardQueue } from './dashboard/context.js';
+import { setDashboardQueue, setDelegationRunner } from './dashboard/context.js';
 import { startDashboardServer } from './dashboard/server.js';
 
 let lastTimestamp = '';
@@ -540,6 +540,7 @@ async function main(): Promise<void> {
 
   // Share queue with dashboard API
   setDashboardQueue(queue);
+  setDelegationRunner(runDelegatedAgent);
 
   // Start dashboard server
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);

@@ -61,7 +61,7 @@ import {
   handleDriveOAuthCallback,
   disconnectDrive,
 } from './api/drive.js';
-import { getDashboardQueue } from './context.js';
+import { getDashboardQueue, getDelegationRunner } from './context.js';
 
 // OAuth provider configurations for the shared callback handler
 interface OAuthProvider {
@@ -746,13 +746,18 @@ export async function handleApiRoute(
         return;
       }
 
-      // Import and run via dynamic reference to avoid circular deps
-      const { runDelegatedAgent } = await import('../index.js');
+      const runDelegatedAgent = getDelegationRunner();
+      if (!runDelegatedAgent) {
+        delegationManager.respond(id, { id, status: 'error', error: 'Delegation runner not initialized' });
+        return;
+      }
       const prompt = pending.context
         ? `[Delegated from ${pending.sourceGroup}]\n\nContext: ${pending.context}\n\nTask: ${pending.task}`
         : `[Delegated from ${pending.sourceGroup}]\n\nTask: ${pending.task}`;
 
-      runDelegatedAgent(targetGroup, prompt, pending.chatJid)
+      // Use delegation-specific JID so it doesn't conflict with existing agent sessions
+      const delegationJid = `delegation-${pending.targetGroup}-${id}`;
+      runDelegatedAgent(targetGroup, prompt, delegationJid)
         .then((result) => {
           delegationManager.respond(id, { id, status: 'success', result });
         })
