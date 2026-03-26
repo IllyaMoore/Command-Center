@@ -34,6 +34,7 @@ export async function sendGroupMessage(
   groupFolder: string,
   chatJid: string,
   text: string,
+  replyToJid?: string,
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const msgId = `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -46,11 +47,12 @@ export async function sendGroupMessage(
     const filename = `${Date.now()}-dashboard.json`;
     const filePath = path.join(inputDir, filename);
 
-    const message = {
+    const message: Record<string, string | undefined> = {
       type: 'message',
       chatJid,
       text,
       source: 'dashboard',
+      replyToJid,
     };
 
     const tempPath = `${filePath}.tmp`;
@@ -58,20 +60,22 @@ export async function sendGroupMessage(
     fs.renameSync(tempPath, filePath);
     logger.info({ groupFolder, text: text.slice(0, 50) }, 'Dashboard message written to IPC');
 
-    // Ensure chat record exists for dashboard JIDs (FK constraint)
-    if (chatJid.startsWith('dashboard-')) {
-      storeChatMetadata(chatJid, new Date().toISOString(), `Dashboard: ${groupFolder}`);
-    }
+    // Cross-agent messages (xagent-*) are stored by the route handler, not here
+    if (!chatJid.startsWith('xagent-')) {
+      if (chatJid.startsWith('dashboard-')) {
+        storeChatMetadata(chatJid, new Date().toISOString(), `Dashboard: ${groupFolder}`);
+      }
 
-    storeMessageDirect({
-      id: msgId,
-      chat_jid: chatJid,
-      sender: 'dashboard',
-      sender_name: 'You (Dashboard)',
-      content: text,
-      timestamp: new Date().toISOString(),
-      is_from_me: true,
-    });
+      storeMessageDirect({
+        id: msgId,
+        chat_jid: chatJid,
+        sender: 'dashboard',
+        sender_name: 'You (Dashboard)',
+        content: text,
+        timestamp: new Date().toISOString(),
+        is_from_me: true,
+      });
+    }
 
     return { success: true };
   } catch (err) {

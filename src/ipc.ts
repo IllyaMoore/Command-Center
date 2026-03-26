@@ -27,7 +27,7 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   // Handle dashboard input messages (triggers agent)
-  onDashboardInput?: (groupFolder: string, chatJid: string, text: string) => Promise<void>;
+  onDashboardInput?: (groupFolder: string, chatJid: string, text: string, replyToJid?: string) => Promise<void>;
 }
 
 let ipcWatcherRunning = false;
@@ -106,7 +106,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   );
                   // Don't await — enqueue and let the handler manage concurrency.
                   // File is deleted immediately so IPC loop is never blocked.
-                  deps.onDashboardInput(sourceGroup, data.chatJid, data.text).catch((err) => {
+                  deps.onDashboardInput(sourceGroup, data.chatJid, data.text, data.replyToJid).catch((err) => {
                     logger.error({ sourceGroup, err }, 'Dashboard input handler failed');
                   });
                 }

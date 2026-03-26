@@ -11,6 +11,7 @@ import { useMessages } from "@/lib/use-messages";
 import { agentColor } from "@/lib/agent-colors";
 import { ApprovalCard } from "@/components/chat/approval-card";
 import { useApprovals } from "@/lib/use-approvals";
+import { useAgents } from "@/lib/use-agents";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
@@ -21,10 +22,12 @@ export function ChatPanel() {
   const [userScrolled, setUserScrolled] = useState(false);
 
   const { selectedAgent } = useAgentStore();
+  const { agents } = useAgents();
   const { messages, loading, addOptimistic, clearMessages } = useMessages(
     selectedAgent?.folder ?? null,
   );
   const { approvals, respond: respondApproval } = useApprovals();
+  const [askAgent, setAskAgent] = useState<string | null>(null); // cross-agent: target folder
 
   const agentName = selectedAgent?.name ?? "No Agent";
   const agentInitial = agentName.charAt(0).toUpperCase();
@@ -92,16 +95,18 @@ export function ChatPanel() {
     setUserScrolled(false);
 
     try {
-      await sendMessage(selectedAgent.folder, text);
+      const targetAgent = askAgent || selectedAgent.folder;
+      const replyTo = askAgent ? selectedAgent.folder : undefined;
+      await sendMessage(targetAgent, text, replyTo);
       setSentAt(new Date().toISOString());
+      setAskAgent(null); // Reset after send
     } catch {
-      // Send failed — restore input so user can retry
       setInput(text);
     } finally {
       setSending(false);
       sendingRef.current = false;
     }
-  }, [input, selectedAgent, sending, addOptimistic]);
+  }, [input, selectedAgent, sending, addOptimistic, askAgent]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -176,7 +181,7 @@ export function ChatPanel() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-4"
+        className="flex-1 overflow-y-auto px-4 py-4 chat-bg"
       >
         {!selectedAgent ? (
           <div className="flex items-center justify-center h-full">
@@ -215,6 +220,7 @@ export function ChatPanel() {
                 agentName={agentName}
                 agentInitial={agentInitial}
                 agentColor={color}
+                currentFolder={agentFolder}
               />
             ))}
             {/* Pending approval cards for this agent */}
@@ -285,14 +291,49 @@ export function ChatPanel() {
 
       {/* Input area */}
       <div className="px-4 pb-4 pt-2 border-t border-surface-border">
+        {/* Agent toolbar — above input */}
+        {agents.length > 1 && (
+          <div className="flex items-center gap-2 px-1 pb-2">
+            <span className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
+              Ask
+            </span>
+            {agents
+              .filter((a) => a.folder !== selectedAgent?.folder)
+              .map((a) => {
+                const c = agentColor(a.folder);
+                const isActive = askAgent === a.folder;
+                return (
+                  <button
+                    key={a.folder}
+                    onClick={() => setAskAgent(isActive ? null : a.folder)}
+                    title={`Ask ${a.name}`}
+                    className={`w-8 h-8 flex items-center justify-center text-xs font-bold transition-all duration-100 cursor-pointer ${
+                      isActive
+                        ? `${c.bg} ${c.text} ring-2 ring-current scale-110`
+                        : `${c.bg} ${c.text} opacity-50 hover:opacity-80`
+                    }`}
+                    disabled={waitingForReply}
+                  >
+                    {a.name.charAt(0)}
+                  </button>
+                );
+              })}
+          </div>
+        )}
         <div className="flex items-end gap-2 bg-surface-2 rounded-xl px-4 py-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={waitingForReply ? "waiting for response…" : "type a message"}
+            placeholder={
+              waitingForReply
+                ? "waiting for response…"
+                : askAgent
+                  ? `ask ${agents.find((a) => a.folder === askAgent)?.name ?? askAgent}…`
+                  : "type a message"
+            }
             rows={1}
-            className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none font-mono resize-none max-h-32"
+            className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none font-mono resize-none max-h-32 focus:outline-none focus-visible:outline-none"
             disabled={!selectedAgent || waitingForReply}
             style={{
               height: "auto",
@@ -306,10 +347,12 @@ export function ChatPanel() {
           />
           <button
             onClick={handleSend}
-            className="px-4 py-1.5 bg-primary text-text-inverse rounded-lg text-xs font-mono font-semibold uppercase hover:bg-primary-hover active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className={`px-4 py-1.5 text-text-inverse text-xs font-mono font-semibold uppercase hover:opacity-90 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
+              askAgent ? "bg-signal-info" : "bg-primary"
+            }`}
             disabled={!selectedAgent || !input.trim() || sending || waitingForReply}
           >
-            Send
+            {askAgent ? "Ask" : "Send"}
           </button>
         </div>
       </div>
@@ -322,18 +365,27 @@ function ChatBubble({
   agentName,
   agentInitial,
   agentColor: color,
+  currentFolder,
 }: {
   message: Message;
   agentName: string;
   agentInitial: string;
-  agentColor: { bg: string; text: string };
+  agentColor: { bg: string; text: string; dot: string };
+  currentFolder: string;
 }) {
   const isUser = !message.is_bot_message;
-  const initial = isUser ? "Y" : agentInitial;
+
+  // Detect cross-agent response: bot message from a different agent
+  const isCrossAgent = !isUser && message.sender !== currentFolder && message.sender !== "dashboard" && message.sender !== "System";
+  const crossAgentColor = isCrossAgent ? agentColor(message.sender) : null;
+
+  const initial = isUser ? "Y" : isCrossAgent ? message.sender_name.charAt(0) : agentInitial;
   const bgClass = isUser ? "bg-chat-user shadow-sm" : "bg-chat-agent border border-surface-border shadow-sm";
   const avatarBg = isUser
     ? "bg-surface-3 text-text-muted"
-    : `${color.bg} ${color.text}`;
+    : isCrossAgent
+      ? `${crossAgentColor!.bg} ${crossAgentColor!.text}`
+      : `${color.bg} ${color.text}`;
 
   // Detect source label
   let sourceLabel: string | null = null;
@@ -358,9 +410,14 @@ function ChatBubble({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
           <span className="text-[10px] font-mono text-text-muted">
-            {isUser ? "You" : agentName}
+            {isUser ? "You" : isCrossAgent ? message.sender_name : agentName}
           </span>
-          {sourceLabel && (
+          {isCrossAgent && (
+            <span className={`text-[9px] font-mono px-1.5 py-0.5 ${crossAgentColor!.bg} ${crossAgentColor!.text}`}>
+              via {message.sender}
+            </span>
+          )}
+          {sourceLabel && !isCrossAgent && (
             <span className="text-[10px] font-mono text-text-muted/60">
               via {sourceLabel}
             </span>

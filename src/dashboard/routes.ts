@@ -10,6 +10,8 @@ import { logger } from '../logger.js';
 import {
   createTask,
   deleteMessages,
+  storeChatMetadata,
+  storeMessageDirect,
   deleteRegisteredGroup,
   deleteTask,
   deleteToolPolicy,
@@ -650,6 +652,8 @@ export async function handleApiRoute(
     const body = await parseBody();
     const text = body.text as string | undefined;
     const group = (body.group as string | undefined) || 'ceo';
+    // Optional: deliver response to a different chat (cross-agent messaging)
+    const replyTo = body.replyTo as string | undefined;
 
     if (!text) {
       json({ error: 'Missing text field' }, 400);
@@ -663,10 +667,30 @@ export async function handleApiRoute(
       return;
     }
 
-    // Always use dashboard-specific JID so chat history stays separate from WA/TG
-    const dashboardJid = `dashboard-${group}`;
-    const result = await sendGroupMessage(group, dashboardJid, text);
-    json({ ...result, group, jid: dashboardJid });
+    // Cross-agent: unique JID prevents queue collision with the source agent.
+    // Messages stored under display JID (source chat) for UI.
+    const isForward = !!replyTo && replyTo !== group;
+    const chatJid = isForward
+      ? `xagent-${group}-${Date.now()}`
+      : `dashboard-${group}`;
+    const displayJid = isForward ? `dashboard-${replyTo}` : chatJid;
+
+    // For cross-agent: store user message in source chat (sendGroupMessage stores in agent chat)
+    if (isForward) {
+      storeChatMetadata(displayJid, new Date().toISOString(), `Dashboard: ${replyTo}`);
+      storeMessageDirect({
+        id: `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        chat_jid: displayJid,
+        sender: 'dashboard',
+        sender_name: 'You (Dashboard)',
+        content: text,
+        timestamp: new Date().toISOString(),
+        is_from_me: true,
+      });
+    }
+
+    const result = await sendGroupMessage(group, chatJid, text, isForward ? displayJid : undefined);
+    json({ ...result, group, jid: displayJid });
     return;
   }
 

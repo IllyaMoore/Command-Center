@@ -610,7 +610,7 @@ async function main(): Promise<void> {
     syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
     writeGroupsSnapshot,
-    onDashboardInput: async (groupFolder, chatJid, text) => {
+    onDashboardInput: async (groupFolder, chatJid, text, replyToJid) => {
       const group = Object.values(registeredGroups).find((g) => g.folder === groupFolder);
       if (!group) {
         logger.warn({ groupFolder }, 'Dashboard input for unknown group');
@@ -626,7 +626,7 @@ async function main(): Promise<void> {
 
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
       const prompt = `[Via Dashboard] ${text}`;
-      const isDashboardOnly = chatJid.startsWith('dashboard-');
+      const isDashboardOnly = chatJid.startsWith('dashboard-') || chatJid.startsWith('xagent-') || !!replyToJid;
       const safeText = text.replace(/[_*~`]/g, '');
       const result = await runAgent(
         group,
@@ -640,9 +640,11 @@ async function main(): Promise<void> {
             const content = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
             if (isDashboardOnly) {
               // Dashboard-only agents: store response in DB, no channel delivery
+              // Use replyToJid for cross-agent responses (display in source chat)
+              const responseChatJid = replyToJid || chatJid;
               storeMessageDirect({
                 id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                chat_jid: chatJid,
+                chat_jid: responseChatJid,
                 sender: groupFolder,
                 sender_name: group.name,
                 content,
@@ -670,7 +672,7 @@ async function main(): Promise<void> {
             // Store warning as system message for dashboard visibility
             storeMessageDirect({
               id: `sys-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-              chat_jid: chatJid,
+              chat_jid: replyToJid || chatJid,
               sender: 'system',
               sender_name: 'System',
               content: WARNING_MESSAGE,

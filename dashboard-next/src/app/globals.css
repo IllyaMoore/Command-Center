@@ -156,6 +156,11 @@ select:focus-visible,
   outline-offset: 2px;
 }
 
+/* Chat input — no focus ring (container has its own visual boundary) */
+textarea[class*="resize-none"]:focus-visible {
+  outline: none;
+}
+
 /* ── Scrollbar — ink-styled ── */
 ::-webkit-scrollbar {
   width: 4px;
@@ -218,6 +223,23 @@ select:focus-visible,
   background-size: 3px 3px;
   pointer-events: none;
   opacity: 0.5;
+}
+
+/* ── Chat background pattern — adapts to theme ── */
+.chat-bg {
+  background-color: var(--surface-1);
+  background-image:
+    radial-gradient(var(--chat-pattern) 1px, transparent 1px);
+  background-size: 16px 16px;
+}
+
+:root,
+[data-theme="light"] {
+  --chat-pattern: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="dark"] {
+  --chat-pattern: rgba(255, 255, 255, 0.03);
 }
 
 /* ── Z-index scale ── */
