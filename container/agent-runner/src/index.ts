@@ -626,11 +626,6 @@ function createApprovalHook(
     const toolName = hookInput.tool_name;
     const toolInput = (hookInput.tool_input ?? {}) as Record<string, unknown>;
 
-    // Skip internal NanoClaw tools — they have their own approval mechanisms
-    if (toolName.startsWith('mcp__nanoclaw__')) {
-      return { continue: true, hookSpecificOutput: { hookEventName: 'PreToolUse' as const, permissionDecision: 'allow' as const } };
-    }
-
     // Check cached/loaded policies
     if (mode === 'on-miss') {
       const policy = matchPolicy(policies, toolName);
