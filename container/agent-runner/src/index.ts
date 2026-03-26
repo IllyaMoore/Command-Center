@@ -44,7 +44,7 @@ interface ContainerInput {
   assistantName?: string;
   model?: string;
   secrets?: Record<string, string>;
-  approvalMode?: 'off' | 'on-miss' | 'always';
+  approvalMode?: 'off' | 'on-miss';
 }
 
 interface ContainerOutput {
@@ -591,8 +591,8 @@ function loadToolPolicies(): Map<string, ToolPolicyAction> {
       }>;
       for (const p of data) map.set(p.tool_pattern, p.action);
     }
-  } catch {
-    // ignore — start with empty policies
+  } catch (err) {
+    log(`WARNING: Failed to load tool policies: ${err instanceof Error ? err.message : String(err)} — all tools will require approval`);
   }
   return map;
 }
@@ -658,21 +658,35 @@ function createApprovalHook(
     const startTime = Date.now();
 
     const response = await new Promise<ApprovalResponseFile | null>((resolve) => {
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      let resolved = false;
+      const done = (val: ApprovalResponseFile | null) => {
+        if (resolved) return;
+        resolved = true;
+        if (timer) clearTimeout(timer);
+        resolve(val);
+      };
+
       const poll = () => {
-        if (options.signal?.aborted) { resolve(null); return; }
-        if (Date.now() - startTime > TIMEOUT_MS) { resolve(null); return; }
+        if (resolved) return;
+        if (options.signal?.aborted) { done(null); return; }
+        if (Date.now() - startTime > TIMEOUT_MS) { done(null); return; }
 
         try {
           if (fs.existsSync(responseFile)) {
-            const data = JSON.parse(fs.readFileSync(responseFile, 'utf-8')) as ApprovalResponseFile;
-            try { fs.unlinkSync(responseFile); } catch { /* ok */ }
-            try { fs.unlinkSync(requestFile); } catch { /* ok */ }
-            resolve(data);
+            const raw = fs.readFileSync(responseFile, 'utf-8');
+            const data = JSON.parse(raw) as ApprovalResponseFile;
+            try { fs.unlinkSync(responseFile); } catch (e) { log(`Warning: failed to clean response file: ${e}`); }
+            try { fs.unlinkSync(requestFile); } catch (e) { log(`Warning: failed to clean request file: ${e}`); }
+            done(data);
             return;
           }
-        } catch { /* retry */ }
+        } catch (err) {
+          // File exists but corrupt/locked — log and retry
+          log(`Warning: error reading approval response: ${err instanceof Error ? err.message : String(err)}`);
+        }
 
-        setTimeout(poll, IPC_POLL_MS);
+        timer = setTimeout(poll, IPC_POLL_MS);
       };
       poll();
     });
@@ -758,7 +772,7 @@ async function main(): Promise<void> {
 
   // Build approval hook if approval mode is enabled
   const approvalMode = containerInput.approvalMode || 'off';
-  const approvalHook = (approvalMode === 'on-miss' || approvalMode === 'always')
+  const approvalHook = approvalMode === 'on-miss'
     ? createApprovalHook(containerInput.groupFolder, approvalMode)
     : undefined;
   if (approvalHook) {

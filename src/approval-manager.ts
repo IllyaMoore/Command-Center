@@ -9,7 +9,7 @@ export interface ApprovalRequest {
   id: string;
   groupFolder: string;
   toolName: string;
-  toolInput: unknown;
+  toolInput: Record<string, unknown>;
   toolUseId: string;
   timestamp: string;
 }
@@ -18,12 +18,9 @@ export interface PendingApproval extends ApprovalRequest {
   receivedAt: number;
 }
 
-export interface ApprovalResponse {
-  id: string;
-  decision: 'allow' | 'deny';
-  alwaysAllow: boolean;
-  message?: string;
-}
+export type ApprovalResponse =
+  | { id: string; decision: 'allow'; alwaysAllow: boolean }
+  | { id: string; decision: 'deny' };
 
 const MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes
 
@@ -34,6 +31,10 @@ export class ApprovalManager {
   /** Ingest a new approval request from IPC. Returns true if it's new. */
   ingest(request: ApprovalRequest): boolean {
     if (this.seen.has(request.id)) return false;
+    if (!request.id || !request.groupFolder || !request.toolName) {
+      logger.warn({ request }, 'Invalid approval request — missing required fields');
+      return false;
+    }
     this.seen.add(request.id);
     this.pending.set(request.id, {
       ...request,
@@ -59,13 +60,17 @@ export class ApprovalManager {
     const responseFile = path.join(approvalsDir, `${id}.response.json`);
     const tmpFile = `${responseFile}.tmp`;
 
-    const response: ApprovalResponse = { id, decision, alwaysAllow };
+    const response = decision === 'allow'
+      ? { id, decision, alwaysAllow }
+      : { id, decision };
 
     try {
       fs.writeFileSync(tmpFile, JSON.stringify(response));
       fs.renameSync(tmpFile, responseFile);
     } catch (err) {
       logger.error({ err, id }, 'Failed to write approval response');
+      // Remove from pending anyway to prevent retry loops
+      this.pending.delete(id);
       return false;
     }
 
@@ -93,25 +98,26 @@ export class ApprovalManager {
     return true;
   }
 
-  /** Get all pending approval requests. */
-  getPending(): PendingApproval[] {
-    return Array.from(this.pending.values());
+  /** Get all pending approval requests (readonly copies). */
+  getPending(): Readonly<PendingApproval>[] {
+    return Array.from(this.pending.values()).map((p) => ({ ...p }));
   }
 
   /** Get pending approvals for a specific group. */
-  getPendingForGroup(groupFolder: string): PendingApproval[] {
+  getPendingForGroup(groupFolder: string): Readonly<PendingApproval>[] {
     return this.getPending().filter((p) => p.groupFolder === groupFolder);
   }
 
   /** Remove expired approvals. */
   cleanExpired(): void {
     const now = Date.now();
-    for (const [id, approval] of this.pending) {
-      if (now - approval.receivedAt > MAX_AGE_MS) {
-        logger.warn({ id, tool: approval.toolName }, 'Approval request expired');
-        // Write a deny response so the agent unblocks
-        this.respond(id, 'deny', false);
-      }
+    const expired = [...this.pending.entries()]
+      .filter(([, a]) => now - a.receivedAt > MAX_AGE_MS)
+      .map(([id]) => id);
+
+    for (const id of expired) {
+      logger.warn({ id }, 'Approval request expired');
+      this.respond(id, 'deny', false);
     }
 
     // Trim seen set to prevent unbounded growth
@@ -129,18 +135,23 @@ export class ApprovalManager {
     let groupDirs: string[];
     try {
       groupDirs = fs.readdirSync(ipcDir);
-    } catch {
+    } catch (err) {
+      logger.warn({ err, ipcDir }, 'Failed to read IPC directory');
       return;
     }
 
     for (const groupFolder of groupDirs) {
+      // Path traversal guard
+      if (groupFolder.includes('..') || groupFolder.includes('/') || groupFolder.includes('\\')) continue;
+
       const approvalsDir = path.join(ipcDir, groupFolder, 'approvals');
       if (!fs.existsSync(approvalsDir)) continue;
 
       let files: string[];
       try {
         files = fs.readdirSync(approvalsDir);
-      } catch {
+      } catch (err) {
+        logger.warn({ err, approvalsDir }, 'Failed to read approvals directory');
         continue;
       }
 
@@ -165,8 +176,8 @@ export class ApprovalManager {
         DATA_DIR, 'ipc', groupFolder, 'approvals', `${id}.request.json`,
       );
       if (fs.existsSync(requestFile)) fs.unlinkSync(requestFile);
-    } catch {
-      // best effort
+    } catch (err) {
+      logger.warn({ err, id, groupFolder }, 'Failed to clean approval request file');
     }
   }
 }

@@ -683,25 +683,7 @@ export async function handleApiRoute(
   }
 
   // Test endpoint: create a fake approval request for UI testing
-  if (pathname === '/api/approvals/test' && method === 'POST') {
-    const body = await parseBody();
-    const group = (body.group as string) || 'ceo';
-    const tool = (body.tool as string) || 'Bash';
-    const args = (body.args as string) || 'npm run build && npm test';
-    const id = `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    approvalManager.ingest({
-      id,
-      groupFolder: group,
-      toolName: tool,
-      toolInput: { command: args },
-      toolUseId: `toolu_test_${id}`,
-      timestamp: new Date().toISOString(),
-    });
-    json({ ok: true, id });
-    return;
-  }
-
-  const approvalMatch = pathname.match(/^\/api\/approvals\/(.+)$/);
+  const approvalMatch = pathname.match(/^\/api\/approvals\/([^/]+)$/);
   if (approvalMatch && method === 'POST') {
     const id = decodeURIComponent(approvalMatch[1]);
     const body = await parseBody();

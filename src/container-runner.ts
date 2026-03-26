@@ -47,7 +47,7 @@ export interface ContainerInput {
   assistantName?: string;
   model?: string;
   secrets?: Record<string, string>;
-  approvalMode?: 'off' | 'on-miss' | 'always';
+  approvalMode?: 'off' | 'on-miss';
 }
 
 export interface ContainerOutput {
@@ -624,10 +624,14 @@ export function writeToolPoliciesSnapshot(
   groupFolder: string,
   policies: Array<{ tool_pattern: string; action: string }>,
 ): void {
-  const groupIpcDir = path.join(DATA_DIR, 'ipc', groupFolder);
-  fs.mkdirSync(groupIpcDir, { recursive: true });
-  const policiesFile = path.join(groupIpcDir, 'tool_policies.json');
-  fs.writeFileSync(policiesFile, JSON.stringify(policies, null, 2));
+  try {
+    const groupIpcDir = path.join(DATA_DIR, 'ipc', groupFolder);
+    fs.mkdirSync(groupIpcDir, { recursive: true });
+    const policiesFile = path.join(groupIpcDir, 'tool_policies.json');
+    fs.writeFileSync(policiesFile, JSON.stringify(policies, null, 2));
+  } catch (err) {
+    logger.error({ err, groupFolder }, 'Failed to write tool policies snapshot — agent will start without pre-loaded policies');
+  }
 }
 
 export interface AvailableGroup {

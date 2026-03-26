@@ -224,23 +224,35 @@ function CapabilitiesTab() {
     if (!selectedAgent) return;
     setExecLoading(true);
     fetch(`/api/agents/${encodeURIComponent(selectedAgent.folder)}/settings`)
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status}`);
+        return r.json();
+      })
       .then((data) => {
         if (data.approvalMode) setExecMode(data.approvalMode);
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error("Failed to load agent settings:", err);
+      })
       .finally(() => setExecLoading(false));
-  }, [selectedAgent?.folder, selectedAgent]);
+  }, [selectedAgent?.folder]);
 
-  // Persist on change
-  const handleExecMode = (mode: "ask" | "auto") => {
+  // Persist on change — revert on failure
+  const handleExecMode = async (mode: "ask" | "auto") => {
+    const prev = execMode;
     setExecMode(mode);
     if (!selectedAgent) return;
-    fetch(`/api/agents/${encodeURIComponent(selectedAgent.folder)}/settings`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ approvalMode: mode }),
-    }).catch(() => {});
+    try {
+      const res = await fetch(`/api/agents/${encodeURIComponent(selectedAgent.folder)}/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalMode: mode }),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+    } catch (err) {
+      console.error("Failed to save approval mode:", err);
+      setExecMode(prev); // Revert
+    }
   };
 
   const execDescriptions = {

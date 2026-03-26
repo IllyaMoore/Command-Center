@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export interface ApprovalRequest {
+export interface ApprovalCardProps {
   id: string;
   tool: string;
   args: string;
@@ -22,24 +22,28 @@ export function ApprovalCard({
   onAlwaysAllow,
   onDeny,
 }: {
-  request: ApprovalRequest;
+  request: ApprovalCardProps;
   agentName: string;
-  onApprove?: (id: string) => void;
-  onAlwaysAllow?: (id: string) => void;
-  onDeny?: (id: string) => void;
+  onApprove?: (id: string) => Promise<void> | void;
+  onAlwaysAllow?: (id: string) => Promise<void> | void;
+  onDeny?: (id: string) => Promise<void> | void;
 }) {
   const [resolution, setResolution] = useState<Resolution | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleAction = (action: Resolution["action"]) => {
+  const handleAction = async (action: Resolution["action"]) => {
+    if (resolution || loading) return; // Guard double-click
     setLoading(true);
-    const res: Resolution = { action, at: new Date().toISOString() };
-    setResolution(res);
-    setLoading(false);
-
-    if (action === "approved") onApprove?.(request.id);
-    else if (action === "always_allow") onAlwaysAllow?.(request.id);
-    else onDeny?.(request.id);
+    try {
+      if (action === "approved") await onApprove?.(request.id);
+      else if (action === "always_allow") await onAlwaysAllow?.(request.id);
+      else await onDeny?.(request.id);
+      setResolution({ action, at: new Date().toISOString() });
+    } catch (err) {
+      console.error("Approval action failed:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const resolved = resolution !== null;
@@ -112,7 +116,7 @@ export function ApprovalCard({
                 disabled={loading}
                 className="px-3 py-1.5 text-[10px] font-mono font-semibold uppercase tracking-wider bg-text-primary text-text-inverse hover:opacity-80 transition-opacity cursor-pointer disabled:opacity-50"
               >
-                Approve
+                {loading ? "..." : "Approve"}
               </button>
               <button
                 onClick={() => handleAction("always_allow")}
@@ -137,12 +141,7 @@ export function ApprovalCard({
 }
 
 function formatTime(timestamp: string): string {
-  try {
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return "";
-  }
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return "--:--";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
