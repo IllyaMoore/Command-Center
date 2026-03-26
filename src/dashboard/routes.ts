@@ -650,6 +650,8 @@ export async function handleApiRoute(
     const body = await parseBody();
     const text = body.text as string | undefined;
     const group = (body.group as string | undefined) || 'ceo';
+    // Optional: deliver response to a different chat (cross-agent messaging)
+    const replyTo = body.replyTo as string | undefined;
 
     if (!text) {
       json({ error: 'Missing text field' }, 400);
@@ -663,10 +665,10 @@ export async function handleApiRoute(
       return;
     }
 
-    // Always use dashboard-specific JID so chat history stays separate from WA/TG
-    const dashboardJid = `dashboard-${group}`;
-    const result = await sendGroupMessage(group, dashboardJid, text);
-    json({ ...result, group, jid: dashboardJid });
+    // Use replyTo chat for cross-agent messaging, otherwise default to agent's own chat
+    const chatJid = replyTo ? `dashboard-${replyTo}` : `dashboard-${group}`;
+    const result = await sendGroupMessage(group, chatJid, text);
+    json({ ...result, group, jid: chatJid });
     return;
   }
 

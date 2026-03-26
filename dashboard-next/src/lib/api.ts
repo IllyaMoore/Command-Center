@@ -95,11 +95,12 @@ export async function fetchMessages(
 export async function sendMessage(
   group: string,
   text: string,
+  replyTo?: string,
 ): Promise<void> {
   const res = await fetch(`${BASE}/api/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, group }),
+    body: JSON.stringify({ text, group, ...(replyTo ? { replyTo } : {}) }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

@@ -11,6 +11,7 @@ import { useMessages } from "@/lib/use-messages";
 import { agentColor } from "@/lib/agent-colors";
 import { ApprovalCard } from "@/components/chat/approval-card";
 import { useApprovals } from "@/lib/use-approvals";
+import { useAgents } from "@/lib/use-agents";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
@@ -21,10 +22,12 @@ export function ChatPanel() {
   const [userScrolled, setUserScrolled] = useState(false);
 
   const { selectedAgent } = useAgentStore();
+  const { agents } = useAgents();
   const { messages, loading, addOptimistic, clearMessages } = useMessages(
     selectedAgent?.folder ?? null,
   );
   const { approvals, respond: respondApproval } = useApprovals();
+  const [askAgent, setAskAgent] = useState<string | null>(null); // cross-agent: target folder
 
   const agentName = selectedAgent?.name ?? "No Agent";
   const agentInitial = agentName.charAt(0).toUpperCase();
@@ -92,16 +95,18 @@ export function ChatPanel() {
     setUserScrolled(false);
 
     try {
-      await sendMessage(selectedAgent.folder, text);
+      const targetAgent = askAgent || selectedAgent.folder;
+      const replyTo = askAgent ? selectedAgent.folder : undefined;
+      await sendMessage(targetAgent, text, replyTo);
       setSentAt(new Date().toISOString());
+      setAskAgent(null); // Reset after send
     } catch {
-      // Send failed — restore input so user can retry
       setInput(text);
     } finally {
       setSending(false);
       sendingRef.current = false;
     }
-  }, [input, selectedAgent, sending, addOptimistic]);
+  }, [input, selectedAgent, sending, addOptimistic, askAgent]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -304,12 +309,34 @@ export function ChatPanel() {
               target.style.height = `${Math.min(target.scrollHeight, 128)}px`;
             }}
           />
+          {/* Agent picker — ask another agent */}
+          {agents.length > 1 && (
+            <select
+              value={askAgent || ""}
+              onChange={(e) => setAskAgent(e.target.value || null)}
+              className="bg-surface-2 border border-surface-border text-[10px] font-mono text-text-secondary px-2 py-1.5 cursor-pointer outline-none shrink-0"
+              disabled={!selectedAgent || waitingForReply}
+            >
+              <option value="">
+                {selectedAgent?.name ?? "Agent"}
+              </option>
+              {agents
+                .filter((a) => a.folder !== selectedAgent?.folder)
+                .map((a) => (
+                  <option key={a.folder} value={a.folder}>
+                    Ask {a.name}
+                  </option>
+                ))}
+            </select>
+          )}
           <button
             onClick={handleSend}
-            className="px-4 py-1.5 bg-primary text-text-inverse rounded-lg text-xs font-mono font-semibold uppercase hover:bg-primary-hover active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            className={`px-4 py-1.5 text-text-inverse rounded-lg text-xs font-mono font-semibold uppercase hover:opacity-90 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
+              askAgent ? "bg-signal-info" : "bg-primary"
+            }`}
             disabled={!selectedAgent || !input.trim() || sending || waitingForReply}
           >
-            Send
+            {askAgent ? `Ask ${agents.find((a) => a.folder === askAgent)?.name ?? askAgent}` : "Send"}
           </button>
         </div>
       </div>
