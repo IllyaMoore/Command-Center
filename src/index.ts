@@ -610,7 +610,7 @@ async function main(): Promise<void> {
     syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
     writeGroupsSnapshot,
-    onDashboardInput: async (groupFolder, chatJid, text) => {
+    onDashboardInput: async (groupFolder, chatJid, text, replyToJid) => {
       const group = Object.values(registeredGroups).find((g) => g.folder === groupFolder);
       if (!group) {
         logger.warn({ groupFolder }, 'Dashboard input for unknown group');
@@ -640,9 +640,11 @@ async function main(): Promise<void> {
             const content = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
             if (isDashboardOnly) {
               // Dashboard-only agents: store response in DB, no channel delivery
+              // Use replyToJid for cross-agent responses (display in source chat)
+              const responseChatJid = replyToJid || chatJid;
               storeMessageDirect({
                 id: `agent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                chat_jid: chatJid,
+                chat_jid: responseChatJid,
                 sender: groupFolder,
                 sender_name: group.name,
                 content,

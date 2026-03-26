@@ -10,6 +10,8 @@ import { logger } from '../logger.js';
 import {
   createTask,
   deleteMessages,
+  storeChatMetadata,
+  storeMessageDirect,
   deleteRegisteredGroup,
   deleteTask,
   deleteToolPolicy,
@@ -665,10 +667,30 @@ export async function handleApiRoute(
       return;
     }
 
-    // Use replyTo chat for cross-agent messaging, otherwise default to agent's own chat
-    const chatJid = replyTo ? `dashboard-${replyTo}` : `dashboard-${group}`;
-    const result = await sendGroupMessage(group, chatJid, text);
-    json({ ...result, group, jid: chatJid });
+    // Cross-agent: unique JID prevents queue collision with the source agent.
+    // Messages stored under display JID (source chat) for UI.
+    const isForward = !!replyTo && replyTo !== group;
+    const chatJid = isForward
+      ? `xagent-${group}-${Date.now()}`
+      : `dashboard-${group}`;
+    const displayJid = isForward ? `dashboard-${replyTo}` : chatJid;
+
+    // For cross-agent: store user message in source chat (sendGroupMessage stores in agent chat)
+    if (isForward) {
+      storeChatMetadata(displayJid, new Date().toISOString(), `Dashboard: ${replyTo}`);
+      storeMessageDirect({
+        id: `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        chat_jid: displayJid,
+        sender: 'dashboard',
+        sender_name: 'You (Dashboard)',
+        content: text,
+        timestamp: new Date().toISOString(),
+        is_from_me: true,
+      });
+    }
+
+    const result = await sendGroupMessage(group, chatJid, text, isForward ? displayJid : undefined);
+    json({ ...result, group, jid: displayJid });
     return;
   }
 
