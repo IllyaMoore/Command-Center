@@ -29,6 +29,7 @@ const MAX_AGE_MS = 12 * 60 * 1000; // 12 minutes (longer than agent-side 10min t
 
 export class DelegationManager {
   private pending = new Map<string, PendingDelegation>();
+  private inProgress = new Set<string>();
   private seen = new Set<string>();
 
   ingest(request: DelegationRequest): boolean {
@@ -66,10 +67,12 @@ export class DelegationManager {
     } catch (err) {
       logger.error({ err, id }, 'Failed to write delegation response');
       this.pending.delete(id);
+      this.inProgress.delete(id);
       return false;
     }
 
     this.pending.delete(id);
+    this.inProgress.delete(id);
     this.cleanRequestFile(pending.sourceGroup, id);
 
     logger.info(
@@ -79,13 +82,31 @@ export class DelegationManager {
     return true;
   }
 
+  /** Mark a delegation as in-progress (user clicked Allow, agent spawning). */
+  markInProgress(id: string): void {
+    this.inProgress.add(id);
+  }
+
+  /** Returns true if this delegation is being processed. */
+  isInProgress(id: string): boolean {
+    return this.inProgress.has(id);
+  }
+
+  /** Get pending delegations that are NOT yet in-progress. */
   getPending(): Readonly<PendingDelegation>[] {
-    return Array.from(this.pending.values()).map((p) => ({ ...p }));
+    return Array.from(this.pending.values())
+      .filter((p) => !this.inProgress.has(p.id))
+      .map((p) => ({ ...p }));
+  }
+
+  /** Get a specific pending delegation (including in-progress). */
+  getById(id: string): PendingDelegation | undefined {
+    return this.pending.get(id);
   }
 
   cleanExpired(): void {
     const expired = [...this.pending.entries()]
-      .filter(([, d]) => Date.now() - d.receivedAt > MAX_AGE_MS)
+      .filter(([id, d]) => !this.inProgress.has(id) && Date.now() - d.receivedAt > MAX_AGE_MS)
       .map(([id]) => id);
 
     for (const id of expired) {
@@ -94,7 +115,7 @@ export class DelegationManager {
     }
 
     if (this.seen.size > 500) {
-      this.seen = new Set(this.pending.keys());
+      this.seen = new Set([...this.pending.keys(), ...this.inProgress]);
     }
   }
 

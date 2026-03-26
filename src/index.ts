@@ -379,6 +379,10 @@ async function runAgent(
  * Run an agent for a delegated task and return the result text.
  * Used by the delegation system — spawns a one-shot agent, collects output.
  */
+/**
+ * Run an agent for a delegated task and return the result text.
+ * Starts a FRESH session (no resumption) to avoid context pollution.
+ */
 export async function runDelegatedAgent(
   group: RegisteredGroup,
   prompt: string,
@@ -386,22 +390,34 @@ export async function runDelegatedAgent(
 ): Promise<string> {
   let result = '';
 
-  const status = await runAgent(
-    group,
-    prompt,
-    chatJid,
-    async (output) => {
-      if (output.result) {
-        result = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
-      }
-    },
-  );
+  // Temporarily clear session so delegation starts fresh
+  const savedSession = sessions[group.folder];
+  delete sessions[group.folder];
 
-  if (status === 'error' && !result) {
-    throw new Error('Delegated agent failed without producing a result');
+  try {
+    const status = await runAgent(
+      group,
+      prompt,
+      chatJid,
+      async (output) => {
+        if (output.result) {
+          result = typeof output.result === 'string' ? output.result : JSON.stringify(output.result);
+        }
+      },
+    );
+
+    if (status === 'error' && !result) {
+      throw new Error('Delegated agent failed without producing a result');
+    }
+
+    return result || '(Agent completed without response)';
+  } finally {
+    // Restore original session (delegation session is disposable)
+    if (savedSession) {
+      sessions[group.folder] = savedSession;
+      setSession(group.folder, savedSession);
+    }
   }
-
-  return result || '(Agent completed without response)';
 }
 
 async function startMessageLoop(): Promise<void> {

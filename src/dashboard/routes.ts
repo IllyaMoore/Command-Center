@@ -728,29 +728,39 @@ export async function handleApiRoute(
     }
 
     if (decision === 'allow') {
-      const pending = delegationManager.getPending().find((d) => d.id === id);
+      // Check if already in-progress (prevent duplicate spawns)
+      if (delegationManager.isInProgress(id)) {
+        json({ ok: true, status: 'already_processing' });
+        return;
+      }
+
+      const pending = delegationManager.getById(id);
       if (!pending) {
         res.writeHead(404, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Delegation request not found' }));
         return;
       }
 
-      // Spawn target agent and collect result
-      json({ ok: true, status: 'processing' });
-
-      // Run target agent asynchronously — response written when done
+      // Validate target agent exists BEFORE responding
       const groups = getAllRegisteredGroups();
       const targetGroup = Object.values(groups).find((g) => g.folder === pending.targetGroup);
       if (!targetGroup) {
         delegationManager.respond(id, { id, status: 'error', error: `Agent "${pending.targetGroup}" not found` });
+        json({ ok: false, error: 'Target agent not found' });
         return;
       }
 
       const runDelegatedAgent = getDelegationRunner();
       if (!runDelegatedAgent) {
         delegationManager.respond(id, { id, status: 'error', error: 'Delegation runner not initialized' });
+        json({ ok: false, error: 'Server not ready' });
         return;
       }
+
+      // Mark as in-progress BEFORE async spawn to prevent duplicates
+      delegationManager.markInProgress(id);
+      json({ ok: true, status: 'processing' });
+
       const prompt = pending.context
         ? `[Delegated from ${pending.sourceGroup}]\n\nContext: ${pending.context}\n\nTask: ${pending.task}`
         : `[Delegated from ${pending.sourceGroup}]\n\nTask: ${pending.task}`;
