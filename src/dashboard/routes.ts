@@ -12,6 +12,7 @@ import {
   deleteMessages,
   deleteRegisteredGroup,
   deleteTask,
+  deleteSession,
   deleteToolPolicy,
   getAllRegisteredGroups,
   getAllTasks,
@@ -917,6 +918,17 @@ export async function handleApiRoute(
     }
     setTimezone(tz);
     json({ success: true, timezone: tz });
+    return;
+  }
+
+  // ─── Agent session reset ───
+  const agentResetMatch = pathname.match(/^\/api\/agents\/([^/]+)\/reset-session$/);
+  if (agentResetMatch && method === 'POST') {
+    const folder = decodeURIComponent(agentResetMatch[1]);
+    const deleted = deleteSession(folder);
+    const queue = getDashboardQueue();
+    const killResult = queue?.killByFolder(folder) ?? 'none';
+    json({ ok: true, sessionDeleted: deleted, agent: killResult });
     return;
   }
 
