@@ -22,8 +22,10 @@ import {
   getTaskById,
   getTasksForGroup,
   getTimezone,
+  getRouterState,
   getToolPolicies,
   setRegisteredGroup,
+  setRouterState,
   setTimezone,
   updateTask,
   upsertToolPolicy,
@@ -852,6 +854,32 @@ export async function handleApiRoute(
     }
     setTimezone(tz);
     json({ success: true, timezone: tz });
+    return;
+  }
+
+  // ─── Agent settings (per-agent approval mode) ───
+  const agentSettingsMatch = pathname.match(/^\/api\/agents\/([^/]+)\/settings$/);
+  if (agentSettingsMatch && method === 'GET') {
+    const folder = decodeURIComponent(agentSettingsMatch[1]);
+    const approvalMode = getRouterState(`approval_mode:${folder}`) || 'auto';
+    json({ approvalMode });
+    return;
+  }
+
+  if (agentSettingsMatch && method === 'PUT') {
+    const folder = decodeURIComponent(agentSettingsMatch[1]);
+    const body = await parseBody();
+    const approvalMode = body.approvalMode as string | undefined;
+    if (approvalMode && ['ask', 'auto'].includes(approvalMode)) {
+      setRouterState(`approval_mode:${folder}`, approvalMode);
+      // Kill idle agent so next spawn picks up new mode; busy agents apply on next spawn
+      const queue = getDashboardQueue();
+      const result = queue?.killByFolder(folder) ?? 'none';
+      json({ ok: true, approvalMode, agent: result });
+      return;
+    }
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'approvalMode must be ask or auto' }));
     return;
   }
 

@@ -95,6 +95,12 @@ function loadState(): void {
   );
 }
 
+/** Map UI setting (ask/auto) → agent approvalMode (on-miss/off) */
+function mapApprovalMode(groupFolder: string): 'off' | 'on-miss' {
+  const setting = getRouterState(`approval_mode:${groupFolder}`) || 'auto';
+  return setting === 'ask' ? 'on-miss' : 'off';
+}
+
 function saveState(): void {
   try {
     setRouterState('last_timestamp', lastTimestamp);
@@ -339,7 +345,7 @@ async function runAgent(
         isMain,
         assistantName: ASSISTANT_NAME,
         model: DEFAULT_MODEL,
-        approvalMode: 'on-miss',
+        approvalMode: mapApprovalMode(group.folder),
       },
       (proc, containerName) => queue.registerProcess(chatJid, proc, containerName, group.folder),
       wrappedOnOutput,
