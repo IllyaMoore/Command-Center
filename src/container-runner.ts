@@ -348,6 +348,10 @@ export async function runContainerAgent(
             hadStreamingOutput = true;
             // Activity detected — reset the hard timeout
             resetTimeout();
+            // Cancel warning timer after first output — agent already responded,
+            // "Processing your request" would be misleading from here on.
+            if (warningTimer) { clearTimeout(warningTimer); warningTimer = null; }
+            warningSent = true;
             // Call onOutput for all markers (including null results)
             // so idle timers start even for "silent" query completions.
             outputChain = outputChain.then(() =>
