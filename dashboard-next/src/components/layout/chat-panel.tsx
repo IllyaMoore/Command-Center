@@ -220,6 +220,7 @@ export function ChatPanel() {
                 agentName={agentName}
                 agentInitial={agentInitial}
                 agentColor={color}
+                currentFolder={agentFolder}
               />
             ))}
             {/* Pending approval cards for this agent */}
@@ -364,18 +365,27 @@ function ChatBubble({
   agentName,
   agentInitial,
   agentColor: color,
+  currentFolder,
 }: {
   message: Message;
   agentName: string;
   agentInitial: string;
-  agentColor: { bg: string; text: string };
+  agentColor: { bg: string; text: string; dot: string };
+  currentFolder: string;
 }) {
   const isUser = !message.is_bot_message;
-  const initial = isUser ? "Y" : agentInitial;
+
+  // Detect cross-agent response: bot message from a different agent
+  const isCrossAgent = !isUser && message.sender !== currentFolder && message.sender !== "dashboard" && message.sender !== "System";
+  const crossAgentColor = isCrossAgent ? agentColor(message.sender) : null;
+
+  const initial = isUser ? "Y" : isCrossAgent ? message.sender_name.charAt(0) : agentInitial;
   const bgClass = isUser ? "bg-chat-user shadow-sm" : "bg-chat-agent border border-surface-border shadow-sm";
   const avatarBg = isUser
     ? "bg-surface-3 text-text-muted"
-    : `${color.bg} ${color.text}`;
+    : isCrossAgent
+      ? `${crossAgentColor!.bg} ${crossAgentColor!.text}`
+      : `${color.bg} ${color.text}`;
 
   // Detect source label
   let sourceLabel: string | null = null;
@@ -400,9 +410,14 @@ function ChatBubble({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-0.5">
           <span className="text-[10px] font-mono text-text-muted">
-            {isUser ? "You" : agentName}
+            {isUser ? "You" : isCrossAgent ? message.sender_name : agentName}
           </span>
-          {sourceLabel && (
+          {isCrossAgent && (
+            <span className={`text-[9px] font-mono px-1.5 py-0.5 ${crossAgentColor!.bg} ${crossAgentColor!.text}`}>
+              via {message.sender}
+            </span>
+          )}
+          {sourceLabel && !isCrossAgent && (
             <span className="text-[10px] font-mono text-text-muted/60">
               via {sourceLabel}
             </span>
