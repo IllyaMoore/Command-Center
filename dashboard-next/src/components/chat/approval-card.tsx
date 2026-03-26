@@ -73,14 +73,19 @@ export function ApprovalCard({
 
         {/* Tool + command */}
         <div className="px-4 pb-2">
-          <div className="text-[10px] font-mono text-text-muted uppercase tracking-wider mb-1">
-            {request.tool}
+          <div className="text-[11px] text-text-primary mb-1">
+            {describeToolCall(request.tool, request.args)}
           </div>
-          <div className="bg-surface-2 border border-surface-border px-3 py-2 overflow-x-auto">
-            <code className="text-xs font-mono text-text-primary whitespace-pre-wrap break-all">
-              {request.args}
-            </code>
-          </div>
+          <details className="group">
+            <summary className="text-[9px] font-mono text-text-muted/50 cursor-pointer hover:text-text-muted">
+              {request.tool}
+            </summary>
+            <div className="mt-1 bg-surface-2 border border-surface-border px-3 py-2 overflow-x-auto">
+              <code className="text-xs font-mono text-text-primary whitespace-pre-wrap break-all">
+                {request.args}
+              </code>
+            </div>
+          </details>
           {request.cwd && (
             <div className="mt-1.5 text-[9px] font-mono text-text-muted/50">
               cwd: {request.cwd}
@@ -138,6 +143,66 @@ export function ApprovalCard({
       </div>
     </div>
   );
+}
+
+function describeToolCall(tool: string, args: string): string {
+  // Parse args JSON if possible
+  let parsed: Record<string, unknown> | null = null;
+  try { parsed = JSON.parse(args); } catch { /* use raw */ }
+
+  const t = tool.toLowerCase();
+
+  // Bash
+  if (t === "bash") {
+    const cmd = parsed?.command ?? args;
+    return `Run command: ${String(cmd).slice(0, 120)}`;
+  }
+
+  // File operations
+  if (t === "read") return `Read file: ${parsed?.file_path ?? args}`;
+  if (t === "write") return `Write file: ${parsed?.file_path ?? args}`;
+  if (t === "edit") return `Edit file: ${parsed?.file_path ?? args}`;
+  if (t === "glob") return `Search files: ${parsed?.pattern ?? args}`;
+  if (t === "grep") return `Search content: ${parsed?.pattern ?? args}`;
+
+  // Google MCP
+  if (t.includes("google")) {
+    const action = tool.split("__").pop()?.toLowerCase() ?? "";
+    if (action.includes("list_events")) return `View calendar events${parsed?.days ? ` (next ${parsed.days} day${Number(parsed.days) > 1 ? "s" : ""})` : ""}`;
+    if (action.includes("create_event")) return `Create calendar event: ${parsed?.summary ?? ""}`;
+    if (action.includes("search_emails") || action.includes("search_gmail")) return `Search emails: ${parsed?.query ?? ""}`;
+    if (action.includes("send_email")) return `Send email to ${parsed?.to ?? ""}`;
+    if (action.includes("read_email") || action.includes("get_email")) return "Read email";
+    if (action.includes("list_files") || action.includes("search_drive")) return `Search Drive: ${parsed?.query ?? ""}`;
+    if (action.includes("read_file") || action.includes("get_file")) return `Read file from Drive`;
+    if (action.includes("list_sheets") || action.includes("read_sheet")) return "Read Google Sheet";
+    return `Google: ${action.replace(/_/g, " ")}`;
+  }
+
+  // Linear
+  if (t.includes("linear")) {
+    const action = tool.split("__").pop()?.toLowerCase() ?? "";
+    return `Linear: ${action.replace(/_/g, " ")}`;
+  }
+
+  // Slack
+  if (t.includes("slack")) {
+    const action = tool.split("__").pop()?.toLowerCase() ?? "";
+    return `Slack: ${action.replace(/_/g, " ")}`;
+  }
+
+  // Atlassian
+  if (t.includes("atlassian") || t.includes("jira") || t.includes("confluence")) {
+    const action = tool.split("__").pop()?.toLowerCase() ?? "";
+    return `Atlassian: ${action.replace(/_/g, " ")}`;
+  }
+
+  // Web
+  if (t === "websearch") return `Web search: ${parsed?.query ?? args}`;
+  if (t === "webfetch") return `Fetch URL: ${parsed?.url ?? args}`;
+
+  // Fallback: humanize tool name
+  return tool.replace(/^mcp__\w+__/i, "").replace(/_/g, " ");
 }
 
 function formatTime(timestamp: string): string {
