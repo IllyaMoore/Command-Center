@@ -52,6 +52,13 @@ groups/personal/*
 !groups/storypages/MEMORY.md
 !groups/borderlands/MEMORY.md
 !groups/personal/MEMORY.md
+!groups/*/projects/
+!groups/*/projects/**
+!groups/*/cases/
+!groups/*/cases/**
+# But exclude large binaries from cases (copy to prod separately)
+groups/*/cases/**/*.pdf
+groups/*/cases/**/*.docx
 
 # Secrets - NEVER commit these
 .env
