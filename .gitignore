@@ -25,21 +25,33 @@ groups/*
 !groups/ceo/
 !groups/legal/
 !groups/finance/
+!groups/storypages/
+!groups/borderlands/
+!groups/personal/
 groups/main/*
 groups/global/*
 groups/ceo/*
 groups/legal/*
 groups/finance/*
+groups/storypages/*
+groups/borderlands/*
+groups/personal/*
 !groups/main/CLAUDE.md
 !groups/global/CLAUDE.md
 !groups/ceo/CLAUDE.md
 !groups/legal/CLAUDE.md
 !groups/finance/CLAUDE.md
+!groups/storypages/CLAUDE.md
+!groups/borderlands/CLAUDE.md
+!groups/personal/CLAUDE.md
 !groups/main/MEMORY.md
 !groups/global/MEMORY.md
 !groups/ceo/MEMORY.md
 !groups/legal/MEMORY.md
 !groups/finance/MEMORY.md
+!groups/storypages/MEMORY.md
+!groups/borderlands/MEMORY.md
+!groups/personal/MEMORY.md
 
 # Secrets - NEVER commit these
 .env

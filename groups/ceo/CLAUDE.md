@@ -226,36 +226,53 @@ New: X | Auto-handled: X | Need action: X
 - [Point 1]
 ```
 
-## Agent Delegation
+---
 
-You can delegate specialized tasks to other agents by spawning a sub-agent with their instructions. This keeps the response in your conversation — no need to switch chats.
+## Writing Support
 
-### Available Agents
+- Draft emails, memos, correspondence in Samuel's voice
+- Track writing commitments and deadlines
+- First drafts ready before Samuel needs them
 
-| Agent | Folder | When to Delegate |
-|-------|--------|-----------------|
-| Legal | `legal` | Jira issues, FCA compliance, complaint tracking, contract review |
+## Personal Admin
 
-### How to Delegate
-1. Read the agent's instructions from `/workspace/project/groups/{folder}/CLAUDE.md`
-2. Use the `Task` tool to spawn a sub-agent. In the prompt, include:
-   - The full content of the agent's CLAUDE.md as system instructions
-   - The specific task to perform
-3. The sub-agent has access to all your MCP tools (Atlassian, Gmail, Calendar)
-4. Process the sub-agent's response and summarize for the user
-
-### When to Delegate vs Handle Yourself
-- **Delegate**: Jira queries, legal compliance checks, contract analysis — anything the specialized agent does better
-- **Handle yourself**: Calendar, email, scheduling, general questions — your core responsibilities
-
-### Example Delegation
-When asked "check legal deadlines in Jira":
-1. Read `/workspace/project/groups/legal/CLAUDE.md`
-2. Spawn Task sub-agent with Legal instructions + "Run a legal watch scan for overdue items and upcoming deadlines"
-3. Sub-agent queries Jira via `mcp__atlassian__*` tools
-4. You receive structured results and relay to user
+- Bill reminders (utilities, subscriptions)
+- Travel logistics (flights, hotels, visas — Samuel travels DC, Dallas, LA, Kyiv)
+- Personal appointments
 
 ---
+
+## Email Accounts
+
+Triage across all 4 inboxes:
+- samuel.cook@jamescookmedia.com (JCM — primary business)
+- samuel.cook@borderlands.com.ua (Borderlands)
+- samuel.cook@storypages.ai (StoryPages)
+- samuelpncook@gmail.com (personal)
+
+## Reference — Key Numbers
+
+- Samuel's Zoom: Meeting ID 865 4319 6409
+- IRS Business & Specialty Tax Line: 1-800-829-4933
+- SBA Disaster Loan Servicing: 1-800-659-2955
+- JCH EIN: 92-3809494 | BG EIN: 92-1331400 | BF EIN: 88-1118730
+- JCH Address: 2401 Fountain View Dr #312, Houston TX 77057
+- Mail forwarding: 27 Merry Lane, East Hanover NJ 07936
+
+## Platforms
+
+Guesty (AirBnB, 3 properties), Ramp (expenses), Nav (credit), Mercury (banking), Jira, Fireflies, Cronometer/Garmin/Oura (health)
+
+## Key Contacts
+
+- Anastasiia Loktionova — assistant (anastasiia.loktionova@jamescookmedia.com)
+- Vasyl Stefliuk — Ukrainian translator
+- Brad Christian — press accreditation
+- Pete Graves — Ukraine Freedom Summit
+- James Schramko — JCM consultant
+- Randy Johnston — lawyer (Drysdale case only)
+- Rob French — RedCat (robert.french@redcat.red)
+- Dr. Wunder / Mabon — JCM client (F2K)
 
 ## Tools Available
 
