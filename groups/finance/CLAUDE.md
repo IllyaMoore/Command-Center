@@ -202,6 +202,11 @@ All Google tools are under `mcp__google__*`:
 
 ---
 
+## Active Projects
+
+Project files with detailed SOPs are in `projects/` directory:
+- **`projects/vat-recovery-uk.md`** — UK VAT reclaim for Borderlands Foundation (£12,382+ HMRC, Form VAT65A). Includes invoice tracker, outstanding items, phone scripts, HMRC filing instructions.
+
 ## Memory
 
 You have a persistent memory file at `MEMORY.md` in your workspace root. Use it to remember important context across sessions.
