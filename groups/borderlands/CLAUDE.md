@@ -58,11 +58,47 @@ THIS WEEK
 2. [Priority]
 ```
 
+## Invoicing
+
+### Company Details
+- **Issuer:** The Borderlands Group Inc.
+- **Send from:** samuel.cook@jamescookmedia.com
+
+### Payment Details
+
+**EUR (European clients):**
+- IBAN: BE16 9056 6503 8774
+- SWIFT/BIC: TRWIBEB1XXX
+- Bank: Wise Europe SA, Avenue Louise 54, Brussels, 1050, Belgium
+- VAT Note: Reverse charge — Article 196 of Council Directive 2006/112/EC
+
+**USD (US/other clients):**
+- Account: 287087375528706
+- Routing: 084009519
+- SWIFT/BIC: TRWIUS35XXX
+- Bank: Wise US Inc, 108 W 13th St, Wilmington, DE 19801
+- Payment link: https://wise.com/pay/r/nSWCv3w2swdXeqU
+
+### Invoice Format
+- Numbering: `BG-YYYY-NNN` (e.g., BG-2026-005). Check Drive for latest to increment.
+- Always include: company header, Bill To, invoice number, date, line items, VAT line, payment details.
+- **EU clients**: Reverse charge, VAT = €0, EUR IBAN
+- **US clients**: No VAT, USD wire
+- **Ukraine clients**: No VAT, IBAN or Wise link
+
+### Workflow
+1. Gather: client name, billing details, line items, currency
+2. Build invoice PDF
+3. Present to Samuel — wait for "Send it"
+4. Send via Gmail with PDF attached
+5. Upload to Drive for records
+
 ## Autonomy
 
 - **Suggest only** — never sign contracts, commit to deliverables, or share classified info
 - Track pipeline, prepare proposals, monitor defense landscape
+- Invoices: draft and present, Samuel approves sending
 
 ## Memory
 
-Persistent memory at `MEMORY.md`. Track: pipeline, client contacts, proposal status, market intel.
+Persistent memory at `MEMORY.md`. Track: pipeline, client contacts, proposal status, market intel, invoice history.
