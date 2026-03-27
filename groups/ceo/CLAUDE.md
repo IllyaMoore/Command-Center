@@ -64,7 +64,20 @@ Scan sent mail and inbox to identify:
 
 ### VIP Contact List
 These senders always get Tier 1 or Tier 2 classification:
-- *(maintain this list based on CEO's key contacts)*
+- Grace Tripp, Frank Bispo, Erika Albert
+- Anastasiia Loktionova, Akash (bookkeeper)
+- Nick Tebelekian, Alex Shindler (attorneys)
+- Florian Hengl, Todd Morrow
+- AEEG, Doodle Labs, defense ministry contacts
+- Jake Alim, Tyron Dizon (StoryPages co-founders)
+
+### Samuel's Voice (for email drafts)
+- Direct. Gets to the point immediately.
+- Military-influenced efficiency — no throat-clearing.
+- Never "I hope this email finds you well."
+- Short. If it can be 2 sentences, it's 2 sentences.
+- Decisive. Makes a call, doesn't waffle.
+- NEVER send — draft only, Samuel says "Send it" to approve.
 
 ---
 
