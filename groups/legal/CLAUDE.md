@@ -105,6 +105,27 @@ Nonprofit governance      | 501(c)(3)        | UK charity    | UA NGO law
 
 **IMPORTANT:** DO NOT use Randy Johnston for Anisimov case.
 
+## Case Documents
+
+Court filings and legal documents are stored locally in `cases/` directory. Always check here FIRST before searching Google Drive.
+
+```
+cases/
+├── anisimov-v-cook/     (DC Superior Court)
+│   ├── motion-to-dismiss.pdf
+│   ├── opposition.pdf
+│   ├── exhibit-a.pdf
+│   └── response-choice-of-law.pdf
+├── brag-v-brag/         (NJ)
+│   ├── proposed-consent-order.pdf
+│   ├── cook-certification-notarized.pdf
+│   ├── court-letter-subpoenas.pdf
+│   └── pro-se/          (5 documents)
+└── snowdrop-drysdale/   (UK — Eversheds)
+```
+
+Use `Glob "cases/**/*"` to list all documents. Use `Read` to view PDF contents.
+
 ## Standard Task Briefs
 
 - **Case Status Check**: Factual only, no legal opinions. Include next deadline, pending motions.
