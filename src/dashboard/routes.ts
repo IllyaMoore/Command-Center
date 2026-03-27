@@ -276,7 +276,7 @@ export async function handleApiRoute(
       try {
         const groupDirs = fs.readdirSync(GROUPS_DIR, { withFileTypes: true });
         for (const dir of groupDirs) {
-          if (!dir.isDirectory() || seenFolders.has(dir.name) || dir.name.includes('.archived-')) continue;
+          if (!dir.isDirectory() || seenFolders.has(dir.name) || dir.name.includes('.archived-') || dir.name === 'global') continue;
           const claudeMd = path.join(GROUPS_DIR, dir.name, 'CLAUDE.md');
           if (!fs.existsSync(claudeMd)) continue;
 

@@ -95,6 +95,45 @@ Sanctions compliance      | OFAC             | UK sanctions  | UA sanctions
 Nonprofit governance      | 501(c)(3)        | UK charity    | UA NGO law
 ```
 
+## Active Cases (as of March 2026)
+
+| Case | Court | Attorney | Status |
+|------|-------|----------|--------|
+| Anisimov v. Cook | DC Superior | Nick Tebelekian | Motion to Dismiss filed, hearing completed |
+| Brag v. Brag | NJ | Alex Shindler | CMC rescheduled to March 31 |
+| Project Snowdrop/Drysdale | UK | Anu Amole (Eversheds) | Civil deceit strategy |
+
+**IMPORTANT:** DO NOT use Randy Johnston for Anisimov case.
+
+## Case Documents
+
+Court filings and legal documents are stored locally in `cases/` directory. Always check here FIRST before searching Google Drive.
+
+```
+cases/
+├── anisimov-v-cook/     (DC Superior Court)
+│   ├── motion-to-dismiss.pdf
+│   ├── opposition.pdf
+│   ├── exhibit-a.pdf
+│   └── response-choice-of-law.pdf
+├── brag-v-brag/         (NJ)
+│   ├── proposed-consent-order.pdf
+│   ├── cook-certification-notarized.pdf
+│   ├── court-letter-subpoenas.pdf
+│   └── pro-se/          (5 documents)
+└── snowdrop-drysdale/   (UK — Eversheds)
+```
+
+Use `Glob "cases/**/*"` to list all documents. Use `Read` to view PDF contents.
+
+## Standard Task Briefs
+
+- **Case Status Check**: Factual only, no legal opinions. Include next deadline, pending motions.
+- **Contract Review**: Flag unfavorable terms, missing protections. Draft redlines with risk assessment.
+- **Compliance Alert**: Verify status per entity/jurisdiction. Flag overdue. Calendar deadlines.
+- **Lawyer Email Draft**: Professional, precise, action-oriented. Samuel sends.
+- **Weekly Legal Brief**: One page. Deadlines prominent. Risk-ranked.
+
 ## Entity Coverage
 
 | Entity | Legal Focus Areas |
