@@ -667,6 +667,15 @@ export async function handleApiRoute(
       return;
     }
 
+    // Validate replyTo group exists
+    if (replyTo) {
+      const replyEntry = Object.values(groups).find((g) => g.folder === replyTo);
+      if (!replyEntry) {
+        json({ error: `Unknown replyTo group '${replyTo}'` }, 400);
+        return;
+      }
+    }
+
     // Cross-agent: unique JID prevents queue collision with the source agent.
     // Messages stored under display JID (source chat) for UI.
     const isForward = !!replyTo && replyTo !== group;

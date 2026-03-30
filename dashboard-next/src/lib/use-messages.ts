@@ -7,7 +7,7 @@ export function useMessages(groupFolder: string | null) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const fetchingRef = useRef(false);
-  const optimisticRef = useRef<Message | null>(null);
+  const optimisticRef = useRef<Message[]>([]);
 
   const loadMessages = useCallback(
     async (folder: string) => {
@@ -17,27 +17,21 @@ export function useMessages(groupFolder: string | null) {
         const msgs = await fetchMessages(folder, 50);
         const sorted = [...msgs].reverse();
 
-        // If we have an optimistic message not yet in server response, keep it
-        const opt = optimisticRef.current;
-        if (
-          opt &&
-          !sorted.some(
-            (s) =>
-              s.content === opt.content &&
-              s.is_from_me &&
-              Math.abs(
-                new Date(s.timestamp).getTime() -
-                  new Date(opt.timestamp).getTime(),
-              ) < 10000,
-          )
-        ) {
-          // Optimistic not yet on server — insert it at the right position
-          setMessages([...sorted, opt]);
-        } else {
-          // Server has the message — clear optimistic, use server data only
-          optimisticRef.current = null;
-          setMessages(sorted);
-        }
+        // Keep optimistic messages not yet confirmed by server
+        const pending = optimisticRef.current.filter(
+          (opt) =>
+            !sorted.some(
+              (s) =>
+                s.content === opt.content &&
+                s.is_from_me &&
+                Math.abs(
+                  new Date(s.timestamp).getTime() -
+                    new Date(opt.timestamp).getTime(),
+                ) < 10000,
+            ),
+        );
+        optimisticRef.current = pending;
+        setMessages(pending.length > 0 ? [...sorted, ...pending] : sorted);
       } catch (err) {
         console.error("Failed to load messages:", err);
       } finally {
@@ -51,7 +45,7 @@ export function useMessages(groupFolder: string | null) {
   useEffect(() => {
     if (!groupFolder) {
       setMessages([]);
-      optimisticRef.current = null;
+      optimisticRef.current = [];
       return;
     }
     setLoading(true);
@@ -82,13 +76,13 @@ export function useMessages(groupFolder: string | null) {
   }, [groupFolder, loadMessages]);
 
   const addOptimistic = useCallback((msg: Message) => {
-    optimisticRef.current = msg;
+    optimisticRef.current = [...optimisticRef.current, msg];
     setMessages((prev) => [...prev, msg]);
   }, []);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-    optimisticRef.current = null;
+    optimisticRef.current = [];
   }, []);
 
   return { messages, loading, addOptimistic, clearMessages };
