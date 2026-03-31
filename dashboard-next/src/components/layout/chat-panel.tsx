@@ -119,7 +119,7 @@ export function ChatPanel() {
   );
 
   return (
-    <div className="flex flex-col flex-1 min-w-0 bg-surface-1">
+    <div data-testid="chat-panel" className="flex flex-col flex-1 min-w-0 bg-surface-1">
       {/* Chat header */}
       <div className="flex items-center gap-4 px-4 py-3 border-b border-surface-border">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -181,6 +181,7 @@ export function ChatPanel() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
+        data-testid="chat-messages"
         className="flex-1 overflow-y-auto px-4 py-4 chat-bg"
       >
         {!selectedAgent ? (
@@ -333,6 +334,7 @@ export function ChatPanel() {
                   : "type a message"
             }
             rows={1}
+            data-testid="chat-input"
             className="flex-1 bg-transparent text-sm text-text-primary placeholder-text-muted outline-none font-mono resize-none max-h-32 focus:outline-none focus-visible:outline-none"
             disabled={!selectedAgent || waitingForReply}
             style={{
@@ -346,6 +348,7 @@ export function ChatPanel() {
             }}
           />
           <button
+            data-testid="send-btn"
             onClick={handleSend}
             className={`px-4 py-1.5 text-text-inverse text-xs font-mono font-semibold uppercase hover:opacity-90 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
               askAgent ? "bg-signal-info" : "bg-primary"
