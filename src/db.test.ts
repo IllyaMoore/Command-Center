@@ -4,15 +4,21 @@ import {
   _initTestDatabase,
   createTask,
   deleteTask,
+  deleteToolPolicy,
   getAllChats,
   getMessagesSince,
   getNewMessages,
   getRecentMessages,
+  getSession,
   getTaskById,
+  getToolPolicies,
+  matchToolPolicy,
+  setSession,
   storeChatMetadata,
   storeMessage,
   storeMessageDirect,
   updateTask,
+  upsertToolPolicy,
 } from './db.js';
 
 beforeEach(() => {
@@ -444,4 +450,93 @@ describe('scheduler once-task pre-completion', () => {
     const task = getTaskById('once-1');
     expect(task!.status).toBe('completed');
   });
+});
+
+// ── Tool Policies ──
+
+describe('tool policies', () => {
+  it('upsertToolPolicy inserts new policy', () => {
+    upsertToolPolicy('ceo', 'Bash', 'allow');
+    const policies = getToolPolicies('ceo');
+    expect(policies).toHaveLength(1);
+    expect(policies[0].tool_pattern).toBe('Bash');
+    expect(policies[0].action).toBe('allow');
+  });
+
+  it('upsertToolPolicy updates existing policy', () => {
+    upsertToolPolicy('ceo', 'Bash', 'allow');
+    upsertToolPolicy('ceo', 'Bash', 'deny');
+    const policies = getToolPolicies('ceo');
+    expect(policies).toHaveLength(1);
+    expect(policies[0].action).toBe('deny');
+  });
+
+  it('getToolPolicies returns sorted by pattern', () => {
+    upsertToolPolicy('ceo', 'Write', 'allow');
+    upsertToolPolicy('ceo', 'Bash', 'deny');
+    upsertToolPolicy('ceo', 'Read', 'ask');
+    const policies = getToolPolicies('ceo');
+    expect(policies.map((p) => p.tool_pattern)).toEqual(['Bash', 'Read', 'Write']);
+  });
+
+  it('getToolPolicies filters by group', () => {
+    upsertToolPolicy('ceo', 'Bash', 'allow');
+    upsertToolPolicy('legal', 'Bash', 'deny');
+    expect(getToolPolicies('ceo')).toHaveLength(1);
+    expect(getToolPolicies('legal')).toHaveLength(1);
+    expect(getToolPolicies('finance')).toHaveLength(0);
+  });
+
+  it('deleteToolPolicy returns true on delete', () => {
+    upsertToolPolicy('ceo', 'Bash', 'allow');
+    expect(deleteToolPolicy('ceo', 'Bash')).toBe(true);
+    expect(getToolPolicies('ceo')).toHaveLength(0);
+  });
+
+  it('deleteToolPolicy returns false if not found', () => {
+    expect(deleteToolPolicy('ceo', 'Bash')).toBe(false);
+  });
+
+  it('matchToolPolicy returns exact match', () => {
+    upsertToolPolicy('ceo', 'Bash', 'allow');
+    expect(matchToolPolicy('ceo', 'Bash')).toBe('allow');
+  });
+
+  it('matchToolPolicy returns glob match', () => {
+    upsertToolPolicy('ceo', 'mcp__google__*', 'allow');
+    expect(matchToolPolicy('ceo', 'mcp__google__list_events')).toBe('allow');
+    expect(matchToolPolicy('ceo', 'mcp__google__send_email')).toBe('allow');
+  });
+
+  it('matchToolPolicy exact takes priority over glob', () => {
+    upsertToolPolicy('ceo', 'mcp__google__*', 'allow');
+    upsertToolPolicy('ceo', 'mcp__google__send_email', 'deny');
+    expect(matchToolPolicy('ceo', 'mcp__google__send_email')).toBe('deny');
+    expect(matchToolPolicy('ceo', 'mcp__google__list_events')).toBe('allow');
+  });
+
+  it('matchToolPolicy returns null when no match', () => {
+    upsertToolPolicy('ceo', 'Bash', 'allow');
+    expect(matchToolPolicy('ceo', 'Read')).toBeNull();
+  });
+});
+
+// ── Sessions ──
+
+describe('sessions', () => {
+  it('setSession and getSession round-trip', () => {
+    setSession('ceo', 'session-123');
+    expect(getSession('ceo')).toBe('session-123');
+  });
+
+  it('getSession returns undefined for unknown group', () => {
+    expect(getSession('nonexistent')).toBeUndefined();
+  });
+
+  it('setSession overwrites existing', () => {
+    setSession('ceo', 'old');
+    setSession('ceo', 'new');
+    expect(getSession('ceo')).toBe('new');
+  });
+
 });
