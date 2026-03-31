@@ -7,44 +7,51 @@ import {
   _initTestDatabase,
   setRegisteredGroup,
   storeChatMetadata,
-  storeMessage,
+  storeMessageDirect,
 } from '../src/db.js';
 import { startDashboardServer, stopDashboardServer } from '../src/dashboard/server.js';
 
 const TEST_PORT = 3001;
-const CEO_JID = 'ceo-test@g.us';
 
 // --- Initialise test DB ---
 _initTestDatabase();
 
-// Register a CEO group so chat endpoints work
-storeChatMetadata(CEO_JID, '2024-01-01T00:00:00.000Z', 'CEO Group');
-setRegisteredGroup(CEO_JID, {
-  name: 'CEO Group',
-  folder: 'ceo',
-  trigger: '@Andy',
-  added_at: '2024-01-01T00:00:00.000Z',
-});
+// Register test agents
+const agents = [
+  { jid: 'dashboard-ceo', name: 'CEO', folder: 'ceo', trigger: '@CEO' },
+  { jid: 'dashboard-legal', name: 'Legal', folder: 'legal', trigger: '@Legal' },
+  { jid: 'dashboard-finance', name: 'Finance', folder: 'finance', trigger: '@Finance' },
+];
 
-// Seed a few chat messages so SSE initial payload has data
-storeMessage({
+for (const a of agents) {
+  storeChatMetadata(a.jid, '2024-01-01T00:00:00.000Z', a.name);
+  setRegisteredGroup(a.jid, {
+    name: a.name,
+    folder: a.folder,
+    trigger: a.trigger,
+    added_at: '2024-01-01T00:00:00.000Z',
+  });
+}
+
+// Seed chat messages for CEO
+storeMessageDirect({
   id: 'seed-1',
-  chat_jid: CEO_JID,
-  sender: 'user@s.whatsapp.net',
-  sender_name: 'Illya',
+  chat_jid: 'dashboard-ceo',
+  sender: 'dashboard',
+  sender_name: 'You (Dashboard)',
   content: 'Hello from the test',
   timestamp: '2024-06-01T10:00:00.000Z',
-  is_from_me: false,
+  is_from_me: true,
 });
 
-storeMessage({
+storeMessageDirect({
   id: 'seed-2',
-  chat_jid: CEO_JID,
-  sender: 'bot',
-  sender_name: 'CEO Agent',
+  chat_jid: 'dashboard-ceo',
+  sender: 'ceo',
+  sender_name: 'CEO',
   content: 'Hi! How can I help you today?',
   timestamp: '2024-06-01T10:00:05.000Z',
-  is_from_me: true,
+  is_from_me: false,
   is_bot_message: true,
 });
 

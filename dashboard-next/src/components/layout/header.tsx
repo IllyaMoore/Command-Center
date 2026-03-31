@@ -43,7 +43,7 @@ export function Header({
   const connectedCount = integrations.filter((i) => i.status === "connected").length;
 
   return (
-    <header className="h-14 flex items-center justify-between px-4 bg-surface-1 border-b border-surface-border shrink-0">
+    <header data-testid="header" className="h-14 flex items-center justify-between px-4 bg-surface-1 border-b border-surface-border shrink-0">
       {/* Brand */}
       <div className="flex items-center gap-2.5">
         <Image src="/logo.svg" alt="NanoClaw" width={28} height={28} />
@@ -59,6 +59,7 @@ export function Header({
           onClick={toggle}
           className="p-2 rounded-lg text-text-secondary hover:bg-surface-2 transition-colors cursor-pointer"
           aria-label="Toggle theme"
+          data-testid="theme-toggle"
         >
           {theme === "light" ? (
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -89,6 +90,7 @@ export function Header({
                 : "text-text-secondary hover:bg-surface-2"
             }`}
             aria-label="Calendar"
+            data-testid="calendar-toggle"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
@@ -114,6 +116,7 @@ export function Header({
                 : "text-text-secondary hover:bg-surface-2"
             }`}
             aria-label="Activity"
+            data-testid="activity-toggle"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
@@ -129,6 +132,7 @@ export function Header({
         {/* Brain toggle */}
         {onBrainToggle && (
           <button
+            data-testid="brain-toggle"
             onClick={onBrainToggle}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-mono transition-colors cursor-pointer ${
               brainOpen

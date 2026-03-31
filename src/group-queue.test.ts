@@ -23,6 +23,15 @@ vi.mock('fs', async () => {
   };
 });
 
+const mockKillProcessGroup = vi.fn();
+vi.mock('./process-utils.js', () => ({
+  killProcessGroup: (...args: unknown[]) => mockKillProcessGroup(...args),
+}));
+
+vi.mock('./logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}));
+
 describe('GroupQueue', () => {
   let queue: GroupQueue;
 
@@ -242,5 +251,43 @@ describe('GroupQueue', () => {
     await vi.advanceTimersByTimeAsync(10);
 
     expect(processed).toContain('group3@g.us');
+  });
+
+  // ── killByFolder ──
+
+  describe('killByFolder', () => {
+    it('returns none when no process for folder', () => {
+      expect(queue.killByFolder('ceo')).toBe('none');
+    });
+
+    it('returns busy when process is active', async () => {
+      const processMessages = vi.fn(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        return true;
+      });
+      queue.setProcessMessagesFn(processMessages);
+      queue.enqueueMessageCheck('group1@g.us');
+
+      // Let it start
+      await vi.advanceTimersByTimeAsync(10);
+
+      // Register a fake process for the group
+      const fakeProc = { killed: false, pid: 12345, on: vi.fn() } as unknown as import('child_process').ChildProcess;
+      queue.registerProcess('group1@g.us', fakeProc, 'agent-ceo', 'ceo');
+
+      expect(queue.killByFolder('ceo')).toBe('busy');
+      expect(mockKillProcessGroup).not.toHaveBeenCalled();
+    });
+
+    it('returns killed when process is idle', async () => {
+      const fakeProc = { killed: false, pid: 12345, on: vi.fn() } as unknown as import('child_process').ChildProcess;
+      queue.registerProcess('group1@g.us', fakeProc, 'agent-ceo', 'ceo');
+
+      // Mark as idle (active = false by triggering exit or markIdle)
+      queue.markIdle('group1@g.us', 'ceo');
+
+      expect(queue.killByFolder('ceo')).toBe('killed');
+      expect(mockKillProcessGroup).toHaveBeenCalledWith(12345, 'SIGTERM');
+    });
   });
 });

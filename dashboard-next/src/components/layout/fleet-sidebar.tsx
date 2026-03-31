@@ -163,7 +163,7 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
 
   return (
     <>
-      <aside className="flex flex-col w-72 bg-sidebar-bg border-r border-surface-border shrink-0 h-full">
+      <aside data-testid="fleet-sidebar" className="flex flex-col w-72 bg-sidebar-bg border-r border-surface-border shrink-0 h-full">
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-4 pb-2">
           <h2 className="font-mono text-sm font-semibold text-text-primary uppercase tracking-wider">
@@ -173,6 +173,7 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
             variant="primary"
             size="sm"
             onClick={() => setShowCreate(true)}
+            data-testid="new-agent-btn"
           >
             New Agent
           </Button>
@@ -222,6 +223,7 @@ export function FleetSidebar({ onAgentSelect }: { onAgentSelect?: () => void } =
               key={agent.jid}
               data-agent-jid={agent.jid}
               data-agent-folder={agent.folder}
+              data-testid={`agent-card-${agent.folder}`}
               onClick={() => { selectAgent(agent); onAgentSelect?.(); }}
               onContextMenu={(e) => {
                 e.preventDefault();

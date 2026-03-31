@@ -36,6 +36,7 @@ export function SettingsSidebar({
 
   return (
     <aside
+      data-testid="settings-sidebar"
       className={`bg-surface-1 border-l border-surface-border shrink-0 h-full flex flex-col overflow-hidden transition-all duration-200 ease-out ${
         open ? "w-[420px] opacity-100" : "w-0 opacity-0 pointer-events-none"
       }`}
@@ -65,6 +66,7 @@ export function SettingsSidebar({
           {TABS.map((tab) => (
             <button
               key={tab.id}
+              data-testid={`settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 px-2 py-1.5 text-[10px] font-mono font-semibold tracking-wider uppercase rounded-md transition-colors cursor-pointer ${
                 activeTab === tab.id
