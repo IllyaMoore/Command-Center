@@ -26,8 +26,7 @@ const MIME_MAP: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
-  '.html': 'text/html',
+  // .svg and .html excluded from uploads — XSS risk
   '.xml': 'application/xml',
   '.yaml': 'text/yaml',
   '.yml': 'text/yaml',
@@ -214,7 +213,8 @@ export function handleUpload(req: IncomingMessage, res: ServerResponse): void {
 
     logger.info({ count: files.length, files: files.map(f => f.name) }, 'Files uploaded');
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ files }));
+    // Strip server-side `path` from response — clients don't need internal file paths
+    res.end(JSON.stringify({ files: files.map(({ path: _, ...rest }) => rest) }));
   });
 
   busboy.on('error', (err: Error) => {

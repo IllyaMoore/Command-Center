@@ -59,8 +59,9 @@ export const MAX_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB per file
 export const MAX_ATTACHMENTS_PER_MESSAGE = 5;
 export const ALLOWED_UPLOAD_EXTENSIONS = new Set([
   '.txt', '.md', '.csv', '.json', '.js', '.ts', '.py', '.pdf',
-  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.html', '.xml',
+  '.png', '.jpg', '.jpeg', '.gif', '.xml',
   '.yaml', '.yml', '.log', '.sh', '.sql', '.docx', '.xlsx',
+  // .html and .svg excluded — same-origin XSS risk
 ]);
 // Max file size to inline as text in agent prompt (larger files are path-referenced)
 export const INLINE_FILE_THRESHOLD = 100 * 1024; // 100KB

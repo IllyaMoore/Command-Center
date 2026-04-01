@@ -421,7 +421,7 @@ export function ChatPanel() {
             type="file"
             multiple
             className="hidden"
-            accept=".txt,.md,.csv,.json,.js,.ts,.py,.pdf,.png,.jpg,.jpeg,.gif,.svg,.html,.xml,.yaml,.yml,.log,.sh,.sql,.docx,.xlsx"
+            accept=".txt,.md,.csv,.json,.js,.ts,.py,.pdf,.png,.jpg,.jpeg,.gif,.xml,.yaml,.yml,.log,.sh,.sql,.docx,.xlsx"
             onChange={(e) => {
               if (e.target.files) handleUpload(e.target.files);
               e.target.value = "";
