@@ -5,6 +5,7 @@ import { IncomingMessage, ServerResponse } from 'http';
 import { DATA_DIR } from '../../config.js';
 import { getAllRegisteredGroups, getRecentMessages, storeChatMetadata, storeMessageDirect } from '../../db.js';
 import { logger } from '../../logger.js';
+import { IpcAttachment } from '../../types.js';
 
 const CEO_GROUP_FOLDER = 'ceo';
 
@@ -35,6 +36,7 @@ export async function sendGroupMessage(
   chatJid: string,
   text: string,
   replyToJid?: string,
+  attachments?: IpcAttachment[],
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const msgId = `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -47,12 +49,13 @@ export async function sendGroupMessage(
     const filename = `${Date.now()}-dashboard.json`;
     const filePath = path.join(inputDir, filename);
 
-    const message: Record<string, string | undefined> = {
+    const message: Record<string, unknown> = {
       type: 'message',
       chatJid,
       text,
       source: 'dashboard',
       replyToJid,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     };
 
     const tempPath = `${filePath}.tmp`;

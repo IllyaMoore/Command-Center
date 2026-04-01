@@ -90,6 +90,16 @@ export interface Channel {
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
 }
 
+// --- File attachments ---
+
+export interface IpcAttachment {
+  id: string;        // UUID filename (without extension)
+  name: string;      // Original filename
+  size: number;      // Bytes
+  mime: string;      // MIME type
+  path: string;      // Absolute path on disk
+}
+
 // Callback type that channels use to deliver inbound messages
 export type OnInboundMessage = (chatJid: string, message: NewMessage) => void;
 

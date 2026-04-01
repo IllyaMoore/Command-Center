@@ -12,7 +12,7 @@ import {
 import { AvailableGroup } from './container-runner.js';
 import { createReminder, createTask, deleteTask, getTaskById, getTimezone, updateTask } from './db.js';
 import { logger } from './logger.js';
-import { RegisteredGroup } from './types.js';
+import { IpcAttachment, RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
@@ -27,7 +27,7 @@ export interface IpcDeps {
     registeredJids: Set<string>,
   ) => void;
   // Handle dashboard input messages (triggers agent)
-  onDashboardInput?: (groupFolder: string, chatJid: string, text: string, replyToJid?: string) => Promise<void>;
+  onDashboardInput?: (groupFolder: string, chatJid: string, text: string, replyToJid?: string, attachments?: IpcAttachment[]) => Promise<void>;
 }
 
 let ipcWatcherRunning = false;
@@ -106,7 +106,7 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   );
                   // Don't await — enqueue and let the handler manage concurrency.
                   // File is deleted immediately so IPC loop is never blocked.
-                  deps.onDashboardInput(sourceGroup, data.chatJid, data.text, data.replyToJid).catch((err) => {
+                  deps.onDashboardInput(sourceGroup, data.chatJid, data.text, data.replyToJid, data.attachments).catch((err) => {
                     logger.error({ sourceGroup, err }, 'Dashboard input handler failed');
                   });
                 }
