@@ -121,7 +121,6 @@ export interface UploadedFile {
   name: string;
   size: number;
   mime: string;
-  path: string;
 }
 
 export async function uploadFiles(files: FileList | File[]): Promise<UploadedFile[]> {

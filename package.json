@@ -23,7 +23,7 @@
   "dependencies": {
     "@whiskeysockets/baileys": "7.0.0-rc.9",
     "better-sqlite3": "11.10.0",
-    "busboy": "^1.6.0",
+    "busboy": "1.6.0",
     "cron-parser": "5.5.0",
     "googleapis": "144.0.0",
     "grammy": "1.41.1",
@@ -36,7 +36,7 @@
   "devDependencies": {
     "@playwright/test": "1.58.2",
     "@types/better-sqlite3": "7.6.13",
-    "@types/busboy": "^1.5.4",
+    "@types/busboy": "1.5.4",
     "@types/node": "22.19.11",
     "@types/qrcode-terminal": "0.12.2",
     "@vitest/coverage-v8": "4.0.18",
