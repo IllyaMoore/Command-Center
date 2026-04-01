@@ -41,11 +41,11 @@ export function useMessages(groupFolder: string | null) {
     [],
   );
 
-  // Fetch initial messages when group changes
+  // Fetch initial messages when group changes; clear optimistics to prevent leaking across agents
   useEffect(() => {
+    optimisticRef.current = [];
     if (!groupFolder) {
       setMessages([]);
-      optimisticRef.current = [];
       return;
     }
     setLoading(true);

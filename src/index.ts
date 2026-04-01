@@ -12,6 +12,7 @@ import {
   TRIGGER_PATTERN,
   WARNING_MESSAGE,
   TIMEOUT_MESSAGE,
+  INLINE_FILE_THRESHOLD,
 } from './config.js';
 import { WhatsAppChannel } from './channels/whatsapp.js';
 import { getRegisteredChannelNames, getChannelFactory } from './channels/index.js';
@@ -44,10 +45,11 @@ import { startIpcWatcher } from './ipc.js';
 import { formatMessages, formatOutbound } from './router.js';
 import { startMeetingReminderLoop } from './meeting-reminders.js';
 import { startSchedulerLoop } from './task-scheduler.js';
-import { Channel, NewMessage, RegisteredGroup } from './types.js';
+import { Channel, IpcAttachment, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
 import { setDashboardQueue } from './dashboard/context.js';
 import { startDashboardServer } from './dashboard/server.js';
+import { ensureUploadsDir } from './dashboard/api/upload.js';
 
 let lastTimestamp = '';
 let sessions: Record<string, string> = {};
@@ -504,6 +506,31 @@ function recoverPendingMessages(): void {
 }
 
 
+const TEXT_MIMES = new Set([
+  'text/plain', 'text/markdown', 'text/csv', 'application/json',
+  'text/javascript', 'text/typescript', 'text/x-python', 'text/html',
+  'application/xml', 'text/yaml', 'text/x-shellscript', 'text/x-sql',
+]);
+
+function buildAttachmentContext(att: IpcAttachment): string {
+  const isText = TEXT_MIMES.has(att.mime);
+  if (isText && att.size <= INLINE_FILE_THRESHOLD) {
+    try {
+      const content = fs.readFileSync(att.path, 'utf-8');
+      return `<attached_file name="${att.name}" size="${att.size}">\n${content}\n</attached_file>`;
+    } catch {
+      return `[Attached file: ${att.name} (${formatSize(att.size)}) — read failed, available at ${att.path}]`;
+    }
+  }
+  return `[Attached file: ${att.name} (${formatSize(att.size)}, ${att.mime}) — use Read tool to access: ${att.path}]`;
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+}
+
 async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
@@ -511,6 +538,9 @@ async function main(): Promise<void> {
 
   // Share queue with dashboard API
   setDashboardQueue(queue);
+
+  // Ensure uploads directory exists
+  ensureUploadsDir();
 
   // Start dashboard server
   const dashboardPort = parseInt(process.env.DASHBOARD_PORT || '3000', 10);
@@ -610,22 +640,32 @@ async function main(): Promise<void> {
     syncGroupMetadata: (force) => whatsapp?.syncGroupMetadata(force) ?? Promise.resolve(),
     getAvailableGroups,
     writeGroupsSnapshot,
-    onDashboardInput: async (groupFolder, chatJid, text, replyToJid) => {
+    onDashboardInput: async (groupFolder, chatJid, text, replyToJid, attachments) => {
       const group = Object.values(registeredGroups).find((g) => g.folder === groupFolder);
       if (!group) {
         logger.warn({ groupFolder }, 'Dashboard input for unknown group');
         return;
       }
 
+      // Build prompt with attachment context
+      const promptParts = [`[Via Dashboard] ${text}`];
+      if (attachments && attachments.length > 0) {
+        promptParts.push('');
+        for (const att of attachments) {
+          promptParts.push(buildAttachmentContext(att));
+        }
+      }
+      const fullPrompt = promptParts.join('\n');
+
       // If an agent is already running for this group, pipe as follow-up message
-      if (queue.sendMessage(chatJid, `[Via Dashboard] ${text}`)) {
+      if (queue.sendMessage(chatJid, fullPrompt)) {
         logger.info({ groupFolder, text: text.slice(0, 50) }, 'Piped dashboard message to active agent');
         // Message already stored by POST /api/messages handler (chat.ts)
         return;
       }
 
       logger.info({ groupFolder, text: text.slice(0, 50) }, 'Running agent for dashboard input');
-      const prompt = `[Via Dashboard] ${text}`;
+      const prompt = fullPrompt;
       const isDashboardOnly = chatJid.startsWith('dashboard-') || chatJid.startsWith('xagent-') || !!replyToJid;
       const safeText = text.replace(/[_*~`]/g, '');
       const result = await runAgent(

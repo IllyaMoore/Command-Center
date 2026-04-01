@@ -44,6 +44,7 @@ import {
   disconnectCalendar,
 } from './api/calendar.js';
 import { sendChatMessage, sendGroupMessage, streamChatMessages } from './api/chat.js';
+import { handleUpload, serveUpload } from './api/upload.js';
 import {
   getGmailAuthStatus,
   getGmailAuthUrl,
@@ -654,9 +655,11 @@ export async function handleApiRoute(
     const group = (body.group as string | undefined) || 'ceo';
     // Optional: deliver response to a different chat (cross-agent messaging)
     const replyTo = body.replyTo as string | undefined;
+    // Optional: file attachments (uploaded via POST /api/upload)
+    const attachments = Array.isArray(body.attachments) ? body.attachments as Array<{id: string; name: string; size: number; mime: string; path: string}> : undefined;
 
-    if (!text) {
-      json({ error: 'Missing text field' }, 400);
+    if (!text && (!attachments || attachments.length === 0)) {
+      json({ error: 'Missing text or attachments' }, 400);
       return;
     }
 
@@ -692,13 +695,17 @@ export async function handleApiRoute(
         chat_jid: displayJid,
         sender: 'dashboard',
         sender_name: 'You (Dashboard)',
-        content: text,
+        content: (text || '') + (attachments && attachments.length > 0 ? `\n\n${attachments.map(a => `[${a.name}]`).join(' ')}` : ''),
         timestamp: new Date().toISOString(),
         is_from_me: true,
       });
     }
 
-    const result = await sendGroupMessage(group, chatJid, text, isForward ? displayJid : undefined);
+    const fileSuffix = attachments && attachments.length > 0
+      ? `\n\n${attachments.map(a => `[${a.name}]`).join(' ')}`
+      : '';
+    const displayText = (text || '') + fileSuffix;
+    const result = await sendGroupMessage(group, chatJid, displayText, isForward ? displayJid : undefined, attachments);
     json({ ...result, group, jid: displayJid });
     return;
   }
@@ -817,6 +824,18 @@ export async function handleApiRoute(
       location: body.location as string | undefined,
     });
     json(result, result.error ? 500 : 201);
+    return;
+  }
+
+  // ─── File upload endpoints ───
+  if (pathname === '/api/upload' && method === 'POST') {
+    handleUpload(req, res);
+    return;
+  }
+
+  const uploadMatch = pathname.match(/^\/api\/uploads\/([^/]+)$/);
+  if (uploadMatch && method === 'GET') {
+    serveUpload(req, res, decodeURIComponent(uploadMatch[1]));
     return;
   }
 

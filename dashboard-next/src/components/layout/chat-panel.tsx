@@ -6,7 +6,7 @@ import remarkGfm from "remark-gfm";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useAgentStore } from "@/lib/agent-store";
-import { Message, sendMessage } from "@/lib/api";
+import { Message, sendMessage, uploadFiles, UploadedFile, getUploadUrl } from "@/lib/api";
 import { useMessages } from "@/lib/use-messages";
 import { agentColor } from "@/lib/agent-colors";
 import { ApprovalCard } from "@/components/chat/approval-card";
@@ -28,6 +28,10 @@ export function ChatPanel() {
   );
   const { approvals, respond: respondApproval } = useApprovals();
   const [askAgent, setAskAgent] = useState<string | null>(null); // cross-agent: target folder
+  const [pendingFiles, setPendingFiles] = useState<UploadedFile[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
 
   const agentName = selectedAgent?.name ?? "No Agent";
   const agentInitial = agentName.charAt(0).toUpperCase();
@@ -49,6 +53,7 @@ export function ChatPanel() {
   // Reset when agent changes
   useEffect(() => {
     setSentAt(null);
+    setPendingFiles([]);
   }, [selectedAgent?.jid]);
 
   // Auto-scroll to bottom on new messages, approvals, or typing indicator (unless user scrolled up)
@@ -73,20 +78,27 @@ export function ChatPanel() {
 
   const sendingRef = useRef(false);
   const handleSend = useCallback(async () => {
-    if (!input.trim() || !selectedAgent || sending || sendingRef.current) return;
+    const hasText = input.trim().length > 0;
+    const hasFiles = pendingFiles.length > 0;
+    if ((!hasText && !hasFiles) || !selectedAgent || sending || sendingRef.current) return;
     sendingRef.current = true;
 
     const text = input.trim();
+    const files = [...pendingFiles];
     setInput("");
+    setPendingFiles([]);
     setSending(true);
 
-    // Optimistic UI
+    // Optimistic UI — show text + file names
+    const filesSuffix = files.length > 0
+      ? `\n\n${files.map(f => `[${f.name}]`).join(" ")}`
+      : "";
     const optimisticMsg: Message = {
       id: `opt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       chat_jid: selectedAgent.jid,
       sender: "dashboard",
       sender_name: "You (Dashboard)",
-      content: text,
+      content: text + filesSuffix,
       timestamp: new Date().toISOString(),
       is_from_me: true,
       is_bot_message: false,
@@ -97,16 +109,17 @@ export function ChatPanel() {
     try {
       const targetAgent = askAgent || selectedAgent.folder;
       const replyTo = askAgent ? selectedAgent.folder : undefined;
-      await sendMessage(targetAgent, text, replyTo);
+      await sendMessage(targetAgent, text, replyTo, files.length > 0 ? files : undefined);
       setSentAt(new Date().toISOString());
       setAskAgent(null); // Reset after send
     } catch {
       setInput(text);
+      setPendingFiles(files); // Restore files on failure
     } finally {
       setSending(false);
       sendingRef.current = false;
     }
-  }, [input, selectedAgent, sending, addOptimistic, askAgent]);
+  }, [input, selectedAgent, sending, addOptimistic, askAgent, pendingFiles]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -117,6 +130,41 @@ export function ChatPanel() {
     },
     [handleSend],
   );
+
+  const handleUpload = useCallback(async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      const uploaded = await uploadFiles(files);
+      setPendingFiles(prev => [...prev, ...uploaded]);
+    } catch (err) {
+      console.error("Upload failed:", err);
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const removeFile = useCallback((id: string) => {
+    setPendingFiles(prev => prev.filter(f => f.id !== id));
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) {
+      handleUpload(e.dataTransfer.files);
+    }
+  }, [handleUpload]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  }, []);
 
   return (
     <div data-testid="chat-panel" className="flex flex-col flex-1 min-w-0 bg-surface-1">
@@ -181,9 +229,19 @@ export function ChatPanel() {
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
         data-testid="chat-messages"
-        className="flex-1 overflow-y-auto px-4 py-4 chat-bg"
+        className={`flex-1 overflow-y-auto px-4 py-4 chat-bg relative ${dragOver ? "ring-2 ring-inset ring-primary/50" : ""}`}
       >
+        {dragOver && (
+          <div className="absolute inset-0 bg-primary/5 flex items-center justify-center z-10 pointer-events-none">
+            <div className="px-4 py-2 bg-surface-2 border border-primary/30 rounded-lg text-sm font-mono text-text-secondary">
+              Drop files to attach
+            </div>
+          </div>
+        )}
         {!selectedAgent ? (
           <div className="flex items-center justify-center h-full">
             <p className="text-sm text-text-muted">
@@ -321,7 +379,71 @@ export function ChatPanel() {
               })}
           </div>
         )}
+        {/* Pending file attachments */}
+        {pendingFiles.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1 pb-2">
+            {pendingFiles.map((file) => (
+              <div
+                key={file.id}
+                className="flex items-center gap-1.5 px-2 py-1 bg-surface-2 border border-surface-border rounded-lg text-xs font-mono"
+              >
+                {file.mime.startsWith("image/") ? (
+                  <img
+                    src={getUploadUrl(file.id)}
+                    alt={file.name}
+                    className="w-6 h-6 object-cover rounded"
+                  />
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-text-muted shrink-0">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                  </svg>
+                )}
+                <span className="text-text-secondary truncate max-w-[120px]">{file.name}</span>
+                <span className="text-text-muted/60">{formatFileSize(file.size)}</span>
+                <button
+                  onClick={() => removeFile(file.id)}
+                  className="text-text-muted hover:text-signal-error transition-colors cursor-pointer ml-1"
+                  aria-label={`Remove ${file.name}`}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2 bg-surface-2 rounded-xl px-4 py-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            accept=".txt,.md,.csv,.json,.js,.ts,.py,.pdf,.png,.jpg,.jpeg,.gif,.svg,.html,.xml,.yaml,.yml,.log,.sh,.sql,.docx,.xlsx"
+            onChange={(e) => {
+              if (e.target.files) handleUpload(e.target.files);
+              e.target.value = "";
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-1.5 text-text-muted hover:text-text-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            disabled={!selectedAgent || uploading || waitingForReply}
+            aria-label="Attach files"
+            title="Attach files"
+          >
+            {uploading ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" className="animate-spin">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" fill="none" strokeDasharray="31.4 31.4" />
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+              </svg>
+            )}
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -353,7 +475,7 @@ export function ChatPanel() {
             className={`px-4 py-1.5 text-text-inverse text-xs font-mono font-semibold uppercase hover:opacity-90 active:scale-95 transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0 ${
               askAgent ? "bg-signal-info" : "bg-primary"
             }`}
-            disabled={!selectedAgent || !input.trim() || sending || waitingForReply}
+            disabled={!selectedAgent || (!input.trim() && pendingFiles.length === 0) || sending || waitingForReply}
           >
             {askAgent ? "Ask" : "Send"}
           </button>
@@ -450,4 +572,10 @@ function formatTime(timestamp: string): string {
   } catch {
     return "";
   }
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }

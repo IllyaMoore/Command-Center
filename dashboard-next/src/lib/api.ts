@@ -96,16 +96,59 @@ export async function sendMessage(
   group: string,
   text: string,
   replyTo?: string,
+  attachments?: UploadedFile[],
 ): Promise<void> {
   const res = await fetch(`${BASE}/api/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, group, ...(replyTo ? { replyTo } : {}) }),
+    body: JSON.stringify({
+      text,
+      group,
+      ...(replyTo ? { replyTo } : {}),
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
+    }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error || `Failed to send message: ${res.status}`);
   }
+}
+
+// ── File Uploads ──
+
+export interface UploadedFile {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  path: string;
+}
+
+export async function uploadFiles(files: FileList | File[]): Promise<UploadedFile[]> {
+  const fileArray = Array.from(files);
+  const formData = new FormData();
+  for (const file of fileArray) {
+    formData.append("files", file);
+  }
+  const res = await fetch(`${BASE}/api/upload`, {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Upload failed: ${res.status}`);
+  }
+  const data = await res.json();
+  // Use browser-side File.name (always correct encoding) instead of server-returned name
+  const uploaded: UploadedFile[] = (data.files as UploadedFile[]).map((f, i) => ({
+    ...f,
+    name: fileArray[i]?.name ?? f.name,
+  }));
+  return uploaded;
+}
+
+export function getUploadUrl(id: string): string {
+  return `${BASE}/api/uploads/${id}`;
 }
 
 // ── Tasks / Automations ──
