@@ -43,13 +43,44 @@ function getMime(ext: string): string {
 }
 
 // Previewable types that can be served inline
+// SVG excluded — can contain <script> tags (XSS risk)
 const INLINE_TYPES = new Set([
   'text/plain', 'text/markdown', 'text/csv', 'application/json',
-  'image/png', 'image/jpeg', 'image/gif', 'image/svg+xml', 'application/pdf',
+  'image/png', 'image/jpeg', 'image/gif', 'application/pdf',
 ]);
 
 export function ensureUploadsDir(): void {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+/**
+ * Resolve client-supplied attachment metadata to safe server-side paths.
+ * NEVER trust client-supplied `path` — derive from id + UPLOADS_DIR.
+ */
+export function resolveAttachments(
+  raw: Array<{ id: string; name: string; size: number; mime: string }>,
+): IpcAttachment[] {
+  const resolved: IpcAttachment[] = [];
+  for (const att of raw) {
+    // Validate UUID format
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(att.id)) continue;
+    // Find the actual file on disk
+    try {
+      const files = fs.readdirSync(UPLOADS_DIR);
+      const match = files.find(f => f.startsWith(att.id + '.'));
+      if (!match) continue;
+      const filePath = path.join(UPLOADS_DIR, match);
+      const stat = fs.statSync(filePath);
+      resolved.push({
+        id: att.id,
+        name: att.name,
+        size: stat.size,
+        mime: att.mime,
+        path: filePath,
+      });
+    } catch { /* skip invalid */ }
+  }
+  return resolved;
 }
 
 /**
@@ -70,6 +101,14 @@ export function handleUpload(req: IncomingMessage, res: ServerResponse): void {
   const writePromises: Promise<void>[] = [];
   let fileCount = 0;
   let errored = false;
+
+  // Guard: only write one error response (concurrent file callbacks can race)
+  const sendError = (status: number, message: string) => {
+    if (res.writableEnded) return;
+    errored = true;
+    res.writeHead(status, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: message }));
+  };
 
   const busboy = Busboy({
     headers: req.headers as Record<string, string>,
@@ -97,10 +136,8 @@ export function handleUpload(req: IncomingMessage, res: ServerResponse): void {
     const ext = path.extname(originalName).toLowerCase();
 
     if (!ALLOWED_UPLOAD_EXTENSIONS.has(ext)) {
-      errored = true;
       fileStream.resume(); // drain
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: `File type '${ext}' not allowed` }));
+      sendError(400, `File type '${ext}' not allowed`);
       return;
     }
 
@@ -134,9 +171,7 @@ export function handleUpload(req: IncomingMessage, res: ServerResponse): void {
 
         if (truncated) {
           try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-          errored = true;
-          res.writeHead(413, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: `File '${originalName}' exceeds ${MAX_UPLOAD_SIZE / 1024 / 1024}MB limit` }));
+          sendError(413, `File '${originalName}' exceeds ${MAX_UPLOAD_SIZE / 1024 / 1024}MB limit`);
           resolve();
           return;
         }
@@ -147,9 +182,7 @@ export function handleUpload(req: IncomingMessage, res: ServerResponse): void {
         } catch (err) {
           logger.error({ err, storedPath }, 'Failed to finalize upload');
           try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-          errored = true;
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Failed to store file' }));
+          sendError(500, 'Failed to store file');
           resolve();
           return;
         }
@@ -185,11 +218,8 @@ export function handleUpload(req: IncomingMessage, res: ServerResponse): void {
   });
 
   busboy.on('error', (err: Error) => {
-    if (errored) return;
-    errored = true;
     logger.error({ err }, 'Upload error');
-    res.writeHead(500, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Upload failed' }));
+    sendError(500, 'Upload failed');
   });
 
   req.pipe(busboy);

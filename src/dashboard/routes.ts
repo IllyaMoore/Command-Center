@@ -44,7 +44,7 @@ import {
   disconnectCalendar,
 } from './api/calendar.js';
 import { sendChatMessage, sendGroupMessage, streamChatMessages } from './api/chat.js';
-import { handleUpload, serveUpload } from './api/upload.js';
+import { handleUpload, serveUpload, resolveAttachments } from './api/upload.js';
 import {
   getGmailAuthStatus,
   getGmailAuthUrl,
@@ -656,7 +656,9 @@ export async function handleApiRoute(
     // Optional: deliver response to a different chat (cross-agent messaging)
     const replyTo = body.replyTo as string | undefined;
     // Optional: file attachments (uploaded via POST /api/upload)
-    const attachments = Array.isArray(body.attachments) ? body.attachments as Array<{id: string; name: string; size: number; mime: string; path: string}> : undefined;
+    // SECURITY: never trust client-supplied paths — resolve from UPLOADS_DIR by id
+    const rawAttachments = Array.isArray(body.attachments) ? body.attachments as Array<{id: string; name: string; size: number; mime: string}> : undefined;
+    const attachments = rawAttachments ? resolveAttachments(rawAttachments) : undefined;
 
     if (!text && (!attachments || attachments.length === 0)) {
       json({ error: 'Missing text or attachments' }, 400);
