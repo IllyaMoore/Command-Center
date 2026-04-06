@@ -525,11 +525,21 @@ function TaskCard({
       : "bg-surface-border";
 
   const promptPreview = task.prompt.split("\n")[0].slice(0, 60);
-  const scheduleLabel = task.schedule_type === "cron"
-    ? task.schedule_value
-    : task.schedule_type === "interval"
-      ? `Every ${Math.round(parseInt(task.schedule_value) / 60000)}m`
-      : "Once";
+  const scheduleLabel = (() => {
+    if (task.schedule_type === "interval") return `Every ${Math.round(parseInt(task.schedule_value) / 60000)}m`;
+    if (task.schedule_type === "once") return "Once";
+    // Parse cron into human-readable
+    const parts = task.schedule_value.trim().split(/\s+/);
+    if (parts.length !== 5) return task.schedule_value;
+    const [minP, hourP, domP, , dowP] = parts;
+    const time = `${hourP.padStart(2, "0")}:${minP.padStart(2, "0")}`;
+    if (dowP !== "*") {
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      return `${days[parseInt(dowP)] ?? dowP} ${time}`;
+    }
+    if (domP !== "*") return `${domP}th monthly ${time}`;
+    return `Daily ${time}`;
+  })();
 
   return (
     <div className="bg-surface-2 border border-surface-border p-3">
@@ -629,6 +639,33 @@ function TaskForm({
     task?.chat_jid?.startsWith("tg:") ? task.chat_jid.replace("tg:", "") : "",
   );
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
+  // --- Recurring schedule state ---
+  type RecurringFrequency = "daily" | "weekly" | "monthly";
+  const parseCronToRecurring = (
+    cron: string,
+  ): { frequency: RecurringFrequency; dayOfWeek: number; dayOfMonth: number; hour: number; minute: number } => {
+    const defaults = { frequency: "daily" as RecurringFrequency, dayOfWeek: 1, dayOfMonth: 1, hour: 13, minute: 0 };
+    if (!cron) return defaults;
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length !== 5) return defaults;
+    const [minP, hourP, domP, , dowP] = parts;
+    const minute = parseInt(minP) || 0;
+    const hour = parseInt(hourP) || 0;
+    if (dowP !== "*") return { frequency: "weekly", dayOfWeek: parseInt(dowP) || 0, dayOfMonth: 1, hour, minute };
+    if (domP !== "*") return { frequency: "monthly", dayOfWeek: 1, dayOfMonth: parseInt(domP) || 1, hour, minute };
+    return { frequency: "daily", dayOfWeek: 1, dayOfMonth: 1, hour, minute };
+  };
+
+  const buildCronFromRecurring = (
+    freq: RecurringFrequency, dow: number, dom: number, hour: number, minute: number,
+  ): string => {
+    if (freq === "weekly") return `${minute} ${hour} * * ${dow}`;
+    if (freq === "monthly") return `${minute} ${hour} ${dom} * *`;
+    return `${minute} ${hour} * * *`;
+  };
+
+  const initRecurring = task?.schedule_type === "cron" ? parseCronToRecurring(task.schedule_value) : null;
+
   const [scheduleType, setScheduleType] = useState<"cron" | "interval" | "once">(
     task?.schedule_type ?? "cron",
   );
@@ -638,6 +675,11 @@ function TaskForm({
       ? String(Math.round(parseInt(task.schedule_value) / 60000))
       : "60",
   );
+  const [recurFrequency, setRecurFrequency] = useState<RecurringFrequency>(initRecurring?.frequency ?? "daily");
+  const [recurDayOfWeek, setRecurDayOfWeek] = useState(initRecurring?.dayOfWeek ?? 1);
+  const [recurDayOfMonth, setRecurDayOfMonth] = useState(initRecurring?.dayOfMonth ?? 1);
+  const [recurHour, setRecurHour] = useState(initRecurring?.hour ?? 13);
+  const [recurMinute, setRecurMinute] = useState(initRecurring?.minute ?? 0);
   const [contextMode, setContextMode] = useState<"group" | "isolated">(
     task?.context_mode ?? "group",
   );
@@ -654,6 +696,9 @@ function TaskForm({
       return;
     }
     let value = scheduleValue;
+    if (scheduleType === "cron") {
+      value = buildCronFromRecurring(recurFrequency, recurDayOfWeek, recurDayOfMonth, recurHour, recurMinute);
+    }
     if (scheduleType === "interval") {
       const mins = parseInt(intervalMinutes);
       if (isNaN(mins) || mins < 1) {
@@ -763,29 +808,162 @@ function TaskForm({
             Schedule
           </label>
           <div className="flex gap-0.5 bg-surface-2 rounded-lg p-0.5 mb-2">
-            {(["cron", "interval", "once"] as const).map((type) => (
+            {([
+              { value: "cron", label: "Recurring" },
+              { value: "interval", label: "Interval" },
+              { value: "once", label: "Once" },
+            ] as const).map((opt) => (
               <button
-                key={type}
-                onClick={() => setScheduleType(type)}
+                key={opt.value}
+                onClick={() => setScheduleType(opt.value)}
                 className={`flex-1 px-2 py-1.5 text-[10px] font-mono font-semibold uppercase rounded-md transition-colors cursor-pointer ${
-                  scheduleType === type
+                  scheduleType === opt.value
                     ? "bg-surface-1 text-text-primary shadow-sm"
                     : "text-text-muted hover:text-text-secondary"
                 }`}
               >
-                {type}
+                {opt.label}
               </button>
             ))}
           </div>
 
           {scheduleType === "cron" && (
-            <input
-              type="text"
-              value={scheduleValue}
-              onChange={(e) => setScheduleValue(e.target.value)}
-              placeholder="0 13 * * *"
-              className="w-full px-3 py-2 bg-surface-2 border border-surface-border text-xs font-mono text-text-primary outline-none focus:border-primary/50"
-            />
+            <div className="border border-surface-border bg-surface-1 animate-fade-in">
+              {/* Frequency row — labeled table-style */}
+              <div className="flex items-center border-b border-surface-border">
+                <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0">
+                  Every
+                </span>
+                <div className="flex flex-1">
+                  {([
+                    { value: "daily", label: "Day" },
+                    { value: "weekly", label: "Week" },
+                    { value: "monthly", label: "Month" },
+                  ] as const).map((opt, i) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setRecurFrequency(opt.value)}
+                      className={`flex-1 px-2 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-wide transition-colors cursor-pointer ${
+                        i < 2 ? "border-r border-surface-border" : ""
+                      } ${
+                        recurFrequency === opt.value
+                          ? "bg-surface-3 text-text-primary"
+                          : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Day of week — compact grid cells */}
+              {recurFrequency === "weekly" && (
+                <div className="flex items-center border-b border-surface-border">
+                  <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0">
+                    On
+                  </span>
+                  <div className="flex flex-1">
+                    {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setRecurDayOfWeek(i)}
+                        className={`flex-1 py-2.5 text-[10px] font-mono font-semibold transition-colors cursor-pointer ${
+                          i < 6 ? "border-r border-surface-border" : ""
+                        } ${
+                          recurDayOfWeek === i
+                            ? "bg-surface-3 text-text-primary"
+                            : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Day of month — calendar grid */}
+              {recurFrequency === "monthly" && (
+                <div className="border-b border-surface-border">
+                  <div className="flex items-center border-b border-surface-border">
+                    <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2 w-full">
+                      Day of month
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-7">
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setRecurDayOfMonth(d)}
+                        className={`py-2 text-[10px] font-mono transition-colors cursor-pointer border-b border-r border-surface-border ${
+                          recurDayOfMonth === d
+                            ? "bg-surface-3 text-text-primary font-bold"
+                            : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Time — split selects */}
+              <div className="flex items-center">
+                <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0">
+                  At
+                </span>
+                <div className="flex items-center flex-1">
+                  <select
+                    value={recurHour}
+                    onChange={(e) => setRecurHour(parseInt(e.target.value))}
+                    className="flex-1 px-3 py-2.5 bg-transparent text-xs font-mono text-text-primary outline-none appearance-none cursor-pointer text-center hover:bg-surface-2 transition-colors"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                      <option key={h} value={h}>{String(h).padStart(2, "0")}</option>
+                    ))}
+                  </select>
+                  <span className="text-text-muted font-mono text-sm font-bold select-none">:</span>
+                  <select
+                    value={recurMinute}
+                    onChange={(e) => setRecurMinute(parseInt(e.target.value))}
+                    className="flex-1 px-3 py-2.5 bg-transparent text-xs font-mono text-text-primary outline-none appearance-none cursor-pointer text-center hover:bg-surface-2 transition-colors"
+                  >
+                    {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                      <option key={m} value={m}>{String(m).padStart(2, "0")}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Summary bar */}
+              <div className="border-t border-surface-border bg-surface-2 px-3 py-2">
+                <p className="text-[10px] font-mono text-text-secondary tracking-wide">
+                  {recurFrequency === "daily" && (
+                    <>
+                      <span className="text-text-primary font-semibold">Every day</span>
+                      {" at "}
+                      <span className="text-text-primary font-semibold">{String(recurHour).padStart(2, "0")}:{String(recurMinute).padStart(2, "0")}</span>
+                    </>
+                  )}
+                  {recurFrequency === "weekly" && (
+                    <>
+                      <span className="text-text-primary font-semibold">Every {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][recurDayOfWeek]}</span>
+                      {" at "}
+                      <span className="text-text-primary font-semibold">{String(recurHour).padStart(2, "0")}:{String(recurMinute).padStart(2, "0")}</span>
+                    </>
+                  )}
+                  {recurFrequency === "monthly" && (
+                    <>
+                      <span className="text-text-primary font-semibold">{recurDayOfMonth}{recurDayOfMonth === 1 ? "st" : recurDayOfMonth === 2 ? "nd" : recurDayOfMonth === 3 ? "rd" : "th"} of every month</span>
+                      {" at "}
+                      <span className="text-text-primary font-semibold">{String(recurHour).padStart(2, "0")}:{String(recurMinute).padStart(2, "0")}</span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
           )}
           {scheduleType === "interval" && (
             <div className="flex items-center gap-2">
