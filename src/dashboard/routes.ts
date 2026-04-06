@@ -1,40 +1,7 @@
-import fs from 'fs';
 import { IncomingMessage, ServerResponse } from 'http';
-import path from 'path';
 
-import { CronExpressionParser } from 'cron-parser';
-
-import { GROUPS_DIR, isValidModel } from '../config.js';
 import { resetGoogleClients } from '../mcp/google-mcp-server.js';
 import { logger } from '../logger.js';
-import {
-  createTask,
-  deleteMessages,
-  storeChatMetadata,
-  storeMessageDirect,
-  deleteRegisteredGroup,
-  deleteTask,
-  deleteToolPolicy,
-  getAllRegisteredGroups,
-  getAllTasks,
-  getMessagesPaginated,
-  getRecentActivity,
-  getRecentMessages,
-  getRecentTaskRuns,
-  getTaskById,
-  getTasksForGroup,
-  getTimezone,
-  getRouterState,
-  getToolPolicies,
-  setRegisteredGroup,
-  setRouterState,
-  setTimezone,
-  updateTask,
-  upsertToolPolicy,
-} from '../db.js';
-import { approvalManager } from '../approval-manager.js';
-import { ScheduledTask, TaskRunLog } from '../types.js';
-import { getActivity, streamActivity } from './api/activity.js';
 import {
   getCalendarAuthStatus,
   getCalendarAuthUrl,
@@ -43,8 +10,9 @@ import {
   handleCalendarOAuthCallback,
   disconnectCalendar,
 } from './api/calendar.js';
-import { sendChatMessage, sendGroupMessage, streamChatMessages } from './api/chat.js';
-import { handleUpload, serveUpload, resolveAttachments } from './api/upload.js';
+import { sendChatMessage, streamChatMessages } from './api/chat.js';
+import { handleUpload, serveUpload } from './api/upload.js';
+import { getActivity, streamActivity } from './api/activity.js';
 import {
   getGmailAuthStatus,
   getGmailAuthUrl,
@@ -63,9 +31,30 @@ import {
   handleDriveOAuthCallback,
   disconnectDrive,
 } from './api/drive.js';
+import {
+  getAgents,
+  createAgent,
+  deleteAgent,
+  getAgentPrompt,
+  updateAgentPrompt,
+  getAgentSettings,
+  updateAgentSettings,
+} from './api/agents.js';
+import { getTasks, createNewTask, patchTask, removeTask, triggerTask } from './api/tasks.js';
+import { getMessages, clearMessages, postMessage } from './api/messages.js';
+import {
+  getPendingApprovals,
+  respondToApproval,
+  getToolPoliciesForGroup,
+  upsertPolicy,
+  removePolicy,
+} from './api/approvals.js';
+import { getTimezonesetting, updateTimezone } from './api/settings.js';
+import { streamEvents } from './api/events.js';
 import { getDashboardQueue } from './context.js';
 
-// OAuth provider configurations for the shared callback handler
+// ─── OAuth provider configurations ───
+
 interface OAuthProvider {
   basePath: string;
   displayName: string;
@@ -120,15 +109,19 @@ const oauthProviders: OAuthProvider[] = [
   },
 ];
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function oauthSuccessHtml(displayName: string, postMessageId: string): string {
   return `<!DOCTYPE html><html><body style="font-family:system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0">
     <div style="text-align:center"><h2>${escapeHtml(displayName)} connected</h2><p>You can close this tab.</p>
     <script>window.opener&&window.opener.postMessage(${JSON.stringify(postMessageId)},window.location.origin);setTimeout(()=>window.close(),2000)</script>
     </div></body></html>`;
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function oauthErrorHtml(err: unknown): string {
@@ -196,6 +189,35 @@ async function handleOAuthRoutes(
   return false;
 }
 
+// ─── Helpers ───
+
+function parseBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    let settled = false;
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 1_000_000 && !settled) {
+        settled = true;
+        reject(new Error('Request body too large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (settled) return;
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch (err) {
+        logger.warn({ err }, 'Failed to parse request body as JSON');
+        reject(new Error('Invalid JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+// ─── Main router ───
+
 export async function handleApiRoute(
   req: IncomingMessage,
   res: ServerResponse,
@@ -204,592 +226,176 @@ export async function handleApiRoute(
   const pathname = url.pathname;
   const method = req.method || 'GET';
 
-  // Parse request body for POST requests (1MB limit)
-  const parseBody = (): Promise<Record<string, unknown>> => {
-    return new Promise((resolve, reject) => {
-      let body = '';
-      let settled = false;
-      req.on('data', (chunk) => {
-        body += chunk;
-        if (body.length > 1_000_000 && !settled) {
-          settled = true;
-          reject(new Error('Request body too large'));
-          req.destroy();
-        }
-      });
-      req.on('end', () => {
-        if (settled) return;
-        try {
-          resolve(body ? JSON.parse(body) : {});
-        } catch (err) {
-          logger.warn({ err }, 'Failed to parse request body as JSON');
-          reject(new Error('Invalid JSON'));
-        }
-      });
-      req.on('error', reject);
-    });
-  };
-
-  // Helper to send JSON response
   const json = (data: unknown, status = 200) => {
     res.writeHead(status, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(data));
   };
 
-  // ─── CEO-9: GET /api/agents ───
+  // Helper to handle { data, error, status } results from API modules
+  const respond = (result: { data?: unknown; error?: string; status: number }) => {
+    if (result.error) {
+      json({ error: result.error }, result.status);
+    } else {
+      json(result.data, result.status);
+    }
+  };
+
+  // ─── Agents ───
+
   if (pathname === '/api/agents' && method === 'GET') {
     const queue = getDashboardQueue();
-    const groups = getAllRegisteredGroups();
-    const queueStatus = queue?.getStatus() ?? [];
     const source = url.searchParams.get('source');
-
-    // Build agent list from both DB registrations and groups/ directories
-    const seenFolders = new Set<string>();
-    const agents: Array<Record<string, unknown>> = [];
-
-    // 1. Add registered groups that have CLAUDE.md
-    for (const [jid, group] of Object.entries(groups)) {
-      const claudeMd = path.join(GROUPS_DIR, group.folder, 'CLAUDE.md');
-      if (!fs.existsSync(claudeMd)) continue;
-      if (source === 'dashboard' && !jid.startsWith('dashboard-')) continue;
-      if (source === 'channel' && jid.startsWith('dashboard-')) continue;
-
-      seenFolders.add(group.folder);
-      const qs = queueStatus.find((s) => s.jid === jid || s.jid === `dashboard-${group.folder}` || s.groupFolder === group.folder);
-      const lastMessages = getRecentMessages(1, jid);
-      const lastActivity = lastMessages.length > 0 ? lastMessages[0].timestamp : null;
-
-      agents.push({
-        jid,
-        name: group.name,
-        folder: group.folder,
-        online: qs?.active ?? false,
-        lastActivity,
-        currentTask: qs?.currentTaskId ?? null,
-        containerName: qs?.containerName ?? null,
-        pendingMessages: qs?.pendingMessages ?? false,
-        pendingTaskCount: qs?.pendingTaskCount ?? 0,
-      });
-    }
-
-    // 2. Add unregistered groups/ directories that have CLAUDE.md
-    if (source !== 'channel') {
-      try {
-        const groupDirs = fs.readdirSync(GROUPS_DIR, { withFileTypes: true });
-        for (const dir of groupDirs) {
-          if (!dir.isDirectory() || seenFolders.has(dir.name) || dir.name.includes('.archived-') || dir.name === 'global') continue;
-          const claudeMd = path.join(GROUPS_DIR, dir.name, 'CLAUDE.md');
-          if (!fs.existsSync(claudeMd)) continue;
-
-          const displayName = dir.name.charAt(0).toUpperCase() + dir.name.slice(1);
-          agents.push({
-            jid: `local-${dir.name}`,
-            name: displayName,
-            folder: dir.name,
-            online: false,
-            lastActivity: null,
-            currentTask: null,
-            containerName: null,
-            pendingMessages: false,
-            pendingTaskCount: 0,
-          });
-        }
-      } catch (err) {
-        const code = (err as NodeJS.ErrnoException).code;
-        if (code !== 'ENOENT') {
-          logger.error({ err }, 'Failed to read groups directory for unregistered agents');
-        }
-      }
-    }
-
-    json(agents);
+    const queueStatus = queue?.getStatus() ?? [];
+    json(getAgents(source, queueStatus));
     return;
   }
 
-  // ─── OPC-126: POST /api/agents ───
   if (pathname === '/api/agents' && method === 'POST') {
-    const body = await parseBody();
-    const { name, folder, description } = body as {
-      name?: string;
-      folder?: string;
-      description?: string;
-    };
-
-    if (!name || !folder) {
-      json({ error: 'name and folder are required' }, 400);
-      return;
-    }
-
-    // Validate folder name (alphanumeric, hyphens, underscores)
-    if (!/^[a-z0-9_-]+$/.test(folder)) {
-      json({ error: 'folder must be lowercase alphanumeric with hyphens/underscores only' }, 400);
-      return;
-    }
-
-    // Check folder uniqueness
-    const existing = getAllRegisteredGroups();
-    const folderTaken = Object.values(existing).some((g) => g.folder === folder);
-    if (folderTaken) {
-      json({ error: `folder '${folder}' already exists` }, 409);
-      return;
-    }
-
-    // Generate a dashboard JID for non-messaging agents
-    const jid = `dashboard-${folder}-${Date.now()}`;
-
-    // Create group directory
-    const groupDir = path.join(GROUPS_DIR, folder);
-    try {
-      if (!fs.existsSync(groupDir)) {
-        fs.mkdirSync(groupDir, { recursive: true });
-      }
-    } catch (err) {
-      logger.error({ err, folder }, 'Failed to create agent directory');
-      json({ error: 'Failed to create agent directory on disk' }, 500);
-      return;
-    }
-
-    // Generate CLAUDE.md — use AI if description provided, otherwise use default
-    const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
-    if (description?.trim()) {
-      // Generate system prompt via Anthropic API (non-blocking for registration)
-      try {
-        const prompt = await generateAgentPrompt(name, description.trim());
-        fs.writeFileSync(claudeMdPath, prompt, 'utf-8');
-      } catch (err) {
-        logger.error({ err, folder }, 'Failed to generate agent prompt, using default');
-        fs.writeFileSync(
-          claudeMdPath,
-          `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
-          'utf-8',
-        );
-      }
-    } else if (!fs.existsSync(claudeMdPath)) {
-      fs.writeFileSync(
-        claudeMdPath,
-        `# ${name}\n\nYou are the ${name} agent. Respond helpfully and concisely.\n`,
-        'utf-8',
-      );
-    }
-
-    // Register in database
-    setRegisteredGroup(jid, {
-      name,
-      folder,
-      trigger: `(?i)@${folder}`,
-      added_at: new Date().toISOString(),
-      requiresTrigger: false,
-    });
-
-    logger.info({ jid, name, folder }, 'Agent created via dashboard');
-    json({ jid, name, folder }, 201);
+    const body = await parseBody(req);
+    respond(await createAgent(body as { name?: string; folder?: string; description?: string }));
     return;
   }
 
-  // ─── OPC-126: DELETE /api/agents/:folder ───
-  if (pathname.startsWith('/api/agents/') && method === 'DELETE') {
+  if (pathname.startsWith('/api/agents/') && method === 'DELETE' && !pathname.includes('/prompt') && !pathname.includes('/settings')) {
     const folder = decodeURIComponent(pathname.split('/api/agents/')[1]);
-    if (!folder || !/^[a-z0-9_-]+$/.test(folder)) {
-      json({ error: 'Invalid folder name' }, 400);
-      return;
-    }
-
-    const groups = getAllRegisteredGroups();
-    const entry = Object.entries(groups).find(([, g]) => g.folder === folder);
-    if (!entry) {
-      json({ error: `Agent '${folder}' not found` }, 404);
-      return;
-    }
-
-    // Archive group directory first (before DB delete, so failure doesn't leave ghost)
-    const groupDir = path.join(GROUPS_DIR, folder);
-    const archiveDir = path.join(GROUPS_DIR, `${folder}.archived-${Date.now()}`);
-    try {
-      if (fs.existsSync(groupDir)) {
-        fs.renameSync(groupDir, archiveDir);
-      }
-    } catch (err) {
-      logger.error({ err, folder }, 'Failed to archive agent directory');
-      // Continue — still delete the DB entry
-    }
-
-    const [jid] = entry;
-    deleteRegisteredGroup(jid);
-
-    logger.info({ jid, folder }, 'Agent deleted via dashboard');
-    json({ deleted: true, folder });
+    respond(deleteAgent(folder));
     return;
   }
 
-  // ─── GET /api/agents/:folder/prompt ───
   {
     const match = pathname.match(/^\/api\/agents\/([^/]+)\/prompt$/);
     if (match && method === 'GET') {
-      const folder = decodeURIComponent(match[1]);
-      if (!/^[a-z0-9_-]+$/i.test(folder)) { json({ error: 'Invalid folder name' }, 400); return; }
-      const claudeMdPath = path.join(GROUPS_DIR, folder, 'CLAUDE.md');
-      try {
-        const content = fs.readFileSync(claudeMdPath, 'utf-8');
-        json({ folder, content });
-      } catch {
-        json({ error: 'CLAUDE.md not found' }, 404);
-      }
+      respond(getAgentPrompt(decodeURIComponent(match[1])));
       return;
     }
-  }
-
-  // ─── PUT /api/agents/:folder/prompt ───
-  {
-    const match = pathname.match(/^\/api\/agents\/([^/]+)\/prompt$/);
     if (match && method === 'PUT') {
-      const folder = decodeURIComponent(match[1]);
-      if (!/^[a-z0-9_-]+$/i.test(folder)) { json({ error: 'Invalid folder name' }, 400); return; }
-      const body = await parseBody();
-      const content = body.content as string | undefined;
-      if (content === undefined) {
-        json({ error: 'content is required' }, 400);
-        return;
-      }
-      const claudeMdPath = path.join(GROUPS_DIR, folder, 'CLAUDE.md');
-      try {
-        fs.writeFileSync(claudeMdPath, content, 'utf-8');
-        logger.info({ folder }, 'CLAUDE.md updated via dashboard');
-        json({ folder, saved: true });
-      } catch (err) {
-        logger.error({ err, folder }, 'Failed to write CLAUDE.md');
-        json({ error: 'Failed to save' }, 500);
-      }
+      const body = await parseBody(req);
+      respond(updateAgentPrompt(decodeURIComponent(match[1]), body.content as string | undefined));
       return;
     }
   }
 
-  // ─── GET /api/tasks ───
+  {
+    const match = pathname.match(/^\/api\/agents\/([^/]+)\/settings$/);
+    if (match && method === 'GET') {
+      json(getAgentSettings(decodeURIComponent(match[1])));
+      return;
+    }
+    if (match && method === 'PUT') {
+      const body = await parseBody(req);
+      respond(updateAgentSettings(decodeURIComponent(match[1]), body.approvalMode as string | undefined));
+      return;
+    }
+  }
+
+  // ─── Tasks ───
+
   if (pathname === '/api/tasks' && method === 'GET') {
     const group = url.searchParams.get('group');
-    const tasks = group ? getTasksForGroup(group) : getAllTasks();
     const runsLimit = parseInt(url.searchParams.get('runs') || '5', 10);
-    const allRuns = getRecentTaskRuns(tasks.length * runsLimit);
-
-    const runsByTask = new Map<string, TaskRunLog[]>();
-    for (const run of allRuns) {
-      const existing = runsByTask.get(run.task_id) || [];
-      existing.push(run);
-      runsByTask.set(run.task_id, existing);
-    }
-
-    const tasksWithRuns = tasks.map((task) => ({
-      ...task,
-      recent_runs: (runsByTask.get(task.id) || []).slice(0, runsLimit),
-    }));
-
-    json(tasksWithRuns);
+    json(getTasks(group, runsLimit));
     return;
   }
 
-  // ─── POST /api/tasks ───
   if (pathname === '/api/tasks' && method === 'POST') {
-    const body = await parseBody();
-    const { group_folder, chat_jid, prompt, schedule_type, schedule_value, context_mode, model } =
-      body as Partial<ScheduledTask>;
-
-    if (!group_folder || !chat_jid || !prompt || !schedule_type || !schedule_value) {
-      json({ error: 'group_folder, chat_jid, prompt, schedule_type, and schedule_value are required' }, 400);
-      return;
-    }
-
-    if (!['cron', 'interval', 'once'].includes(schedule_type)) {
-      json({ error: 'schedule_type must be cron, interval, or once' }, 400);
-      return;
-    }
-
-    // Compute next_run
-    let next_run: string | null = null;
-    try {
-      next_run = computeNextRunFromValues(schedule_type, schedule_value);
-    } catch (err) {
-      json({ error: `Invalid schedule: ${err instanceof Error ? err.message : err}` }, 400);
-      return;
-    }
-
-    const id = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const task: Omit<ScheduledTask, 'last_run' | 'last_result'> = {
-      id,
-      group_folder,
-      chat_jid,
-      prompt,
-      schedule_type,
-      schedule_value,
-      context_mode: context_mode || 'isolated',
-      model: model && isValidModel(model) ? model : null,
-      next_run,
-      status: 'active',
-      created_at: new Date().toISOString(),
-    };
-
-    createTask(task);
-    logger.info({ id, group_folder }, 'Task created via dashboard');
-    json(getTaskById(id), 201);
+    const body = await parseBody(req);
+    respond(createNewTask(body as Record<string, unknown>));
     return;
   }
 
-  // ─── PATCH /api/tasks/:id ───
   {
     const match = pathname.match(/^\/api\/tasks\/([^/]+)$/);
     if (match && method === 'PATCH') {
-      const id = decodeURIComponent(match[1]);
-      const existing = getTaskById(id);
-      if (!existing) {
-        json({ error: 'Task not found' }, 404);
-        return;
-      }
-
-      const body = await parseBody();
-      const updates: Parameters<typeof updateTask>[1] = {};
-
-      if (body.prompt !== undefined) updates.prompt = body.prompt as string;
-      if (body.schedule_type !== undefined) updates.schedule_type = body.schedule_type as ScheduledTask['schedule_type'];
-      if (body.schedule_value !== undefined) updates.schedule_value = body.schedule_value as string;
-      if (body.status !== undefined) updates.status = body.status as ScheduledTask['status'];
-
-      // Recompute next_run when schedule changes or status changes to active
-      const newType = updates.schedule_type || existing.schedule_type;
-      const newValue = updates.schedule_value || existing.schedule_value;
-      if (updates.status === 'paused') {
-        updates.next_run = null;
-      } else if (updates.schedule_type || updates.schedule_value || updates.status === 'active') {
-        try {
-          updates.next_run = computeNextRunFromValues(newType, newValue);
-        } catch (err) {
-          json({ error: `Invalid schedule: ${err instanceof Error ? err.message : err}` }, 400);
-          return;
-        }
-      }
-
-      updateTask(id, updates);
-      logger.info({ id }, 'Task updated via dashboard');
-      json(getTaskById(id));
+      const body = await parseBody(req);
+      respond(patchTask(decodeURIComponent(match[1]), body));
       return;
     }
-  }
-
-  // ─── DELETE /api/tasks/:id ───
-  {
-    const match = pathname.match(/^\/api\/tasks\/([^/]+)$/);
     if (match && method === 'DELETE') {
-      const id = decodeURIComponent(match[1]);
-      const existing = getTaskById(id);
-      if (!existing) {
-        json({ error: 'Task not found' }, 404);
-        return;
-      }
-      deleteTask(id);
-      logger.info({ id }, 'Task deleted via dashboard');
-      json({ deleted: true });
+      respond(removeTask(decodeURIComponent(match[1])));
       return;
     }
   }
 
-  // ─── POST /api/tasks/:id/run ───
   {
     const match = pathname.match(/^\/api\/tasks\/([^/]+)\/run$/);
     if (match && method === 'POST') {
-      const id = decodeURIComponent(match[1]);
-      const existing = getTaskById(id);
-      if (!existing) {
-        json({ error: 'Task not found' }, 404);
-        return;
-      }
-      // Trigger via scheduler's queue — the scheduler picks it up
-      const queue = getDashboardQueue();
-      if (!queue) {
-        json({ error: 'Queue not available' }, 503);
-        return;
-      }
-      // Mark as due now so the scheduler loop picks it up on next poll
-      updateTask(id, { next_run: new Date().toISOString(), status: 'active' });
-      logger.info({ id }, 'Task triggered manually via dashboard');
-      json({ triggered: true, task_id: id });
+      respond(triggerTask(decodeURIComponent(match[1])));
       return;
     }
   }
 
-  // ─── CEO-9: GET /api/messages ───
+  // ─── Messages ───
+
   if (pathname === '/api/messages' && method === 'GET') {
     const group = url.searchParams.get('group');
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '50', 10), 200);
+    const limit = parseInt(url.searchParams.get('limit') || '50', 10);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
-
-    let chatJid: string | undefined;
-    if (group) {
-      // Use dashboard-specific JID for fetching dashboard chat history
-      chatJid = `dashboard-${group}`;
-    }
-
-    const result = getMessagesPaginated(limit, offset, chatJid);
-    json({
-      messages: result.messages,
-      total: result.total,
-      limit,
-      offset,
-    });
+    json(getMessages(group, limit, offset));
     return;
   }
 
-  // ─── DELETE /api/messages — clear chat history ───
   if (pathname === '/api/messages' && method === 'DELETE') {
-    const group = url.searchParams.get('group');
-    if (!group) {
-      json({ error: 'Missing group parameter' }, 400);
-      return;
-    }
-    const chatJid = `dashboard-${group}`;
-    const deleted = deleteMessages(chatJid);
-    json({ ok: true, deleted });
+    respond(clearMessages(url.searchParams.get('group')));
     return;
   }
 
-  // ─── CEO-9: POST /api/messages ───
   if (pathname === '/api/messages' && method === 'POST') {
-    const body = await parseBody();
-    const text = body.text as string | undefined;
-    const group = (body.group as string | undefined) || 'ceo';
-    // Optional: deliver response to a different chat (cross-agent messaging)
-    const replyTo = body.replyTo as string | undefined;
-    // Optional: file attachments (uploaded via POST /api/upload)
-    // SECURITY: never trust client-supplied paths — resolve from UPLOADS_DIR by id
-    const rawAttachments = Array.isArray(body.attachments) ? body.attachments as Array<{id: string; name: string; size: number; mime: string}> : undefined;
-    const attachments = rawAttachments ? resolveAttachments(rawAttachments) : undefined;
-
-    if (!text && (!attachments || attachments.length === 0)) {
-      json({ error: 'Missing text or attachments' }, 400);
-      return;
-    }
-
-    const groups = getAllRegisteredGroups();
-    const entry = Object.entries(groups).find(([, g]) => g.folder === group);
-    if (!entry) {
-      json({ error: `Group '${group}' not registered` }, 404);
-      return;
-    }
-
-    // Validate replyTo group exists
-    if (replyTo) {
-      const replyEntry = Object.values(groups).find((g) => g.folder === replyTo);
-      if (!replyEntry) {
-        json({ error: `Unknown replyTo group '${replyTo}'` }, 400);
-        return;
-      }
-    }
-
-    // Cross-agent: unique JID prevents queue collision with the source agent.
-    // Messages stored under display JID (source chat) for UI.
-    const isForward = !!replyTo && replyTo !== group;
-    const chatJid = isForward
-      ? `xagent-${group}-${Date.now()}`
-      : `dashboard-${group}`;
-    const displayJid = isForward ? `dashboard-${replyTo}` : chatJid;
-
-    // For cross-agent: store user message in source chat (sendGroupMessage stores in agent chat)
-    if (isForward) {
-      storeChatMetadata(displayJid, new Date().toISOString(), `Dashboard: ${replyTo}`);
-      storeMessageDirect({
-        id: `dashboard-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        chat_jid: displayJid,
-        sender: 'dashboard',
-        sender_name: 'You (Dashboard)',
-        content: (text || '') + (attachments && attachments.length > 0 ? `\n\n${attachments.map(a => `[${a.name}]`).join(' ')}` : ''),
-        timestamp: new Date().toISOString(),
-        is_from_me: true,
-      });
-    }
-
-    const fileSuffix = attachments && attachments.length > 0
-      ? `\n\n${attachments.map(a => `[${a.name}]`).join(' ')}`
-      : '';
-    const displayText = (text || '') + fileSuffix;
-    const result = await sendGroupMessage(group, chatJid, displayText, isForward ? displayJid : undefined, attachments);
-    json({ ...result, group, jid: displayJid });
+    const body = await parseBody(req);
+    respond(await postMessage(body));
     return;
   }
 
-  // ─── CEO-9: SSE /api/events ───
+  // ─── SSE Events ───
+
   if (pathname === '/api/events' && method === 'GET') {
     streamEvents(req, res);
     return;
   }
 
-  // ─── Approval endpoints ───
+  // ─── Approvals & Tool Policies ───
+
   if (pathname === '/api/approvals' && method === 'GET') {
-    json(approvalManager.getPending());
+    json(getPendingApprovals());
     return;
   }
 
-  // Respond to a pending approval request
-  const approvalMatch = pathname.match(/^\/api\/approvals\/([^/]+)$/);
-  if (approvalMatch && method === 'POST') {
-    const id = decodeURIComponent(approvalMatch[1]);
-    const body = await parseBody();
-    const { decision, alwaysAllow } = body as { decision: 'allow' | 'deny'; alwaysAllow?: boolean };
-    if (!decision || !['allow', 'deny'].includes(decision)) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'decision must be "allow" or "deny"' }));
+  {
+    const match = pathname.match(/^\/api\/approvals\/([^/]+)$/);
+    if (match && method === 'POST') {
+      const body = await parseBody(req);
+      respond(
+        respondToApproval(
+          decodeURIComponent(match[1]),
+          body.decision as string | undefined,
+          !!(body.alwaysAllow as boolean),
+        ),
+      );
       return;
     }
-    const ok = approvalManager.respond(id, decision, !!alwaysAllow);
-    if (!ok) {
-      res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Approval request not found' }));
-      return;
-    }
-    json({ ok: true });
-    return;
   }
 
-  // ─── Tool policy endpoints ───
   if (pathname === '/api/tool-policies' && method === 'GET') {
-    const group = url.searchParams.get('group');
-    if (!group) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'group query param required' }));
-      return;
-    }
-    json(getToolPolicies(group));
+    respond(getToolPoliciesForGroup(url.searchParams.get('group')));
     return;
   }
 
   if (pathname === '/api/tool-policies' && method === 'PUT') {
-    const body = await parseBody();
-    const { group_folder, tool_pattern, action } = body as {
-      group_folder?: string; tool_pattern?: string; action?: string;
-    };
-    if (!group_folder || !tool_pattern || !action || !['allow', 'deny', 'ask'].includes(action)) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'group_folder, tool_pattern, and action (allow/deny/ask) required' }));
-      return;
-    }
-    upsertToolPolicy(group_folder, tool_pattern, action as 'allow' | 'deny' | 'ask');
-    json({ ok: true });
+    const body = await parseBody(req);
+    respond(upsertPolicy(body as { group_folder?: string; tool_pattern?: string; action?: string }));
     return;
   }
 
   if (pathname === '/api/tool-policies' && method === 'DELETE') {
-    const body = await parseBody();
-    const { group_folder, tool_pattern } = body as { group_folder?: string; tool_pattern?: string };
-    if (!group_folder || !tool_pattern) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'group_folder and tool_pattern required' }));
-      return;
-    }
-    const deleted = deleteToolPolicy(group_folder, tool_pattern);
-    json({ ok: true, deleted });
+    const body = await parseBody(req);
+    respond(removePolicy(body as { group_folder?: string; tool_pattern?: string }));
     return;
   }
 
-  // Activity endpoints (legacy, kept for backward compat)
+  // ─── Activity (legacy) ───
+
   if (pathname === '/api/activity' && method === 'GET') {
     const limit = parseInt(url.searchParams.get('limit') || '50', 10);
-    const activity = await getActivity(limit);
-    json(activity);
+    json(await getActivity(limit));
     return;
   }
 
@@ -798,22 +404,23 @@ export async function handleApiRoute(
     return;
   }
 
-  // ─── Google OAuth (Calendar, Gmail, Sheets, Drive) ───
+  // ─── OAuth ───
+
   if (pathname.startsWith('/api/auth/')) {
     const handled = await handleOAuthRoutes(pathname, method, url, res, json);
     if (handled) return;
   }
 
-  // Calendar endpoints
+  // ─── Calendar ───
+
   if ((pathname === '/api/calendar' || pathname === '/api/calendar/events') && method === 'GET') {
     const view = (url.searchParams.get('view') || 'day') as 'day' | 'week';
-    const result = await getCalendarEvents(view);
-    json(result);
+    json(await getCalendarEvents(view));
     return;
   }
 
   if ((pathname === '/api/calendar' || pathname === '/api/calendar/events') && method === 'POST') {
-    const body = await parseBody();
+    const body = await parseBody(req);
     if (!body.title || !body.start || !body.end) {
       json({ error: 'Missing required fields: title, start, end' }, 400);
       return;
@@ -829,28 +436,31 @@ export async function handleApiRoute(
     return;
   }
 
-  // ─── File upload endpoints ───
+  // ─── Upload ───
+
   if (pathname === '/api/upload' && method === 'POST') {
     handleUpload(req, res);
     return;
   }
 
-  const uploadMatch = pathname.match(/^\/api\/uploads\/([^/]+)$/);
-  if (uploadMatch && method === 'GET') {
-    serveUpload(req, res, decodeURIComponent(uploadMatch[1]));
-    return;
+  {
+    const match = pathname.match(/^\/api\/uploads\/([^/]+)$/);
+    if (match && method === 'GET') {
+      serveUpload(req, res, decodeURIComponent(match[1]));
+      return;
+    }
   }
 
-  // Chat endpoints (legacy, kept for backward compat)
+  // ─── Chat (legacy) ───
+
   if (pathname === '/api/chat' && method === 'POST') {
-    const body = await parseBody();
+    const body = await parseBody(req);
     const text = body.text as string | undefined;
     if (!text) {
       json({ error: 'Missing text field' }, 400);
       return;
     }
-    const result = await sendChatMessage(text);
-    json(result);
+    json(await sendChatMessage(text));
     return;
   }
 
@@ -859,285 +469,32 @@ export async function handleApiRoute(
     return;
   }
 
-  // Settings: Timezone
+  // ─── Settings ───
+
   if (pathname === '/api/settings/timezone' && method === 'GET') {
-    json({ timezone: getTimezone() });
+    json(getTimezonesetting());
     return;
   }
 
   if (pathname === '/api/settings/timezone' && method === 'POST') {
-    const body = await parseBody();
-    const tz = body.timezone as string | undefined;
-    if (!tz) {
-      json({ error: 'Missing timezone field' }, 400);
-      return;
-    }
-    // Validate timezone
-    try {
-      const valid = Intl.supportedValuesOf('timeZone');
-      if (!valid.includes(tz)) {
-        json({ error: 'Invalid timezone' }, 400);
-        return;
-      }
-    } catch {
-      // Fallback for older runtimes: attempt to create a DateTimeFormat
-      try {
-        Intl.DateTimeFormat(undefined, { timeZone: tz });
-      } catch {
-        json({ error: 'Invalid timezone' }, 400);
-        return;
-      }
-    }
-    setTimezone(tz);
-    json({ success: true, timezone: tz });
+    const body = await parseBody(req);
+    respond(updateTimezone(body.timezone as string | undefined));
     return;
   }
 
-  // ─── Agent settings (per-agent approval mode) ───
-  const agentSettingsMatch = pathname.match(/^\/api\/agents\/([^/]+)\/settings$/);
-  if (agentSettingsMatch && method === 'GET') {
-    const folder = decodeURIComponent(agentSettingsMatch[1]);
-    const approvalMode = getRouterState(`approval_mode:${folder}`) || 'auto';
-    json({ approvalMode });
-    return;
-  }
+  // ─── Health & Debug ───
 
-  if (agentSettingsMatch && method === 'PUT') {
-    const folder = decodeURIComponent(agentSettingsMatch[1]);
-    const body = await parseBody();
-    const approvalMode = body.approvalMode as string | undefined;
-    if (approvalMode && ['ask', 'auto'].includes(approvalMode)) {
-      setRouterState(`approval_mode:${folder}`, approvalMode);
-      // Kill idle agent so next spawn picks up new mode; busy agents apply on next spawn
-      const queue = getDashboardQueue();
-      const result = queue?.killByFolder(folder) ?? 'none';
-      json({ ok: true, approvalMode, agent: result });
-      return;
-    }
-    res.writeHead(400, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'approvalMode must be ask or auto' }));
-    return;
-  }
-
-  // Health check
   if (pathname === '/api/health' && method === 'GET') {
     json({ status: 'ok', timestamp: new Date().toISOString() });
     return;
   }
 
-  // Debug: raw queue status
   if (pathname === '/api/debug/queue' && method === 'GET') {
     const queue = getDashboardQueue();
     json(queue?.getStatus() ?? []);
     return;
   }
 
-  // 404 for unknown API routes
+  // 404
   json({ error: 'Not found' }, 404);
-}
-
-// ─── Compute next run for a schedule ───
-
-function computeNextRunFromValues(
-  scheduleType: string,
-  scheduleValue: string,
-): string | null {
-  if (scheduleType === 'cron') {
-    const interval = CronExpressionParser.parse(scheduleValue, {
-      tz: getTimezone(),
-    });
-    return interval.next().toISOString();
-  }
-  if (scheduleType === 'interval') {
-    const ms = parseInt(scheduleValue, 10);
-    if (isNaN(ms) || ms < 60000) throw new Error('Interval must be at least 60000ms');
-    return new Date(Date.now() + ms).toISOString();
-  }
-  if (scheduleType === 'once') {
-    const date = new Date(scheduleValue);
-    if (isNaN(date.getTime())) throw new Error('Invalid date for once schedule');
-    return date.toISOString();
-  }
-  return null;
-}
-
-// ─── Generate agent CLAUDE.md via Anthropic API ───
-
-async function generateAgentPrompt(name: string, description: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not set');
-  }
-
-  // Read existing agent prompts as style reference
-  const references: string[] = [];
-  for (const folder of ['ceo', 'finance', 'legal']) {
-    const mdPath = path.join(GROUPS_DIR, folder, 'CLAUDE.md');
-    try {
-      if (fs.existsSync(mdPath)) {
-        references.push(fs.readFileSync(mdPath, 'utf-8'));
-      }
-    } catch {
-      // skip missing files
-    }
-  }
-
-  const refBlock = references.length > 0
-    ? `\n\nHere are existing agent prompts for style reference:\n\n${references.map((r, i) => `--- EXAMPLE ${i + 1} ---\n${r}\n--- END ---`).join('\n\n')}`
-    : '';
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 4096,
-      messages: [
-        {
-          role: 'user',
-          content: `Generate a CLAUDE.md system prompt for an AI agent.
-
-Agent name: ${name}
-User's description of what the agent should do:
-${description}
-${refBlock}
-
-Generate a complete CLAUDE.md following the same structure and style as the examples:
-- Start with a # heading and ## Role section
-- Include ## Core Responsibilities with bullet points
-- Include ## Communication Style
-- Add relevant sections specific to this agent's domain
-- Include ## Output Formats with template examples where appropriate
-- Include ## Tools Available (mention Browser as available by default)
-- Include ## Priorities section
-- End with ## Memory section (same pattern as examples — persistent MEMORY.md, max 50 entries, rules)
-
-Important:
-- Write the prompt in the same language as the user's description
-- Be specific and actionable — avoid generic filler
-- Match the depth and quality of the reference examples
-- Output ONLY the markdown content, no wrapping or explanation`,
-        },
-      ],
-    }),
-  });
-
-  if (!res.ok) {
-    const errBody = await res.text();
-    throw new Error(`Anthropic API error ${res.status}: ${errBody}`);
-  }
-
-  const data = (await res.json()) as { content: Array<{ type: string; text: string }> };
-  const text = data.content?.find((c) => c.type === 'text')?.text;
-  if (!text) {
-    throw new Error('No text in Anthropic API response');
-  }
-
-  return text;
-}
-
-// ─── SSE /api/events — unified real-time stream ───
-
-function streamEvents(req: IncomingMessage, res: ServerResponse): void {
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-
-  const queue = getDashboardQueue();
-  const groups = getAllRegisteredGroups();
-
-  // Helper: find queue status by registered JID or dashboard JID
-  const findStatus = (jid: string, folder: string) => {
-    const statuses = queue?.getStatus() ?? [];
-    return statuses.find((s) => s.jid === jid || s.jid === `dashboard-${folder}` || s.groupFolder === folder);
-  };
-
-  // Send initial snapshot
-  const agentSnapshot = Object.entries(groups).map(([jid, group]) => {
-    const qs = findStatus(jid, group.folder);
-    return {
-      jid,
-      name: group.name,
-      folder: group.folder,
-      online: qs?.active ?? false,
-    };
-  });
-  res.write(`data: ${JSON.stringify({ type: 'init', agents: agentSnapshot })}\n\n`);
-
-  let lastActivityTs = new Date().toISOString();
-  let lastMessageTs = new Date().toISOString();
-  let seenMessageIds = new Set<string>();
-  let seenActivityKeys = new Set<string>();
-
-  const interval = setInterval(() => {
-    try {
-      // New activity (task runs + messages combined)
-      const activity = getRecentActivity(10);
-      const newActivity = activity.filter((a) => {
-        if (a.timestamp < lastActivityTs) return false;
-        const key = `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`;
-        return !seenActivityKeys.has(key);
-      });
-      if (newActivity.length > 0) {
-        lastActivityTs = newActivity[0].timestamp;
-        for (const a of newActivity) {
-          seenActivityKeys.add(`${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`);
-        }
-        if (seenActivityKeys.size > 500) seenActivityKeys = new Set(
-          newActivity.map((a) => `${a.timestamp}:${a.task_id ?? ''}:${a.content ?? ''}`),
-        );
-        res.write(`data: ${JSON.stringify({ type: 'activity', items: newActivity })}\n\n`);
-      }
-
-      // New messages
-      const messages = getRecentMessages(10);
-      const newMessages = messages.filter(
-        (m) => m.timestamp >= lastMessageTs && !seenMessageIds.has(m.id),
-      );
-      if (newMessages.length > 0) {
-        lastMessageTs = newMessages[0].timestamp;
-        for (const m of newMessages.filter((x) => x.timestamp === lastMessageTs)) {
-          seenMessageIds.add(m.id);
-        }
-        if (seenMessageIds.size > 500) seenMessageIds = new Set();
-        res.write(`data: ${JSON.stringify({ type: 'messages', items: newMessages })}\n\n`);
-      }
-
-      // Approval requests
-      approvalManager.scanIpcDirs();
-      approvalManager.cleanExpired();
-      const pendingApprovals = approvalManager.getPending();
-      if (pendingApprovals.length > 0) {
-        res.write(`data: ${JSON.stringify({ type: 'approval_requests', items: pendingApprovals })}\n\n`);
-      }
-
-      // Agent status
-      const currentGroups = getAllRegisteredGroups();
-      const agents = Object.entries(currentGroups).map(([jid, group]) => {
-        const qs = findStatus(jid, group.folder);
-        return {
-          jid,
-          name: group.name,
-          folder: group.folder,
-          online: qs?.active ?? false,
-        };
-      });
-      res.write(`data: ${JSON.stringify({ type: 'agents', agents })}\n\n`);
-    } catch (err) {
-      logger.error({ err }, 'Error in activity stream, closing stream');
-      clearInterval(interval);
-      try { res.end(); } catch { /* already closed */ }
-    }
-  }, 2000);
-
-  req.on('close', () => {
-    clearInterval(interval);
-  });
 }
