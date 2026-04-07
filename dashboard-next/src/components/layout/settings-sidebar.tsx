@@ -525,11 +525,21 @@ function TaskCard({
       : "bg-surface-border";
 
   const promptPreview = task.prompt.split("\n")[0].slice(0, 60);
-  const scheduleLabel = task.schedule_type === "cron"
-    ? task.schedule_value
-    : task.schedule_type === "interval"
-      ? `Every ${Math.round(parseInt(task.schedule_value) / 60000)}m`
-      : "Once";
+  const scheduleLabel = (() => {
+    if (task.schedule_type === "interval") return `Every ${Math.round(parseInt(task.schedule_value) / 60000)}m`;
+    if (task.schedule_type === "once") return "Once";
+    // Parse cron into human-readable
+    const parts = task.schedule_value.trim().split(/\s+/);
+    if (parts.length !== 5) return task.schedule_value;
+    const [minP, hourP, domP, , dowP] = parts;
+    const time = `${hourP.padStart(2, "0")}:${minP.padStart(2, "0")}`;
+    if (dowP !== "*") {
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      return `${days[parseInt(dowP)] ?? dowP} ${time}`;
+    }
+    if (domP !== "*") return `${domP}th monthly ${time}`;
+    return `Daily ${time}`;
+  })();
 
   return (
     <div className="bg-surface-2 border border-surface-border p-3">
@@ -629,6 +639,33 @@ function TaskForm({
     task?.chat_jid?.startsWith("tg:") ? task.chat_jid.replace("tg:", "") : "",
   );
   const [prompt, setPrompt] = useState(task?.prompt ?? "");
+  // --- Recurring schedule state ---
+  type RecurringFrequency = "daily" | "weekly" | "monthly";
+  const parseCronToRecurring = (
+    cron: string,
+  ): { frequency: RecurringFrequency; dayOfWeek: number; dayOfMonth: number; hour: number; minute: number } => {
+    const defaults = { frequency: "daily" as RecurringFrequency, dayOfWeek: 1, dayOfMonth: 1, hour: 13, minute: 0 };
+    if (!cron) return defaults;
+    const parts = cron.trim().split(/\s+/);
+    if (parts.length !== 5) return defaults;
+    const [minP, hourP, domP, , dowP] = parts;
+    const minute = parseInt(minP) || 0;
+    const hour = parseInt(hourP) || 0;
+    if (dowP !== "*") return { frequency: "weekly", dayOfWeek: parseInt(dowP) || 0, dayOfMonth: 1, hour, minute };
+    if (domP !== "*") return { frequency: "monthly", dayOfWeek: 1, dayOfMonth: parseInt(domP) || 1, hour, minute };
+    return { frequency: "daily", dayOfWeek: 1, dayOfMonth: 1, hour, minute };
+  };
+
+  const buildCronFromRecurring = (
+    freq: RecurringFrequency, dow: number, dom: number, hour: number, minute: number,
+  ): string => {
+    if (freq === "weekly") return `${minute} ${hour} * * ${dow}`;
+    if (freq === "monthly") return `${minute} ${hour} ${dom} * *`;
+    return `${minute} ${hour} * * *`;
+  };
+
+  const initRecurring = task?.schedule_type === "cron" ? parseCronToRecurring(task.schedule_value) : null;
+
   const [scheduleType, setScheduleType] = useState<"cron" | "interval" | "once">(
     task?.schedule_type ?? "cron",
   );
@@ -638,6 +675,88 @@ function TaskForm({
       ? String(Math.round(parseInt(task.schedule_value) / 60000))
       : "60",
   );
+  const [recurFrequency, setRecurFrequency] = useState<RecurringFrequency>(initRecurring?.frequency ?? "daily");
+  const [recurDayOfWeek, setRecurDayOfWeek] = useState(initRecurring?.dayOfWeek ?? 1);
+  const [recurDayOfMonth, setRecurDayOfMonth] = useState(initRecurring?.dayOfMonth ?? 1);
+  const [recurHour, setRecurHour] = useState(initRecurring?.hour ?? 13);
+  const [recurMinute, setRecurMinute] = useState(initRecurring?.minute ?? 0);
+  // --- Shared time picker popover state ---
+  const [timePickerOpen, setTimePickerOpen] = useState(false);
+  const timePickerRef = useRef<HTMLDivElement>(null);
+  const hourColRef = useRef<HTMLDivElement>(null);
+  const minuteColRef = useRef<HTMLDivElement>(null);
+
+  // --- Once schedule state ---
+  const parseOnceValue = (v: string) => {
+    const d = v ? new Date(v) : null;
+    if (d && !isNaN(d.getTime())) {
+      return { year: d.getFullYear(), month: d.getMonth(), day: d.getDate(), hour: d.getHours(), minute: d.getMinutes() };
+    }
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth(), day: now.getDate(), hour: now.getHours() + 1, minute: 0 };
+  };
+  const initOnce = parseOnceValue(task?.schedule_type === "once" ? task.schedule_value : "");
+  const [onceYear, setOnceYear] = useState(initOnce.year);
+  const [onceMonth, setOnceMonth] = useState(initOnce.month);
+  const [onceDay, setOnceDay] = useState(initOnce.day);
+  const [onceHour, setOnceHour] = useState(initOnce.hour);
+  const [onceMinute, setOnceMinute] = useState(initOnce.minute);
+  const [onceTimeOpen, setOnceTimeOpen] = useState(false);
+  const onceTimeRef = useRef<HTMLDivElement>(null);
+  const onceHourColRef = useRef<HTMLDivElement>(null);
+  const onceMinuteColRef = useRef<HTMLDivElement>(null);
+  const [onceCalOpen, setOnceCalOpen] = useState(false);
+  const onceCalRef = useRef<HTMLDivElement>(null);
+
+  const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
+  const firstDayOfWeek = (y: number, m: number) => new Date(y, m, 1).getDay();
+  const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  // Build ISO string from once parts
+  const buildOnceValue = () => {
+    const d = new Date(onceYear, onceMonth, onceDay, onceHour, onceMinute);
+    return d.toISOString();
+  };
+
+  // Close popovers on outside click
+  useEffect(() => {
+    if (!timePickerOpen && !onceTimeOpen && !onceCalOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (timePickerOpen && timePickerRef.current && !timePickerRef.current.contains(e.target as Node)) {
+        setTimePickerOpen(false);
+      }
+      if (onceTimeOpen && onceTimeRef.current && !onceTimeRef.current.contains(e.target as Node)) {
+        setOnceTimeOpen(false);
+      }
+      if (onceCalOpen && onceCalRef.current && !onceCalRef.current.contains(e.target as Node)) {
+        setOnceCalOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [timePickerOpen, onceTimeOpen, onceCalOpen]);
+
+  // Auto-scroll time columns to selected value when popover opens
+  useEffect(() => {
+    if (!timePickerOpen && !onceTimeOpen) return;
+    requestAnimationFrame(() => {
+      const scrollTo = (container: HTMLDivElement | null, index: number) => {
+        if (!container) return;
+        const child = container.children[index] as HTMLElement | undefined;
+        child?.scrollIntoView({ block: "center", behavior: "instant" });
+      };
+      if (timePickerOpen) {
+        scrollTo(hourColRef.current, recurHour);
+        const minuteIndex = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].indexOf(recurMinute);
+        scrollTo(minuteColRef.current, minuteIndex >= 0 ? minuteIndex : 0);
+      }
+      if (onceTimeOpen) {
+        scrollTo(onceHourColRef.current, onceHour);
+        const minuteIndex = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].indexOf(onceMinute);
+        scrollTo(onceMinuteColRef.current, minuteIndex >= 0 ? minuteIndex : 0);
+      }
+    });
+  }, [timePickerOpen, onceTimeOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   const [contextMode, setContextMode] = useState<"group" | "isolated">(
     task?.context_mode ?? "group",
   );
@@ -654,6 +773,12 @@ function TaskForm({
       return;
     }
     let value = scheduleValue;
+    if (scheduleType === "cron") {
+      value = buildCronFromRecurring(recurFrequency, recurDayOfWeek, recurDayOfMonth, recurHour, recurMinute);
+    }
+    if (scheduleType === "once") {
+      value = buildOnceValue();
+    }
     if (scheduleType === "interval") {
       const mins = parseInt(intervalMinutes);
       if (isNaN(mins) || mins < 1) {
@@ -763,29 +888,199 @@ function TaskForm({
             Schedule
           </label>
           <div className="flex gap-0.5 bg-surface-2 rounded-lg p-0.5 mb-2">
-            {(["cron", "interval", "once"] as const).map((type) => (
+            {([
+              { value: "cron", label: "Recurring" },
+              { value: "interval", label: "Interval" },
+              { value: "once", label: "Once" },
+            ] as const).map((opt) => (
               <button
-                key={type}
-                onClick={() => setScheduleType(type)}
+                key={opt.value}
+                onClick={() => setScheduleType(opt.value)}
                 className={`flex-1 px-2 py-1.5 text-[10px] font-mono font-semibold uppercase rounded-md transition-colors cursor-pointer ${
-                  scheduleType === type
+                  scheduleType === opt.value
                     ? "bg-surface-1 text-text-primary shadow-sm"
                     : "text-text-muted hover:text-text-secondary"
                 }`}
               >
-                {type}
+                {opt.label}
               </button>
             ))}
           </div>
 
           {scheduleType === "cron" && (
-            <input
-              type="text"
-              value={scheduleValue}
-              onChange={(e) => setScheduleValue(e.target.value)}
-              placeholder="0 13 * * *"
-              className="w-full px-3 py-2 bg-surface-2 border border-surface-border text-xs font-mono text-text-primary outline-none focus:border-primary/50"
-            />
+            <div className="border border-surface-border bg-surface-1 animate-fade-in">
+              {/* Frequency row — labeled table-style */}
+              <div className="flex items-center border-b border-surface-border">
+                <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0">
+                  Every
+                </span>
+                <div className="flex flex-1">
+                  {([
+                    { value: "daily", label: "Day" },
+                    { value: "weekly", label: "Week" },
+                    { value: "monthly", label: "Month" },
+                  ] as const).map((opt, i) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setRecurFrequency(opt.value)}
+                      className={`flex-1 px-2 py-2.5 text-[10px] font-mono font-semibold uppercase tracking-wide transition-colors cursor-pointer ${
+                        i < 2 ? "border-r border-surface-border" : ""
+                      } ${
+                        recurFrequency === opt.value
+                          ? "bg-surface-3 text-text-primary"
+                          : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Day of week — compact grid cells */}
+              {recurFrequency === "weekly" && (
+                <div className="flex items-center border-b border-surface-border">
+                  <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0">
+                    On
+                  </span>
+                  <div className="flex flex-1">
+                    {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setRecurDayOfWeek(i)}
+                        className={`flex-1 py-2.5 text-[10px] font-mono font-semibold transition-colors cursor-pointer ${
+                          i < 6 ? "border-r border-surface-border" : ""
+                        } ${
+                          recurDayOfWeek === i
+                            ? "bg-surface-3 text-text-primary"
+                            : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                        }`}
+                      >
+                        {day}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Day of month — calendar grid */}
+              {recurFrequency === "monthly" && (
+                <div className="border-b border-surface-border">
+                  <div className="flex items-center border-b border-surface-border">
+                    <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2 w-full">
+                      Day of month
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-7">
+                    {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
+                      <button
+                        key={d}
+                        onClick={() => setRecurDayOfMonth(d)}
+                        className={`py-2 text-[10px] font-mono transition-colors cursor-pointer border-b border-r border-surface-border ${
+                          recurDayOfMonth === d
+                            ? "bg-surface-3 text-text-primary font-bold"
+                            : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                        }`}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Time — compact row with popover */}
+              <div className="relative" ref={timePickerRef}>
+                <button
+                  type="button"
+                  onClick={() => setTimePickerOpen((v) => !v)}
+                  className="flex items-center w-full cursor-pointer group"
+                >
+                  <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0 text-left">
+                    At
+                  </span>
+                  <span className="flex-1 px-3 py-2.5 text-xs font-mono text-text-primary font-semibold tracking-wider group-hover:bg-surface-2 transition-colors">
+                    {String(recurHour).padStart(2, "0")}
+                    <span className="text-text-muted mx-0.5">:</span>
+                    {String(recurMinute).padStart(2, "0")}
+                  </span>
+                  <span className={`pr-3 text-text-muted text-[10px] transition-transform ${timePickerOpen ? "rotate-180" : ""}`}>
+                    &#9662;
+                  </span>
+                </button>
+
+                {/* Popover */}
+                {timePickerOpen && (
+                  <div className="absolute left-0 right-0 top-full z-20 border border-surface-border border-t-0 bg-surface-1 shadow-[0_4px_12px_rgba(0,0,0,0.3)] animate-slide-down">
+                    <div className="flex max-h-[160px]">
+                      {/* Hour column */}
+                      <div ref={hourColRef} className="flex-1 overflow-y-auto border-r border-surface-border">
+                        {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                          <button
+                            key={h}
+                            onClick={() => setRecurHour(h)}
+                            className={`w-full px-2 py-1.5 text-[11px] font-mono text-center transition-colors cursor-pointer ${
+                              recurHour === h
+                                ? "bg-surface-3 text-text-primary font-bold"
+                                : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                            }`}
+                          >
+                            {String(h).padStart(2, "0")}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Separator */}
+                      <div className="flex items-center px-1 select-none bg-surface-1">
+                        <span className="text-text-muted font-mono text-sm font-bold">:</span>
+                      </div>
+                      {/* Minute column */}
+                      <div ref={minuteColRef} className="flex-1 overflow-y-auto">
+                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                          <button
+                            key={m}
+                            onClick={() => setRecurMinute(m)}
+                            className={`w-full px-2 py-1.5 text-[11px] font-mono text-center transition-colors cursor-pointer ${
+                              recurMinute === m
+                                ? "bg-surface-3 text-text-primary font-bold"
+                                : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                            }`}
+                          >
+                            {String(m).padStart(2, "0")}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Summary bar */}
+              <div className="border-t border-surface-border bg-surface-2 px-3 py-2">
+                <p className="text-[10px] font-mono text-text-secondary tracking-wide">
+                  {recurFrequency === "daily" && (
+                    <>
+                      <span className="text-text-primary font-semibold">Every day</span>
+                      {" at "}
+                      <span className="text-text-primary font-semibold">{String(recurHour).padStart(2, "0")}:{String(recurMinute).padStart(2, "0")}</span>
+                    </>
+                  )}
+                  {recurFrequency === "weekly" && (
+                    <>
+                      <span className="text-text-primary font-semibold">Every {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][recurDayOfWeek]}</span>
+                      {" at "}
+                      <span className="text-text-primary font-semibold">{String(recurHour).padStart(2, "0")}:{String(recurMinute).padStart(2, "0")}</span>
+                    </>
+                  )}
+                  {recurFrequency === "monthly" && (
+                    <>
+                      <span className="text-text-primary font-semibold">{recurDayOfMonth}{recurDayOfMonth === 1 ? "st" : recurDayOfMonth === 2 ? "nd" : recurDayOfMonth === 3 ? "rd" : "th"} of every month</span>
+                      {" at "}
+                      <span className="text-text-primary font-semibold">{String(recurHour).padStart(2, "0")}:{String(recurMinute).padStart(2, "0")}</span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
           )}
           {scheduleType === "interval" && (
             <div className="flex items-center gap-2">
@@ -801,12 +1096,156 @@ function TaskForm({
             </div>
           )}
           {scheduleType === "once" && (
-            <input
-              type="datetime-local"
-              value={scheduleValue}
-              onChange={(e) => setScheduleValue(e.target.value)}
-              className="w-full px-3 py-2 bg-surface-2 border border-surface-border text-xs font-mono text-text-primary outline-none focus:border-primary/50"
-            />
+            <div className="border border-surface-border bg-surface-1 animate-fade-in">
+              {/* Date row — clickable with calendar popover */}
+              <div className="relative" ref={onceCalRef}>
+                <button
+                  type="button"
+                  onClick={() => { setOnceCalOpen((v) => !v); setOnceTimeOpen(false); }}
+                  className="flex items-center w-full cursor-pointer group"
+                >
+                  <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0 text-left">
+                    Date
+                  </span>
+                  <span className="flex-1 px-3 py-2.5 text-xs font-mono text-text-primary font-semibold tracking-wider group-hover:bg-surface-2 transition-colors">
+                    {onceDay} {MONTH_NAMES[onceMonth]} {onceYear}
+                  </span>
+                  <span className={`pr-3 text-text-muted text-[10px] transition-transform ${onceCalOpen ? "rotate-180" : ""}`}>
+                    &#9662;
+                  </span>
+                </button>
+
+                {onceCalOpen && (
+                  <div className="absolute left-0 right-0 top-full z-20 border border-surface-border border-t-0 bg-surface-1 shadow-[0_4px_12px_rgba(0,0,0,0.3)] animate-slide-down">
+                    {/* Month/Year nav */}
+                    <div className="flex items-center border-b border-surface-border">
+                      <button
+                        type="button"
+                        onClick={() => { if (onceMonth === 0) { setOnceMonth(11); setOnceYear((y) => y - 1); } else setOnceMonth((m) => m - 1); }}
+                        className="px-3 py-2 text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors cursor-pointer text-xs font-mono"
+                      >
+                        &#8249;
+                      </button>
+                      <span className="flex-1 text-center text-[10px] font-mono font-semibold text-text-primary uppercase tracking-wider">
+                        {MONTH_NAMES[onceMonth]} {onceYear}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => { if (onceMonth === 11) { setOnceMonth(0); setOnceYear((y) => y + 1); } else setOnceMonth((m) => m + 1); }}
+                        className="px-3 py-2 text-text-muted hover:text-text-primary hover:bg-surface-2 transition-colors cursor-pointer text-xs font-mono"
+                      >
+                        &#8250;
+                      </button>
+                    </div>
+                    {/* Weekday headers */}
+                    <div className="grid grid-cols-7 border-b border-surface-border">
+                      {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+                        <span key={d} className="py-1.5 text-[9px] font-mono text-text-muted text-center uppercase">
+                          {d}
+                        </span>
+                      ))}
+                    </div>
+                    {/* Day grid */}
+                    <div className="grid grid-cols-7">
+                      {Array.from({ length: firstDayOfWeek(onceYear, onceMonth) }, (_, i) => (
+                        <span key={`e${i}`} className="py-2" />
+                      ))}
+                      {Array.from({ length: daysInMonth(onceYear, onceMonth) }, (_, i) => i + 1).map((d) => {
+                        const isToday = (() => { const t = new Date(); return d === t.getDate() && onceMonth === t.getMonth() && onceYear === t.getFullYear(); })();
+                        return (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => { setOnceDay(d); setOnceCalOpen(false); }}
+                            className={`py-2 text-[10px] font-mono text-center transition-colors cursor-pointer ${
+                              onceDay === d
+                                ? "bg-surface-3 text-text-primary font-bold"
+                                : isToday
+                                  ? "text-primary font-medium hover:bg-surface-2"
+                                  : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                            }`}
+                          >
+                            {d}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Time row — same popover pattern */}
+              <div className="relative border-t border-surface-border" ref={onceTimeRef}>
+                <button
+                  type="button"
+                  onClick={() => { setOnceTimeOpen((v) => !v); setOnceCalOpen(false); }}
+                  className="flex items-center w-full cursor-pointer group"
+                >
+                  <span className="text-[9px] font-mono text-text-muted uppercase tracking-wider px-3 py-2.5 border-r border-surface-border w-16 shrink-0 text-left">
+                    Time
+                  </span>
+                  <span className="flex-1 px-3 py-2.5 text-xs font-mono text-text-primary font-semibold tracking-wider group-hover:bg-surface-2 transition-colors">
+                    {String(onceHour).padStart(2, "0")}
+                    <span className="text-text-muted mx-0.5">:</span>
+                    {String(onceMinute).padStart(2, "0")}
+                  </span>
+                  <span className={`pr-3 text-text-muted text-[10px] transition-transform ${onceTimeOpen ? "rotate-180" : ""}`}>
+                    &#9662;
+                  </span>
+                </button>
+
+                {onceTimeOpen && (
+                  <div className="absolute left-0 right-0 top-full z-20 border border-surface-border border-t-0 bg-surface-1 shadow-[0_4px_12px_rgba(0,0,0,0.3)] animate-slide-down">
+                    <div className="flex max-h-[160px]">
+                      <div ref={onceHourColRef} className="flex-1 overflow-y-auto border-r border-surface-border">
+                        {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                          <button
+                            key={h}
+                            type="button"
+                            onClick={() => setOnceHour(h)}
+                            className={`w-full px-2 py-1.5 text-[11px] font-mono text-center transition-colors cursor-pointer ${
+                              onceHour === h
+                                ? "bg-surface-3 text-text-primary font-bold"
+                                : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                            }`}
+                          >
+                            {String(h).padStart(2, "0")}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex items-center px-1 select-none bg-surface-1">
+                        <span className="text-text-muted font-mono text-sm font-bold">:</span>
+                      </div>
+                      <div ref={onceMinuteColRef} className="flex-1 overflow-y-auto">
+                        {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setOnceMinute(m)}
+                            className={`w-full px-2 py-1.5 text-[11px] font-mono text-center transition-colors cursor-pointer ${
+                              onceMinute === m
+                                ? "bg-surface-3 text-text-primary font-bold"
+                                : "text-text-muted hover:text-text-secondary hover:bg-surface-2"
+                            }`}
+                          >
+                            {String(m).padStart(2, "0")}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Summary */}
+              <div className="border-t border-surface-border bg-surface-2 px-3 py-2">
+                <p className="text-[10px] font-mono text-text-secondary tracking-wide">
+                  <span className="text-text-primary font-semibold">{onceDay} {MONTH_NAMES[onceMonth]} {onceYear}</span>
+                  {" at "}
+                  <span className="text-text-primary font-semibold">{String(onceHour).padStart(2, "0")}:{String(onceMinute).padStart(2, "0")}</span>
+                </p>
+              </div>
+            </div>
           )}
         </div>
 
