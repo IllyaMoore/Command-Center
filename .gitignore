@@ -12,8 +12,11 @@ store/
 data/
 logs/
 
-# Groups — runtime data, managed by agents on each environment
-groups/
+# Groups — keep CLAUDE.md prompts, ignore runtime data
+groups/*/logs/
+groups/*/cases/
+groups/*/projects/
+groups/*/MEMORY.md
 
 # Secrets - NEVER commit these
 .env
