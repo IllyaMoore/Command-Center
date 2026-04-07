@@ -3,6 +3,8 @@
  * Initialises an in-memory SQLite database, seeds it with test data,
  * and starts the dashboard HTTP server on port 3001.
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   _initTestDatabase,
   setRegisteredGroup,
@@ -10,6 +12,7 @@ import {
   storeMessageDirect,
 } from '../src/db.js';
 import { startDashboardServer, stopDashboardServer } from '../src/dashboard/server.js';
+import { GROUPS_DIR } from '../src/config.js';
 
 const TEST_PORT = 3001;
 
@@ -31,6 +34,14 @@ for (const a of agents) {
     trigger: a.trigger,
     added_at: '2024-01-01T00:00:00.000Z',
   });
+
+  // Create CLAUDE.md so getAgents() includes this agent
+  const groupDir = path.join(GROUPS_DIR, a.folder);
+  const claudeMd = path.join(groupDir, 'CLAUDE.md');
+  if (!fs.existsSync(claudeMd)) {
+    fs.mkdirSync(groupDir, { recursive: true });
+    fs.writeFileSync(claudeMd, `# ${a.name}\nTest agent.\n`);
+  }
 }
 
 // Seed chat messages for CEO
