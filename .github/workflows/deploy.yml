@@ -8,6 +8,7 @@ name: Deploy
       - "src/**"
       - "container/**"
       - "dashboard/**"
+      - "dashboard-next/**"
       - "groups/**"
       - "package.json"
       - "package-lock.json"
@@ -85,7 +86,7 @@ jobs:
         env:
           INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
         run: |
-          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git fetch origin staging && git reset --hard origin/staging && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build && npm prune --omit=dev'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && cp -a groups/ /tmp/groups-bak 2>/dev/null || true && git fetch origin staging && git reset --hard origin/staging && cp -a /tmp/groups-bak/. groups/ 2>/dev/null || true && rm -rf /tmp/groups-bak && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build && npm prune --omit=dev'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
@@ -194,7 +195,7 @@ jobs:
         env:
           INSTANCE_ID: ${{ steps.ssm.outputs.instance_id }}
         run: |
-          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && git fetch origin master && git reset --hard origin/master && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build && npm prune --omit=dev'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
+          COMMANDS='{"commands":["set -euo pipefail","sudo -u nanoclaw bash -c '\''cd /opt/nanoclaw/app && cp -a groups/ /tmp/groups-bak 2>/dev/null || true && git fetch origin master && git reset --hard origin/master && cp -a /tmp/groups-bak/. groups/ 2>/dev/null || true && rm -rf /tmp/groups-bak && npm ci && NODE_OPTIONS=--max-old-space-size=1536 npm run build && npm prune --omit=dev'\''","systemctl restart nanoclaw","sleep 5","systemctl is-active --quiet nanoclaw || { journalctl -u nanoclaw --no-pager -n 30; exit 1; }","echo deploy-complete"]}'
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
