@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc && npm run build:agent-runner && npm run build:dashboard",
     "build:agent-runner": "cd container/agent-runner && npm ci && npm run build",
-    "build:dashboard": "cd dashboard-next && npm ci && npm run build && cp -r out/. ../dashboard/",
+    "build:dashboard": "cd dashboard-next && npm ci && npm run build && mkdir -p ../dashboard && cp -r out/. ../dashboard/",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "auth": "tsx src/whatsapp-auth.ts",

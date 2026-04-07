@@ -8,6 +8,7 @@ name: Deploy
       - "src/**"
       - "container/**"
       - "dashboard/**"
+      - "dashboard-next/**"
       - "groups/**"
       - "package.json"
       - "package-lock.json"
