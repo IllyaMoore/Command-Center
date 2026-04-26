@@ -12,12 +12,6 @@ store/
 data/
 logs/
 
-# Groups — keep CLAUDE.md prompts, ignore runtime data
-groups/*/logs/
-groups/*/cases/
-groups/*/projects/
-groups/*/MEMORY.md
-
 # Secrets - NEVER commit these
 .env
 .env.*
@@ -48,21 +42,10 @@ nul
 *.swp
 *.swo
 
-# Terraform
-infra/.terraform/
-infra/shared/.terraform/
-infra/*.tfstate
-infra/*.tfstate.backup
-infra/tfplan-*
-infra/shared/tfplan-*
-
 # Temp files
 *.tmp
 *.temp
 *.log
-
-# Documentation builds
-agents-sdk-docs
 
 # e2e testing
 \test-results
@@ -70,10 +53,5 @@ agents-sdk-docs
 # temporary files
 \tmp
 
-/infra/SessionManagerPluginSetup.exe
-
 # Ext repos
 openclaw/
-
-client_secret_2.com
-client_secret_*.json
